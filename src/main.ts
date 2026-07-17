@@ -17,11 +17,13 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
 
   try {
-    await app.listen(port);
+    // Escucha en el puerto configurado y acepta conexiones externas ('0.0.0.0')
+    await app.listen(port, '0.0.0.0');
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === 'EADDRINUSE') {
-      await app.listen(0);
+      // Si el puerto está ocupado, escucha en cualquier puerto disponible externamente
+      await app.listen(0, '0.0.0.0');
     } else {
       throw error;
     }
