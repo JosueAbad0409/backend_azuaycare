@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
 import { Usuario } from '../usuarios/entities/usuario.entity';
 import { LoginGoogleDto } from './dto/login-google.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -151,4 +152,14 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException(`Error durante la verificación con Google: ${message}`);
     }
   }
+
+
+  async login(loginDto: LoginDto) {
+    // Si llegas aquí, significa que el ValidationPipe aprobó el email y password
+    return {
+      message: '¡Validación superada!',
+      datos_recibidos: loginDto
+    };
+  }
+
 }
