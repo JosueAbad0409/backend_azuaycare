@@ -1,7 +1,11 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class LoginGoogleDto {
   @IsString()
-  @IsNotEmpty({ message: 'El idToken de Google es requerido.' })
-  token: string;
+  @IsOptional() 
+  token?: string;
+
+  @IsEmail({}, { message: 'El correo de pruebas no es válido.' })
+  @IsOptional()
+  emailTest?: string;
 }

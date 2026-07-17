@@ -14,14 +14,19 @@ import { UsuariosModule } from './usuarios/usuarios.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        // Usamos la URL de conexión que te da Supabase
-        url: configService.get<string>('DATABASE_URL'), 
+        type: 'postgres' as const,
+        host: configService.get<string>('DB_HOST') ?? 'localhost',
+        port: Number(configService.get<string>('DB_PORT') ?? '5432'),
+        username: configService.get<string>('DB_USERNAME') ?? 'postgres',
+        password: String(configService.get<string>('DB_PASSWORD') ?? ''),
+        database: configService.get<string>('DB_DATABASE') ?? 'postgres',
         entities: [Usuario, Role],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',
-        // Supabase requiere SSL para conexiones externas
-        ssl: { rejectUnauthorized: false }, 
+        ssl:
+          configService.get<string>('DB_SSL') === 'true'
+            ? { rejectUnauthorized: false }
+            : false,
       }),
     }),
     RolesModule,

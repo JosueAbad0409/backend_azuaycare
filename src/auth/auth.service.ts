@@ -11,7 +11,6 @@ import { Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
 import { Usuario } from '../usuarios/entities/usuario.entity';
 import { LoginGoogleDto } from './dto/login-google.dto';
-import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -53,20 +52,39 @@ export class AuthService implements OnModuleInit {
 
   async loginWithGoogle(loginGoogleDto: LoginGoogleDto) {
     try {
-      const ticket = await this.googleClient.verifyIdToken({
-        idToken: loginGoogleDto.token,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
+      let email = '';
+      let googleId = '';
+      let payloadName = 'Usuario';
+      let payloadLastName = 'Azuay';
 
-      const payload = ticket.getPayload();
-      if (!payload?.email || !payload.sub) {
-        throw new UnauthorizedException('Token de Google inválido o expirado.');
+      // 1. BYPASS PARA PRUEBAS LOCALES DESDE LA TERMINAL (MODO DESARROLLO)
+      if (process.env.NODE_ENV === 'development' && loginGoogleDto.emailTest) {
+        email = loginGoogleDto.emailTest.toLowerCase().trim();
+        googleId = 'TEST_ADMIN_OAUTH';
+      } else {
+        // 2. FLUJO REAL CON GOOGLE (PRODUCCIÓN / FRONTEND)
+        if (!loginGoogleDto.token) {
+          throw new UnauthorizedException('El idToken de Google es requerido.');
+        }
+
+        // Al validar la existencia, TypeScript infiere correctamente que token es string obligatorio
+        const ticket = await this.googleClient.verifyIdToken({
+          idToken: loginGoogleDto.token,
+          audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        const payload = ticket.getPayload();
+        if (!payload?.email || !payload.sub) {
+          throw new UnauthorizedException('Token de Google inválido o expirado.');
+        }
+
+        email = payload.email.toLowerCase().trim();
+        googleId = payload.sub;
+        payloadName = payload.given_name ?? 'Usuario';
+        payloadLastName = payload.family_name ?? 'Azuay';
       }
 
-      const email = payload.email.toLowerCase().trim();
-      const googleId = payload.sub;
-
-      // 1. Clasificación del Correo por RegEx (Estudiante regular vs Invitado vs Coordinador)
+      // 3. Clasificación del Correo por RegEx (Estudiante regular vs Invitado vs Coordinador)
       let nombreRolAsignado = 'INVITADO';
       const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec');
 
@@ -75,7 +93,7 @@ export class AuthService implements OnModuleInit {
         nombreRolAsignado = esEstudianteRegular ? 'ESTUDIANTE' : 'COORDINADOR_CARRERA';
       }
 
-      // 2. Proyección de base de datos: traemos solo columnas clave[cite: 1]
+      // 4. Proyección de base de datos: traemos solo columnas clave
       let usuario = await this.usuariosRepository.findOne({
         where: [
           { google_id: googleId },
@@ -92,7 +110,7 @@ export class AuthService implements OnModuleInit {
         relations: { rol: true },
       });
 
-      // 3. Auto-provisioning si es la primera vez que inicia sesión[cite: 1]
+      // 5. Auto-provisioning si es la primera vez que inicia sesión
       if (!usuario) {
         let rolDb = this.rolesCache.get(nombreRolAsignado);
 
@@ -110,19 +128,19 @@ export class AuthService implements OnModuleInit {
         usuario = this.usuariosRepository.create({
           google_id: googleId,
           email_institucional: email,
-          primer_nombre: payload.given_name ?? 'Usuario',
-          primer_apellido: payload.family_name ?? 'Azuay',
+          primer_nombre: payloadName,
+          primer_apellido: payloadLastName,
           rol: rolDb,
         });
 
         await this.usuariosRepository.save(usuario);
       } else if (!usuario.google_id) {
-        // Vinculamos el Google ID si ya estaba pre-registrado en el sistema sin él[cite: 1]
+        // Vinculamos el Google ID si ya estaba pre-registrado en el sistema sin él
         usuario.google_id = googleId;
         await this.usuariosRepository.save(usuario);
       }
 
-      // 4. Firmar y retornar JWT[cite: 1]
+      // 6. Firmar y retornar JWT
       const accessToken = this.jwtService.sign({
         sub: usuario.id,
         email: usuario.email_institucional,
@@ -152,14 +170,4 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException(`Error durante la verificación con Google: ${message}`);
     }
   }
-
-
-  async login(loginDto: LoginDto) {
-    // Si llegas aquí, significa que el ValidationPipe aprobó el email y password
-    return {
-      message: '¡Validación superada!',
-      datos_recibidos: loginDto
-    };
-  }
-
 }
