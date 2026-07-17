@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  api-azuaycare:
+    build: .
+    container_name: nestjs_api
+    ports:
+      - "3000:3000"
+    # Le decimos que lea las credenciales de Supabase desde tu archivo local
+    env_file:
+      - .env
+    restart: unless-stopped
