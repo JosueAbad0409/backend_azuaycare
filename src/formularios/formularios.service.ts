@@ -13,7 +13,6 @@ export class FormulariosService {
   ) {}
 
   async create(createFormularioDto: CreateFormularioDto, usuarioId: string) {
-    // Comprobar si ya existe una versión de formulario activa para ese periodo
     const ultimaVersion = await this.formulariosRepository.findOne({
       where: { periodo_id: createFormularioDto.periodo_id, fecha_desactivacion: IsNull() },
       order: { version: 'DESC' },
@@ -52,7 +51,7 @@ export class FormulariosService {
     return formulario;
   }
 
-  async publicaraFormulario(id: string) {
+  async publicarFormulario(id: string) {
     const formulario = await this.findOne(id);
     
     if (formulario.publicado) {

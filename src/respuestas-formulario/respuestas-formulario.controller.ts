@@ -16,10 +16,10 @@ export class RespuestasFormularioController {
     return this.respuestasService.guardarMuchas(createDtos, req.user.id);
   }
 
-  @Get('mis-respuestas/formulario/:formularioId')
-  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR')
-  findMisRespuestas(@Param('formularioId') formularioId: string, @Req() req: any) {
-    return this.respuestasService.findByUsuarioYFormulario(req.user.id, formularioId);
+  @Get('ficha/:fichaId')
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  findByFicha(@Param('fichaId') fichaId: string) {
+    return this.respuestasService.findByFicha(fichaId);
   }
 
   @Get()

@@ -1,4 +1,12 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { 
+  Column, 
+  CreateDateColumn, 
+  Entity, 
+  JoinColumn, 
+  ManyToOne, 
+  PrimaryGeneratedColumn, 
+  UpdateDateColumn 
+} from 'typeorm';
 import { Seccion } from '../../secciones/entities/secciones.entity';
 import { TipoCampoForm } from '../../tipos-campo-form/entities/tipos-campo-form.entity';
 
@@ -20,31 +28,31 @@ export class Pregunta {
   categoria_financiera: string;
 
   @Column({ name: 'es_obligatorio', type: 'boolean', default: true })
-  obligatorio: boolean;
+  es_obligatorio: boolean; // 👈 Corregido para mapear exactamente el campo de la DB
 
   @Column({ type: 'integer', default: 1 })
   orden: number;
 
   @Column({ name: 'codigo_sistema', type: 'character varying', length: 50, nullable: true })
-  codigo_sistema: string | null;
+  codigo_sistema?: string | null;
 
   @Column({ name: 'requiere_evidencia', type: 'boolean', default: false })
   requiere_evidencia: boolean;
 
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
-  creado_por: string | null;
+  creado_por?: string | null;
 
   @Column({ name: 'actualizado_por', type: 'uuid', nullable: true })
-  actualizado_por: string | null;
+  actualizado_por?: string | null;
 
-  @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   created_at: Date;
 
-  @UpdateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+  @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
   updated_at: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
-  fecha_desactivacion: Date | null;
+  @Column({ type: 'timestamp', name: 'fecha_desactivacion', nullable: true })
+  fecha_desactivacion?: Date | null;
 
   @ManyToOne(() => Seccion, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'seccion_id' })

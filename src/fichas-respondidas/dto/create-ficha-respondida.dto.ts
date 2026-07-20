@@ -23,3 +23,5 @@ export class CreateFichaRespondidaDto {
   @IsOptional()
   estado_ficha?: string;
 }
+
+

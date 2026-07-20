@@ -9,3 +9,4 @@ export class LoginGoogleDto {
   @IsOptional()
   emailTest?: string;
 }
+

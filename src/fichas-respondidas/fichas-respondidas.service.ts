@@ -4,16 +4,17 @@ import { Repository, IsNull } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
 import { CreateFichaRespondidaDto } from './dto/create-ficha-respondida.dto';
 import { UpdateFichaRespondidaDto } from './dto/update-ficha-respondida.dto';
+import { NivelesEconomicosService } from '../niveles-economicos/niveles-economicos.service'; 
 
 @Injectable()
 export class FichasRespondidasService {
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
+    private readonly nivelesService: NivelesEconomicosService, 
   ) {}
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
-    // Rendimiento: Comprobar selectivamente si el usuario ya inició una ficha en este periodo
     const existeFicha = await this.fichasRepository.findOne({
       where: {
         usuario_id: usuarioId,
@@ -29,10 +30,19 @@ export class FichasRespondidasService {
       );
     }
 
+    const ingresos = createDto.total_ingresos ?? 0;
+    const egresos = createDto.total_egresos ?? 0;
+    const balanceCalculado = ingresos - egresos;
+
+    const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, createDto.periodo_id);
+
     const nuevaFicha = this.fichasRepository.create({
       ...createDto,
       usuario_id: usuarioId,
       estado_ficha: createDto.estado_ficha ?? 'BORRADOR',
+      total_ingresos: ingresos,
+      total_egresos: egresos,
+      nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
     });
 
     return this.fichasRepository.save(nuevaFicha);
@@ -49,6 +59,7 @@ export class FichasRespondidasService {
         total_ingresos: true,
         total_egresos: true,
         balance_final: true,
+        nivel_economico_id: true, 
         estado_ficha: true,
       },
       relations: { usuario: true, periodo: true },
@@ -78,8 +89,19 @@ export class FichasRespondidasService {
   }
 
   async update(id: string, updateDto: UpdateFichaRespondidaDto) {
-    await this.findOne(id);
-    await this.fichasRepository.update(id, updateDto);
+    const fichaExistente = await this.findOne(id);
+    const datosActualizar: any = { ...updateDto };
+
+    if (updateDto.total_ingresos !== undefined || updateDto.total_egresos !== undefined) {
+      const ingresos = updateDto.total_ingresos ?? fichaExistente.total_ingresos;
+      const egresos = updateDto.total_egresos ?? fichaExistente.total_egresos;
+      const balanceCalculado = ingresos - egresos;
+
+      const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, fichaExistente.periodo_id);
+      datosActualizar.nivel_economico_id = nivelAsignado ? nivelAsignado.id : null;
+    }
+
+    await this.fichasRepository.update(id, datosActualizar);
     return this.findOne(id);
   }
 
@@ -92,5 +114,20 @@ export class FichasRespondidasService {
 
     await this.fichasRepository.update(id, { fecha_desactivacion: new Date() });
     return { message: 'Ficha de respuestas dada de baja con éxito.' };
+  }
+
+  async recalcularNivelSocioeconomico(id: string, totalIngresos: number, totalEgresos: number) {
+    const ficha = await this.findOne(id);
+    const balanceCalculado = totalIngresos - totalEgresos;
+
+    const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, ficha.periodo_id);
+
+    await this.fichasRepository.update(id, {
+      total_ingresos: totalIngresos,
+      total_egresos: totalEgresos,
+      nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
+    });
+
+    return this.findOne(id);
   }
 }

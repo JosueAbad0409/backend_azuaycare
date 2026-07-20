@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export class CreateUsuarioDto {
   @IsString()
@@ -27,6 +27,7 @@ export class CreateUsuarioDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^[0-9]{10}$/, { message: 'La cédula debe contener exactamente 10 dígitos numéricos.' })
   cedula?: string;
 
   @IsUUID('4', { message: 'El rol_id debe ser un UUID válido.' })

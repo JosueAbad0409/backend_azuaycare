@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateOpcionPreguntaDto {
   @IsUUID('4', { message: 'El pregunta_id debe ser un UUID válido.' })
@@ -13,4 +13,8 @@ export class CreateOpcionPreguntaDto {
   @Min(1, { message: 'El orden de la opción debe ser mínimo 1.' })
   @IsOptional()
   orden?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  permite_texto_libre?: boolean;
 }

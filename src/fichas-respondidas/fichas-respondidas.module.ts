@@ -3,11 +3,19 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
 import { FichasRespondidasController } from './fichas-respondidas.controller';
 import { FichasRespondidasService } from './fichas-respondidas.service';
+import { NivelesEconomicosModule } from '../niveles-economicos/niveles-economicos.module';
+import { FichaRespuestasListener } from './listeners/ficha-respuestas.listener'; // 👈 Importar el nuevo listener
 
 @Module({
-  imports: [TypeOrmModule.forFeature([FichaRespondida])],
+  imports: [
+    TypeOrmModule.forFeature([FichaRespondida]),
+    NivelesEconomicosModule,
+  ],
   controllers: [FichasRespondidasController],
-  providers: [FichasRespondidasService],
+  providers: [
+    FichasRespondidasService, 
+    FichaRespuestasListener
+  ],
   exports: [TypeOrmModule, FichasRespondidasService],
 })
 export class FichasRespondidasModule {}

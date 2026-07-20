@@ -9,6 +9,9 @@ export class Role {
   @Column({ unique: true, nullable: false })
   nombre: string;
 
+  @Column({ type: 'text', nullable: true })
+  descripcion: string;
+
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 

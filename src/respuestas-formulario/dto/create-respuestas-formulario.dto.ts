@@ -1,19 +1,24 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsNumber, IsUUID, IsArray } from 'class-validator';
 
 export class CreateRespuestasFormularioDto {
-  @IsUUID('4', { message: 'El formulario_id debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'El formulario es obligatorio.' })
-  formulario_id: string;
+  @IsUUID('4', { message: 'El ficha_id debe ser un UUID válido.' })
+  @IsNotEmpty({ message: 'La asociación a la ficha respondida es obligatoria.' })
+  ficha_id: string;
 
   @IsUUID('4', { message: 'El pregunta_id debe ser un UUID válido.' })
   @IsNotEmpty({ message: 'La pregunta es obligatoria.' })
   pregunta_id: string;
 
-  @IsUUID('4', { message: 'El opcion_id debe ser un UUID válido.' })
+  @IsString({ message: 'El valor de texto debe ser una cadena válida.' })
   @IsOptional()
-  opcion_id?: string;
+  valor_texto?: string;
 
-  @IsString({ message: 'La respuesta de texto debe ser válida.' })
+  @IsNumber({}, { message: 'El valor numérico debe ser un número válido.' })
   @IsOptional()
-  texto_respuesta?: string;
+  valor_numerico?: number;
+
+  @IsArray({ message: 'Las opciones seleccionadas deben enviarse en una lista.' })
+  @IsUUID('4', { each: true, message: 'Cada opción debe ser un UUID válido.' })
+  @IsOptional()
+  opciones_seleccionadas?: string[];
 }

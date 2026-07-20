@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter'; 
 import { AuthModule } from './auth/auth.module';
 import { Role } from './roles/entities/role.entity';
 import { RolesModule } from './roles/roles.module';
@@ -26,10 +27,31 @@ import { RespuestasFormularioModule } from './respuestas-formulario/respuestas-f
 import { RespuestasFormulario } from './respuestas-formulario/entities/respuestas-formulario.entity'; 
 import { FichasRespondidasModule } from './fichas-respondidas/fichas-respondidas.module';
 import { FichaRespondida } from './fichas-respondidas/entities/ficha-respondida.entity'; 
+import { NivelesEconomicosModule } from './niveles-economicos/niveles-economicos.module';
+import { NivelesEconomico } from './niveles-economicos/entities/niveles-economico.entity'; 
+import { ReportesModule } from './reportes/reportes.module';
+import { PreguntasDependenciasModule } from './preguntas-dependencias/preguntas-dependencias.module';
+import { PreguntaDependencia } from './preguntas-dependencias/entities/pregunta-dependencia.entity';
+import { MatricesFormModule } from './matrices-form/matrices-form.module';
+import { FilaMatriz } from './matrices-form/entities/fila-matriz.entity';
+import { ColumnaMatriz } from './matrices-form/entities/columna-matriz.entity';
+import { DocumentosRespaldoModule } from './documentos-respaldo/documentos-respaldo.module';
+import { DocumentoRespaldo } from './documentos-respaldo/entities/documentos-respaldo.entity';
+import { AuditoriaModule } from './auditoria/auditoria.module';
+import { CoordinadoresCarrerasModule } from './coordinadores-carreras/coordinadores-carreras.module';
+import { HistorialEstadosFichaModule } from './historial-estados-ficha/historial-estados-ficha.module';
+import { HistorialRespuestasModule } from './historial-respuestas/historial-respuestas.module';
+import { RespuestasMatrizModule } from './respuestas-matriz/respuestas-matriz.module';
+import { Auditoria } from './auditoria/entities/auditoria.entity';
+import { CoordinadoresCarrera } from './coordinadores-carreras/entities/coordinadores-carrera.entity';
+import { HistorialEstadosFicha } from './historial-estados-ficha/entities/historial-estados-ficha.entity';
+import { HistorialRespuesta } from './historial-respuestas/entities/historial-respuesta.entity';
+import { RespuestasMatriz } from './respuestas-matriz/entities/respuestas-matriz.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(), 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -52,19 +74,26 @@ import { FichaRespondida } from './fichas-respondidas/entities/ficha-respondida.
           Pregunta, 
           OpcionPregunta,
           RespuestasFormulario,
-          FichaRespondida 
+          FichaRespondida,
+          NivelesEconomico,
+          PreguntaDependencia,
+          FilaMatriz,     
+          ColumnaMatriz,
+          DocumentoRespaldo,
+          Auditoria,
+          CoordinadoresCarrera,
+          HistorialEstadosFicha,
+          HistorialRespuesta,
+          RespuestasMatriz
         ],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',
-        ssl:
-          configService.get<string>('DB_SSL') === 'true'
-            ? { rejectUnauthorized: false }
-            : false,
       }),
     }),
+    
+    AuthModule,
     RolesModule,
     UsuariosModule,
-    AuthModule,
     CarrerasModule,
     CiclosModule,
     PeriodosMatriculaModule,
@@ -74,7 +103,17 @@ import { FichaRespondida } from './fichas-respondidas/entities/ficha-respondida.
     PreguntasModule,
     OpcionesPreguntaModule,
     RespuestasFormularioModule,
-    FichasRespondidasModule, 
+    FichasRespondidasModule,
+    NivelesEconomicosModule,
+    ReportesModule,
+    PreguntasDependenciasModule,
+    MatricesFormModule,
+    DocumentosRespaldoModule,
+    AuditoriaModule,
+    CoordinadoresCarrerasModule,
+    HistorialEstadosFichaModule,
+    HistorialRespuestasModule,
+    RespuestasMatrizModule, 
   ],
 })
 export class AppModule {}

@@ -39,6 +39,7 @@ export class FichaRespondida {
   })
   total_egresos: number;
 
+  // RENDIMIENTO: Sincronización exacta con la columna calculada de Postgres sin sobrecargar firmas de tipo
   @Column({ 
     name: 'balance_final', 
     type: 'numeric', 

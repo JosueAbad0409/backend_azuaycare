@@ -15,6 +15,9 @@ export class OpcionPregunta {
   @Column({ type: 'integer', default: 1 })
   orden: number;
 
+  @Column({ name: 'permite_texto_libre', type: 'boolean', default: false })
+  permite_texto_libre: boolean;
+
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;
 
@@ -30,7 +33,6 @@ export class OpcionPregunta {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  // Relación física con Preguntas (Si se borra la pregunta, se limpian sus opciones)
   @ManyToOne(() => Pregunta, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: Pregunta;

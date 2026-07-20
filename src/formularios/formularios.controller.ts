@@ -14,14 +14,14 @@ export class FormulariosController {
   @Post()
   @Roles('COORDINADOR_BIENESTAR')
   create(@Body() createFormularioDto: CreateFormularioDto, @Req() req: any) {
-    const usuarioId = req.user.id; // Extraído de la validación del JwtStrategy
+    const usuarioId = req.user.id; 
     return this.formulariosService.create(createFormularioDto, usuarioId);
   }
 
   @Post(':id/publicar')
   @Roles('COORDINADOR_BIENESTAR')
   publicar(@Param('id') id: string) {
-    return this.formulariosService.publicaraFormulario(id);
+    return this.formulariosService.publicarFormulario(id);
   }
 
   @Get()
