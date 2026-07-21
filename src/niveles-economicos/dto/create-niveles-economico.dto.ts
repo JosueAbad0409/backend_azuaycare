@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsNumber, IsUUID, IsOptional, Min, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, IsNumber, IsUUID, IsOptional, Min, MaxLength, IsInt } from 'class-validator';
 
 export class CreateNivelesEconomicoDto {
   @IsString({ message: 'El nombre del nivel debe ser un texto.' })
@@ -20,7 +20,7 @@ export class CreateNivelesEconomicoDto {
   @IsNotEmpty({ message: 'El periodo de matrícula asociado es obligatorio.' })
   periodo_id: string;
 
-  @IsNumber({}, { message: 'El orden de jerarquía debe ser un número entero.' })
+  @IsInt({ message: 'El orden de jerarquía debe ser un número entero.' })
   @IsOptional()
   orden?: number;
 }

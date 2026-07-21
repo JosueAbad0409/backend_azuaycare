@@ -17,7 +17,7 @@ export class CreatePeriodoMatriculaDto {
   @IsNotEmpty({ message: 'La fecha de fin es obligatoria.' })
   fecha_fin: Date;
 
-  @IsBoolean({ message: 'El estado activo debe ser un valor booleano.' })
+  @IsBoolean({ message: 'El estado activo debe ser un valor booleano (true o false).' })
   @IsOptional()
   activo?: boolean;
 }

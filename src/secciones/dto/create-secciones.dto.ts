@@ -9,6 +9,10 @@ export class CreateSeccionDto {
   @IsNotEmpty({ message: 'El nombre de la sección es obligatorio.' })
   nombre: string;
 
+  @IsString({ message: 'La descripción de la sección debe ser un texto.' })
+  @IsOptional()
+  descripcion?: string;
+
   @IsNumber({}, { message: 'El orden debe ser un número entero.' })
   @Min(1, { message: 'El orden de la sección debe ser mínimo 1.' })
   @IsOptional()

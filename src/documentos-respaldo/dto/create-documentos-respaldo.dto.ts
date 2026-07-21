@@ -11,15 +11,15 @@ export class CreateDocumentosRespaldoDto {
 
   @IsString({ message: 'El nombre original debe ser texto.' })
   @IsNotEmpty({ message: 'El nombre original del archivo es obligatorio.' })
-  @MaxLength(255)
+  @MaxLength(255, { message: 'El nombre original no puede superar los 255 caracteres.' })
   nombre_original: string;
 
   @IsString({ message: 'El mime_type debe ser texto.' })
   @IsNotEmpty({ message: 'El mime_type del archivo es obligatorio.' })
-  @MaxLength(100)
+  @MaxLength(100, { message: 'El mime_type no puede superar los 100 caracteres.' })
   mime_type: string;
 
-  @IsInt()
-  @IsNotEmpty()
+  @IsInt({ message: 'El tamaño en bytes debe ser un número entero.' })
+  @IsNotEmpty({ message: 'El tamaño del archivo es obligatorio.' })
   tamanio_bytes: number;
 }

@@ -1,13 +1,12 @@
 // src/preguntas/dto/create-pregunta.dto.ts
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreatePreguntaDto {
   @IsUUID('4', { message: 'El seccion_id debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'La sección asociada es obligatoria.' })
+  @IsNotEmpty({ message: 'La sección a la que pertenece la pregunta es obligatoria.' })
   seccion_id: string;
 
-  // Cambiado de texto_pregunta a enunciado para acoplarse a la Entidad y SQL
-  @IsString({ message: 'El enunciado de la pregunta debe ser una cadena válida.' })
+  @IsString({ message: 'El enunciado debe ser texto.' })
   @IsNotEmpty({ message: 'El enunciado de la pregunta es obligatorio.' })
   enunciado: string;
 
@@ -15,12 +14,26 @@ export class CreatePreguntaDto {
   @IsNotEmpty({ message: 'El tipo de campo es obligatorio.' })
   tipo_campo_id: string;
 
-  @IsBoolean({ message: 'El campo obligatorio debe ser booleano.' })
+  @IsString({ message: 'La categoría financiera debe ser texto.' })
   @IsOptional()
-  obligatorio?: boolean;
+  @MaxLength(50, { message: 'La categoría financiera no puede superar los 50 caracteres.' })
+  categoria_financiera?: string;
 
-  @IsNumber({}, { message: 'El orden debe ser un número entero.' })
-  @Min(1, { message: 'El orden de la pregunta debe ser mínimo 1.' })
+  @IsBoolean({ message: 'El campo es_obligatorio debe ser un booleano (true o false).' })
+  @IsOptional()
+  es_obligatorio?: boolean;
+
+  @IsInt({ message: 'El orden debe ser un número entero.' })
+  @Min(1, { message: 'El orden mínimo permitido es 1.' })
   @IsOptional()
   orden?: number;
+
+  @IsString({ message: 'El código del sistema debe ser texto.' })
+  @IsOptional()
+  @MaxLength(50, { message: 'El código del sistema no puede superar los 50 caracteres.' })
+  codigo_sistema?: string;
+
+  @IsBoolean({ message: 'requiere_evidencia debe ser un booleano (true o false).' })
+  @IsOptional()
+  requiere_evidencia?: boolean;
 }
