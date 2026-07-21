@@ -86,11 +86,25 @@ export class AuthService implements OnModuleInit {
 
       // 3. Clasificación del Correo por RegEx (Estudiante regular vs Invitado vs Coordinador)
       let nombreRolAsignado = 'INVITADO';
-      const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec');
 
-      if (esDominioInstitucional) {
-        const esEstudianteRegular = /\.est@tecazuay\.edu\.ec$/.test(email);
-        nombreRolAsignado = esEstudianteRegular ? 'ESTUDIANTE' : 'COORDINADOR_CARRERA';
+      // LISTA BLANCA PARA PRUEBAS (Puedes poner tus correos personales aquí)
+      const administradoresPrueba: Record<string, string> = {
+        'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
+        'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
+        'josue.abad@gmail.com': 'COORDINADOR_BIENESTAR', // <-- Ejemplo con tu correo
+      };
+
+      // Primero verificamos si el correo está en nuestra lista de administradores
+      if (administradoresPrueba[email]) {
+        nombreRolAsignado = administradoresPrueba[email];
+      } else {
+        // Si no está en la lista blanca, aplicamos la lógica institucional normal
+        const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec');
+
+        if (esDominioInstitucional) {
+          const esEstudianteRegular = /\.est@tecazuay\.edu\.ec$/.test(email);
+          nombreRolAsignado = esEstudianteRegular ? 'ESTUDIANTE' : 'COORDINADOR_CARRERA';
+        }
       }
 
       // 4. Proyección de base de datos: traemos solo columnas clave
