@@ -33,7 +33,7 @@ export class FormulariosService {
   findAll() {
     return this.formulariosRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      relations: { periodo: true, creador: true },
+      relations: { periodo: true }, 
       order: { created_at: 'DESC' },
     });
   }
@@ -41,7 +41,7 @@ export class FormulariosService {
   async findOne(id: string) {
     const formulario = await this.formulariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { periodo: true, creador: true },
+      relations: { periodo: true }, 
     });
 
     if (!formulario) {
@@ -67,7 +67,11 @@ export class FormulariosService {
   }
 
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
-    await this.findOne(id);
+    const formulario = await this.findOne(id);
+    
+    // Opcional: Si no quieres que modifiquen la estructura de un formulario ya publicado
+    // if (formulario.publicado) throw new BadRequestException('No puedes editar un formulario publicado.');
+
     await this.formulariosRepository.update(id, updateFormularioDto);
     return this.findOne(id);
   }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Not } from 'typeorm';
 import { Carrera } from './entities/carrera.entity';
 import { CreateCarreraDto } from './dto/create-carrera.dto';
 import { UpdateCarreraDto } from './dto/update-carrera.dto';
@@ -16,12 +16,12 @@ export class CarrerasService {
     const nombreSanitizado = createCarreraDto.nombre.toUpperCase().trim();
 
     const existe = await this.carrerasRepository.findOne({
-      where: { nombre: nombreSanitizado },
+      where: { nombre: nombreSanitizado, fecha_desactivacion: IsNull() },
       select: { id: true },
     });
 
     if (existe) {
-      throw new BadRequestException('Ya existe una carrera registrada con ese nombre.');
+      throw new BadRequestException('Ya existe una carrera activa registrada con ese nombre.');
     }
 
     const nuevaCarrera = this.carrerasRepository.create({
@@ -35,6 +35,7 @@ export class CarrerasService {
     return this.carrerasRepository.find({
       where: { fecha_desactivacion: IsNull() },
       select: { id: true, nombre: true },
+      order: { nombre: 'ASC' },
     });
   }
 
@@ -52,30 +53,28 @@ export class CarrerasService {
   }
 
   async update(id: string, updateCarreraDto: UpdateCarreraDto) {
+    await this.findOne(id); // Valida que exista
     const datosActualizados: Partial<Carrera> = {};
 
     if (updateCarreraDto.nombre) {
-      datosActualizados.nombre = updateCarreraDto.nombre.toUpperCase().trim();
+      const nombreSanitizado = updateCarreraDto.nombre.toUpperCase().trim();
+      
+      // Validar que el nuevo nombre no choque con otra carrera existente
+      const colision = await this.carrerasRepository.findOne({
+        where: { nombre: nombreSanitizado, id: Not(id), fecha_desactivacion: IsNull() }
+      });
+
+      if (colision) throw new BadRequestException('El nuevo nombre ya pertenece a otra carrera.');
+      datosActualizados.nombre = nombreSanitizado;
     }
 
-    const resultado = await this.carrerasRepository.update(id, datosActualizados);
-
-    if (resultado.affected === 0) {
-      throw new NotFoundException('La carrera a actualizar no existe o fue dada de baja.');
-    }
-
+    await this.carrerasRepository.update(id, datosActualizados);
     return this.findOne(id);
   }
 
   async remove(id: string) {
-    const resultado = await this.carrerasRepository.update(id, {
-      fecha_desactivacion: new Date(),
-    });
-
-    if (resultado.affected === 0) {
-      throw new NotFoundException('La carrera a desactivar no existe.');
-    }
-
+    await this.findOne(id);
+    await this.carrerasRepository.update(id, { fecha_desactivacion: new Date() });
     return { message: 'Carrera desactivada con éxito.' };
   }
 }

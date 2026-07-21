@@ -1,4 +1,4 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, IsNull } from 'typeorm';
 import { Usuario } from '../usuarios/entities/usuario.entity';
@@ -91,22 +91,23 @@ export class RolesService implements OnApplicationBootstrap {
     return this.rolesRepository.find({
       where: { fecha_desactivacion: IsNull() },
       select: { id: true, nombre: true },
+      order: { nombre: 'ASC' }
     });
   }
 
-  findOne(id: string) {
-    return this.rolesRepository.findOne({
+  async findOne(id: string) {
+    const rol = await this.rolesRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
       select: { id: true, nombre: true },
     });
+    
+    if (!rol) throw new NotFoundException('El rol solicitado no existe o está inactivo.');
+    return rol;
   }
 
   async remove(id: string) {
-    const resultado = await this.rolesRepository.update(id, {
-      fecha_desactivacion: new Date(),
-    });
-    return resultado.affected && resultado.affected > 0 
-      ? { message: 'Rol desactivado con éxito' } 
-      : null;
+    await this.findOne(id);
+    await this.rolesRepository.update(id, { fecha_desactivacion: new Date() });
+    return { message: 'Rol desactivado con éxito' };
   }
 }

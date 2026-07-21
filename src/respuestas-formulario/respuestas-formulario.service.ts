@@ -35,6 +35,7 @@ export class RespuestasFormularioService {
 
         const respuestaSalvada = await queryRunner.manager.save(nuevaRespuesta);
 
+        // Guardado de la relación múltiple (Tabla pivote)
         if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
           const registrosIntermedios = dto.opciones_seleccionadas.map(opcionId => ({
             respuesta_id: respuestaSalvada.id,
@@ -54,7 +55,8 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
-            if (fichaId) {
+      // Disparamos el evento para que otro módulo/servicio recalcule totales en segundo plano
+      if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }
 

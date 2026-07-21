@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, In } from 'typeorm';
+import { Repository, IsNull, In, Not } from 'typeorm';
 import { TipoCampoForm } from './entities/tipos-campo-form.entity';
 import { CreateTipoCampoFormDto } from './dto/create-tipos-campo-form.dto';
 import { UpdateTipoCampoFormDto } from './dto/update-tipos-campo-form.dto';
@@ -89,7 +89,12 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
     const datosActualizados: Partial<TipoCampoForm> = { ...updateDto };
 
     if (updateDto.nombre) {
-      datosActualizados.nombre = updateDto.nombre.toUpperCase().trim();
+      const nombreSanitizado = updateDto.nombre.toUpperCase().trim();
+      const colision = await this.tiposRepository.findOne({
+        where: { nombre: nombreSanitizado, id: Not(id), fecha_desactivacion: IsNull() }
+      });
+      if (colision) throw new BadRequestException('El nuevo nombre ya existe en otro tipo de campo.');
+      datosActualizados.nombre = nombreSanitizado;
     }
 
     await this.tiposRepository.update(id, datosActualizados);

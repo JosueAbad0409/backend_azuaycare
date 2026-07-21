@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
-import { Seccion } from './entities/secciones.entity'; 
-import { CreateSeccionDto } from './dto/create-secciones.dto'; 
-import { UpdateSeccionDto } from './dto/update-secciones.dto'; 
+import { Seccion } from './entities/secciones.entity';
+import { CreateSeccionDto } from './dto/create-secciones.dto';
+import { UpdateSeccionDto } from './dto/update-secciones.dto';
 
 @Injectable()
 export class SeccionesService {
@@ -13,11 +13,11 @@ export class SeccionesService {
   ) {}
 
   async create(createSeccionDto: CreateSeccionDto, usuarioId: string) {
-    const nuevoSeccion = this.seccionesRepository.create({
+    const nuevaSeccion = this.seccionesRepository.create({
       ...createSeccionDto,
       creado_por: usuarioId,
     });
-    return this.seccionesRepository.save(nuevoSeccion);
+    return this.seccionesRepository.save(nuevaSeccion);
   }
 
   findAll() {
@@ -38,6 +38,7 @@ export class SeccionesService {
     const seccion = await this.seccionesRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
     });
+    
     if (!seccion) {
       throw new NotFoundException('La sección solicitada no existe o está inactiva.');
     }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Not } from 'typeorm';
 import { Ciclo } from './entities/ciclo.entity';
 import { CreateCicloDto } from './dto/create-ciclo.dto';
 import { UpdateCicloDto } from './dto/update-ciclo.dto';
@@ -39,12 +39,8 @@ export class CiclosService {
   findAll() {
     return this.ciclosRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      select: {
-        id: true,
-        nombre: true,
-        carrera_id: true,
-      },
       relations: { carrera: true },
+      order: { carrera_id: 'ASC', nombre: 'ASC' },
     });
   }
 
@@ -62,30 +58,28 @@ export class CiclosService {
   }
 
   async update(id: string, updateCicloDto: UpdateCicloDto) {
+    const cicloActual = await this.findOne(id);
     const datosActualizados: Partial<Ciclo> = { ...updateCicloDto };
 
     if (updateCicloDto.nombre) {
-      datosActualizados.nombre = updateCicloDto.nombre.toUpperCase().trim();
+      const nombreSanitizado = updateCicloDto.nombre.toUpperCase().trim();
+      const carreraReferencia = updateCicloDto.carrera_id || cicloActual.carrera_id;
+
+      const colision = await this.ciclosRepository.findOne({
+        where: { nombre: nombreSanitizado, carrera_id: carreraReferencia, id: Not(id), fecha_desactivacion: IsNull() }
+      });
+
+      if (colision) throw new BadRequestException('El nombre ya existe para esa carrera.');
+      datosActualizados.nombre = nombreSanitizado;
     }
 
-    const resultado = await this.ciclosRepository.update(id, datosActualizados);
-
-    if (resultado.affected === 0) {
-      throw new NotFoundException('El ciclo a actualizar no existe.');
-    }
-
+    await this.ciclosRepository.update(id, datosActualizados);
     return this.findOne(id);
   }
 
   async remove(id: string) {
-    const resultado = await this.ciclosRepository.update(id, {
-      fecha_desactivacion: new Date(),
-    });
-
-    if (resultado.affected === 0) {
-      throw new NotFoundException('El ciclo a desactivar no existe.');
-    }
-
+    await this.findOne(id);
+    await this.ciclosRepository.update(id, { fecha_desactivacion: new Date() });
     return { message: 'Ciclo desactivado con éxito.' };
   }
 }
