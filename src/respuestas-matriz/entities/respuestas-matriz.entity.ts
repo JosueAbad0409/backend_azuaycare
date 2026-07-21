@@ -20,7 +20,7 @@ export class RespuestasMatriz {
   @CreateDateColumn({ type: 'timestamp', name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 
-  @ManyToOne(() => RespuestasFormulario, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RespuestasFormulario, (respuesta) => respuesta.respuestasMatriz, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'respuesta_id' })
   respuesta: RespuestasFormulario;
 

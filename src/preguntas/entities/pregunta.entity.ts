@@ -4,11 +4,18 @@ import {
   Entity, 
   JoinColumn, 
   ManyToOne, 
+  OneToMany, 
   PrimaryGeneratedColumn, 
   UpdateDateColumn 
 } from 'typeorm';
 import { Seccion } from '../../secciones/entities/secciones.entity';
 import { TipoCampoForm } from '../../tipos-campo-form/entities/tipos-campo-form.entity';
+import { Usuario } from 'src/usuarios/entities/usuario.entity';
+import { OpcionPregunta } from 'src/opciones-pregunta/entities/opciones-pregunta.entity';
+import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
+import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
+import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
+import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
 
 @Entity({ name: 'preguntas' })
 export class Pregunta {
@@ -54,11 +61,41 @@ export class Pregunta {
   @Column({ type: 'timestamp', name: 'fecha_desactivacion', nullable: true })
   fecha_desactivacion?: Date | null;
 
-  @ManyToOne(() => Seccion, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Seccion, (seccion) => seccion.preguntas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'seccion_id' })
   seccion: Seccion;
 
-  @ManyToOne(() => TipoCampoForm, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => TipoCampoForm, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'tipo_campo_id' })
   tipoCampo: TipoCampoForm;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'creado_por' })
+  creador: Usuario;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'actualizado_por' })
+  actualizador: Usuario;
+
+  @OneToMany(() => OpcionPregunta, (opcion) => opcion.pregunta)
+  opciones: OpcionPregunta[];
+
+  @OneToMany(() => PreguntaDependencia, (dependencia) => dependencia.pregunta)
+  dependencias: PreguntaDependencia[];
+
+  @OneToMany(() => PreguntaDependencia, (dependencia) => dependencia.preguntaDisparadora)
+  dependenciasDisparadas: PreguntaDependencia[];
+
+  @OneToMany(() => FilaMatriz, (fila) => fila.pregunta)
+  filas: FilaMatriz[];
+
+  @OneToMany(() => ColumnaMatriz, (columna) => columna.pregunta)
+  columnas: ColumnaMatriz[];
+
+  @OneToMany(() => RespuestasFormulario, (respuesta) => respuesta.pregunta)
+  respuestas: RespuestasFormulario[];
+
+
+
+
 }

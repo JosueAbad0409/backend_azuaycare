@@ -1,5 +1,7 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Formulario } from '../../formularios/entities/formulario.entity';
+import { Usuario } from 'src/usuarios/entities/usuario.entity';
+import { Pregunta } from 'src/preguntas/entities/pregunta.entity';
 
 @Entity({ name: 'secciones' })
 export class Seccion {
@@ -31,7 +33,20 @@ export class Seccion {
   fecha_desactivacion: Date | null;
 
   // Relación física con Formularios (Borrados en cascada automáticos)
-  @ManyToOne(() => Formulario, { onDelete: 'CASCADE' })
+  
+  @ManyToOne (() => Formulario, (formulario) => formulario.secciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'formulario_id' })
   formulario: Formulario;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'creado_por' })
+  creador: Usuario;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'actualizado_por' })
+  actualizador: Usuario;
+
+  @OneToMany(() => Pregunta, (pregunta) => pregunta.seccion)
+  preguntas: Pregunta[];
+
 }

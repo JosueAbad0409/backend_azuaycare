@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Pregunta } from '../../preguntas/entities/pregunta.entity';
+import { Usuario } from 'src/usuarios/entities/usuario.entity';
 
 @Entity({ name: 'opciones_pregunta' })
 export class OpcionPregunta {
@@ -18,6 +19,10 @@ export class OpcionPregunta {
   @Column({ name: 'permite_texto_libre', type: 'boolean', default: false })
   permite_texto_libre: boolean;
 
+  @Column ({name: 'activo', type: 'boolean', default: true })
+  activo: boolean;
+
+
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;
 
@@ -33,7 +38,16 @@ export class OpcionPregunta {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => Pregunta, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Pregunta, (pregunta) => pregunta.opciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: Pregunta;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'creado_por' })
+  creador: Usuario;
+
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'actualizado_por' })
+  actualizador: Usuario;
+
 }

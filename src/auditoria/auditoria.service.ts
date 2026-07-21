@@ -18,7 +18,7 @@ export class AuditoriaService {
 
   findAll() {
     return this.auditoriaRepository.find({
-      order: { fecha: 'DESC' },
+      order: { created_at: 'DESC' },
       relations: { usuario: true },
     });
   }

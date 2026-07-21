@@ -29,15 +29,17 @@ export class PreguntaDependencia {
   fecha_desactivacion: Date | null;
 
   // Relaciones físicas
-  @ManyToOne(() => Pregunta, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Pregunta, (pregunta) => pregunta.dependencias, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: Pregunta;
 
-  @ManyToOne(() => Pregunta, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Pregunta, (pregunta) => pregunta.dependenciasDisparadas, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'pregunta_disparadora_id' })
   preguntaDisparadora: Pregunta;
 
-  @ManyToOne(() => OpcionPregunta, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => OpcionPregunta, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'opcion_disparadora_id' })
   opcionDisparadora: OpcionPregunta;
 }
+
+

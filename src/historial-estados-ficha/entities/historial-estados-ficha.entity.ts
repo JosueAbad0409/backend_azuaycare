@@ -10,20 +10,22 @@ export class HistorialEstadosFicha {
   @Column({ name: 'ficha_id', type: 'uuid', nullable: false })
   ficha_id: string;
 
-  @Column({ name: 'estado_anterior', type: 'character varying', length: 30, nullable: true })
+  @Column({ name: 'estado_anterior', type: 'varchar', length: 30, nullable: true })
   estado_anterior: string | null;
 
-  @Column({ name: 'estado_nuevo', type: 'character varying', length: 30, nullable: false })
+  @Column({ name: 'estado_nuevo', type: 'varchar', length: 30, nullable: false })
   estado_nuevo: string;
 
   @Column({ type: 'text', nullable: true })
   comentario: string | null;
 
-  @Column({ name: 'usuario_id', type: 'uuid', nullable: true })
-  usuario_id: string | null;
+  @Column({ name: 'cambiado_por', type: 'uuid', nullable: true })
+  cambiado_por: string | null;
 
-  @CreateDateColumn({ type: 'timestamp', name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ type: 'timestamp with time zone', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
+
+  // Relaciones
 
   @ManyToOne(() => FichaRespondida, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ficha_id' })

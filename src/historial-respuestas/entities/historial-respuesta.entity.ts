@@ -16,17 +16,37 @@ export class HistorialRespuesta {
   @Column({ type: 'text', nullable: true })
   valor_texto_anterior: string | null;
 
-  @Column({ type: 'numeric', nullable: true })
+  @Column({
+    type: 'numeric',
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value ? parseFloat(value) : null),
+    },
+  })
   valor_numerico_anterior: number | null;
 
   @Column({ type: 'text', nullable: true })
   valor_texto_nuevo: string | null;
 
-  @Column({ type: 'numeric', nullable: true })
+  @Column({
+    type: 'numeric',
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value ? parseFloat(value) : null),
+    },
+  })
   valor_numerico_nuevo: number | null;
 
-  @CreateDateColumn({ type: 'timestamp', name: 'created_at', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({
+    type: 'timestamp with time zone',
+    name: 'created_at',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   created_at: Date;
+
+  // Relaciones
 
   @ManyToOne(() => RespuestasFormulario, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'respuesta_id' })

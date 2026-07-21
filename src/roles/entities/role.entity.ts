@@ -6,11 +6,11 @@ export class Role {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ unique: true, nullable: false })
+  @Column({ type: 'varchar', length: 50, unique: true, nullable: false })
   nombre: string;
 
   @Column({ type: 'text', nullable: true })
-  descripcion: string;
+  descripcion: string | null;
 
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;

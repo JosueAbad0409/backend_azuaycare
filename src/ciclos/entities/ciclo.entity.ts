@@ -6,7 +6,7 @@ export class Ciclo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: false, length: 50 })
+  @Column({type: 'varchar',nullable: false, length: 50 })
   nombre: string;
 
   @Column({ name: 'carrera_id', type: 'uuid', nullable: false })
@@ -22,7 +22,9 @@ export class Ciclo {
   fecha_desactivacion: Date | null;
 
   // Relación física con Carreras
-  @ManyToOne(() => Carrera, { onDelete: 'RESTRICT' })
+
+  @ManyToOne(() => Carrera, (carrera) => carrera.ciclos, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'carrera_id' })
   carrera: Carrera;
+
 }

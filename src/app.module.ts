@@ -47,6 +47,9 @@ import { CoordinadoresCarrera } from './coordinadores-carreras/entities/coordina
 import { HistorialEstadosFicha } from './historial-estados-ficha/entities/historial-estados-ficha.entity';
 import { HistorialRespuesta } from './historial-respuestas/entities/historial-respuesta.entity';
 import { RespuestasMatriz } from './respuestas-matriz/entities/respuestas-matriz.entity';
+import { PerfilCoordinadorModule } from './perfil-coordinador/perfil-coordinador.module';
+import { RespuestaOpcionSeleccionada } from './respuestas-formulario/entities/respuestas-opciones-seleccionadas.entity';
+import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordinador.entity';
 
 @Module({
   imports: [
@@ -58,30 +61,7 @@ import { RespuestasMatriz } from './respuestas-matriz/entities/respuestas-matriz
       useFactory: (configService: ConfigService) => ({
         type: 'postgres' as const,
         url: configService.get<string>('DATABASE_URL'),
-        entities: [
-          Usuario, 
-          Role, 
-          Carrera, 
-          Ciclo, 
-          PeriodoMatricula, 
-          Formulario, 
-          Seccion, 
-          TipoCampoForm, 
-          Pregunta, 
-          OpcionPregunta,
-          RespuestasFormulario,
-          FichaRespondida,
-          NivelesEconomico,
-          PreguntaDependencia,
-          FilaMatriz,     
-          ColumnaMatriz,
-          DocumentoRespaldo,
-          Auditoria,
-          CoordinadoresCarrera,
-          HistorialEstadosFicha,
-          HistorialRespuesta,
-          RespuestasMatriz
-        ],
+        autoLoadEntities: true,
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',
       }),
@@ -109,7 +89,10 @@ import { RespuestasMatriz } from './respuestas-matriz/entities/respuestas-matriz
     CoordinadoresCarrerasModule,
     HistorialEstadosFichaModule,
     HistorialRespuestasModule,
-    RespuestasMatrizModule, 
+    RespuestasMatrizModule,
+    PerfilCoordinadorModule, 
   ],
 })
 export class AppModule {}
+
+

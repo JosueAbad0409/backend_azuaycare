@@ -12,11 +12,11 @@ export class Auditoria {
   @Column({ name: 'tabla_afectada', type: 'character varying', length: 100, nullable: false })
   tabla_afectada: string;
 
-  @Column({ name: 'accion', type: 'character varying', length: 50, nullable: false })
-  accion: string;
-
   @Column({ name: 'registro_id', type: 'uuid', nullable: false })
   registro_id: string;
+
+  @Column({ name: 'accion', type: 'character varying', length: 50, nullable: false })
+  accion: string;
 
   @Column({ type: 'jsonb', nullable: true })
   datos_anteriores: any;
@@ -24,8 +24,8 @@ export class Auditoria {
   @Column({ type: 'jsonb', nullable: true })
   datos_nuevos: any;
 
-  @CreateDateColumn({ type: 'timestamp', name: 'fecha', default: () => 'CURRENT_TIMESTAMP' })
-  fecha: Date;
+  @CreateDateColumn({ type: 'timestamp with time zone', default: () => 'CURRENT_TIMESTAMP' })
+  created_at: Date;
 
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'usuario_id' })

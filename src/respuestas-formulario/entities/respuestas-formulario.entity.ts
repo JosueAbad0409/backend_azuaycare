@@ -1,6 +1,9 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { FichaRespondida } from '../../fichas-respondidas/entities/ficha-respondida.entity';
 import { Pregunta } from '../../preguntas/entities/pregunta.entity';
+import { RespuestaOpcionSeleccionada } from './respuestas-opciones-seleccionadas.entity';
+import { RespuestasMatriz } from 'src/respuestas-matriz/entities/respuestas-matriz.entity';
+import { DocumentoRespaldo } from 'src/documentos-respaldo/entities/documentos-respaldo.entity';
 
 @Entity({ name: 'respuestas' }) 
 export class RespuestasFormulario {
@@ -36,11 +39,22 @@ export class RespuestasFormulario {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => FichaRespondida, { onDelete: 'CASCADE' })
+
+  
+  @ManyToOne(() => FichaRespondida, (ficha) => ficha.respuestas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ficha_id' })
   ficha: FichaRespondida;
 
-  @ManyToOne(() => Pregunta, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Pregunta, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: Pregunta;
+
+  @OneToMany(() => RespuestaOpcionSeleccionada, (opcion) => opcion.respuesta)
+  opcionesSeleccionadas: RespuestaOpcionSeleccionada[];
+
+  @OneToMany(() => RespuestasMatriz, (matriz) => matriz.respuesta)
+  respuestasMatriz: RespuestasMatriz[];
+
+  @OneToMany(() => DocumentoRespaldo, (documento) => documento.respuesta)
+  documentos: DocumentoRespaldo[];
 }

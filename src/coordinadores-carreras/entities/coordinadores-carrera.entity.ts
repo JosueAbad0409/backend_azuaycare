@@ -1,26 +1,38 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
 import { Carrera } from '../../carreras/entities/carrera.entity';
+import { UpdateAuditoriaDto } from 'src/auditoria/dto/update-auditoria.dto';
 
-@Entity({ name: 'coordinadores_carreras' })
+@Entity({ name: 'coordinaciones_carrera' })
 export class CoordinadoresCarrera {
-  @PrimaryColumn({ name: 'usuario_id', type: 'uuid' })
+
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+  
+  @Column({ name: 'usuario_id', type: 'uuid', nullable: false })
   usuario_id: string;
 
-  @PrimaryColumn({ name: 'carrera_id', type: 'uuid' })
+  @Column({ name: 'carrera_id', type: 'uuid', nullable: false })
   carrera_id: string;
 
-  @CreateDateColumn({ type: 'timestamp', name: 'fecha_asignacion', default: () => 'CURRENT_TIMESTAMP' })
-  fecha_asignacion: Date;
+  @Column({name: 'fecha_inicio', type: 'date', default: () => 'CURRENT_DATE' ,nullable: false})
+  fecha_inicio: Date;
 
-  @Column({ name: 'activo', type: 'boolean', default: true })
-  activo: boolean;
+  @Column({name: 'fecha_fin', type: 'date', nullable: true})
+  fecha_fin: Date;
 
-  @ManyToOne(() => Usuario, { onDelete: 'CASCADE' })
+  @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  created_at: Date;
+
+  @UpdateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+  updated_at: Date;
+
+
+  @ManyToOne(() => Usuario, (usuario) => usuario.coordinaciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
 
-  @ManyToOne(() => Carrera, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Carrera, (carrera) => carrera.coordinaciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'carrera_id' })
   carrera: Carrera;
 }

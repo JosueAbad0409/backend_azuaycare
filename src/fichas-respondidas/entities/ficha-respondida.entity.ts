@@ -1,7 +1,9 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
 import { PeriodoMatricula } from '../../periodos-matricula/entities/periodos-matricula.entity';
 import { Formulario } from '../../formularios/entities/formulario.entity';
+import { NivelesEconomico } from 'src/niveles-economicos/entities/niveles-economico.entity';
+import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
 
 @Entity({ name: 'fichas_respondidas' })
 export class FichaRespondida {
@@ -68,15 +70,26 @@ export class FichaRespondida {
   fecha_desactivacion: Date | null;
 
   // Relaciones Físicas
-  @ManyToOne(() => Usuario, { onDelete: 'RESTRICT' })
+
+
+  @ManyToOne(() => Usuario, (usuario) => usuario.fichasRespondidas, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
 
-  @ManyToOne(() => PeriodoMatricula, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => PeriodoMatricula, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
 
-  @ManyToOne(() => Formulario, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Formulario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'formulario_id' })
   formulario: Formulario;
+
+  @ManyToOne(() => NivelesEconomico, (nivel) => nivel.fichas_respondidas, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'nivel_economico_id' })
+  nivelEconomico: NivelesEconomico;
+
+  @OneToMany (() => RespuestasFormulario, (respuesta) => respuesta.ficha)
+  respuestas: RespuestasFormulario[];
+
+
 }

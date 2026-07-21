@@ -1,6 +1,7 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { PeriodoMatricula } from '../../periodos-matricula/entities/periodos-matricula.entity';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
+import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 
 @Entity({ name: 'niveles_economicos' })
 export class NivelesEconomico {
@@ -53,11 +54,15 @@ export class NivelesEconomico {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => PeriodoMatricula, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => PeriodoMatricula, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
 
-  @ManyToOne(() => Usuario, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'creado_por' })
   creador: Usuario;
+
+  @OneToMany (() => FichaRespondida, (ficha) => ficha.nivel_economico_id)
+  fichas_respondidas: FichaRespondida[];
+
 }

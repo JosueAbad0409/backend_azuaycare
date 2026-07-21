@@ -10,7 +10,7 @@ export class RespuestaOpcionSeleccionada {
   @PrimaryColumn({ type: 'uuid' })
   opcion_id: string;
 
-  @ManyToOne(() => RespuestasFormulario, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RespuestasFormulario, (respuesta) => respuesta.opcionesSeleccionadas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'respuesta_id' })
   respuesta: RespuestasFormulario;
 
@@ -18,3 +18,4 @@ export class RespuestaOpcionSeleccionada {
   @JoinColumn({ name: 'opcion_id' })
   opcion: OpcionPregunta;
 }
+

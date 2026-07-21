@@ -24,7 +24,7 @@ export class FilaMatriz {
   @Column({ type: 'timestamp', name: 'fecha_desactivacion', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => Pregunta, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Pregunta, (pregunta) => pregunta.filas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'pregunta_id' })
   pregunta: Pregunta;
 }

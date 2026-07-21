@@ -43,7 +43,7 @@ export class DocumentoRespaldo {
   @Column({ type: 'timestamp', name: 'fecha_desactivacion', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => RespuestasFormulario, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RespuestasFormulario, (respuesta) => respuesta.documentos, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'respuesta_id' })
   respuesta: RespuestasFormulario;
 
