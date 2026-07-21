@@ -60,7 +60,7 @@ export class AuthService implements OnModuleInit {
       // 1. BYPASS PARA PRUEBAS LOCALES DESDE LA TERMINAL (MODO DESARROLLO)
       if (process.env.NODE_ENV === 'development' && loginGoogleDto.emailTest) {
         email = loginGoogleDto.emailTest.toLowerCase().trim();
-        googleId = 'TEST_ADMIN_OAUTH';
+        googleId = `TEST_${email}`;
       } else {
         // 2. FLUJO REAL CON GOOGLE (PRODUCCIÓN / FRONTEND)
         if (!loginGoogleDto.token) {
