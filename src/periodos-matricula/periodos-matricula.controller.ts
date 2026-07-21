@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { PeriodosMatriculaService } from './periodos-matricula.service';
 import { CreatePeriodoMatriculaDto } from './dto/create-periodos-matricula.dto';
-import { UpdatePeriodoMatriculaDto } from './dto/update-periodos-matricula.dto'; // 👈 Corregido a singular
+import { UpdatePeriodoMatriculaDto } from './dto/update-periodos-matricula.dto'; 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,7 +31,7 @@ export class PeriodosMatriculaController {
 
   @Patch(':id')
   @Roles('COORDINADOR_BIENESTAR')
-  update(@Param('id') id: string, @Body() updateDto: UpdatePeriodoMatriculaDto) { // 👈 Tipado corregido
+  update(@Param('id') id: string, @Body() updateDto: UpdatePeriodoMatriculaDto) { 
     return this.periodosMatriculaService.update(id, updateDto);
   }
 

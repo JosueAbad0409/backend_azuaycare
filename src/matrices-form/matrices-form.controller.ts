@@ -24,11 +24,8 @@ export class MatricesFormController {
 
   @Get('pregunta/:preguntaId/estructura')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  async getEstructuraMatriz(@Param('preguntaId') preguntaId: string) {
-    const [filas, columnas] = await Promise.all([
-      this.matricesService.findFilasByPregunta(preguntaId),
-      this.matricesService.findColumnasByPregunta(preguntaId),
-    ]);
-    return { filas, columnas };
+  getEstructuraMatriz(@Param('preguntaId') preguntaId: string) {
+    // Delegamos la lógica de agrupar filas y columnas al servicio para mantener el controlador limpio
+    return this.matricesService.obtenerEstructuraMatriz(preguntaId);
   }
 }

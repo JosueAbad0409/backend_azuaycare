@@ -45,3 +45,4 @@ export class CoordinadoresCarrerasController {
     return this.coordinadoresService.remove(usuario_id, carrera_id);
   }
 }
+

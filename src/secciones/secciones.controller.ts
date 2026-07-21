@@ -1,10 +1,11 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { SeccionesService } from './secciones.service';
-import { CreateSeccionDto } from './dto/create-secciones.dto'; 
-import { UpdateSeccionDto } from './dto/update-secciones.dto'; 
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CreateSeccionDto } from './dto/create-secciones.dto';
+import { UpdateSeccionDto } from './dto/update-secciones.dto';
 
 @Controller('secciones')
 @UseGuards(JwtAuthGuard, RolesGuard)

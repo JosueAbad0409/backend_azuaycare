@@ -41,3 +41,4 @@ export class CiclosController {
     return this.ciclosService.remove(id);
   }
 }
+
