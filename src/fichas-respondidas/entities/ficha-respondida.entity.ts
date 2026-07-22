@@ -45,8 +45,6 @@ export class FichaRespondida {
   @Column({ 
     name: 'balance_final', 
     type: 'numeric', 
-    insert: false, 
-    update: false, 
     transformer: {
       to: (value: number) => value,
       from: (value: string) => value ? parseFloat(value) : 0

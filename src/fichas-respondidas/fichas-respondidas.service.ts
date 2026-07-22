@@ -42,6 +42,7 @@ export class FichasRespondidasService {
       estado_ficha: createDto.estado_ficha ?? 'BORRADOR',
       total_ingresos: ingresos,
       total_egresos: egresos,
+      balance_final: balanceCalculado,
       nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
     });
 
