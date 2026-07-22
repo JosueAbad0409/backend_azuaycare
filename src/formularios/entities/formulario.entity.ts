@@ -9,6 +9,13 @@ export class Formulario {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  // NUEVAS COLUMNAS AÑADIDAS
+  @Column({ type: 'varchar', length: 255, nullable: false })
+  titulo: string;
+
+  @Column({ type: 'text', nullable: true })
+  descripcion: string | null;
+
   @Column({ type: 'varchar', length: 50, nullable: false, default: 'GENERAL' })
   tipo: string;
 
@@ -51,10 +58,9 @@ export class Formulario {
   @JoinColumn({ name: 'creado_por' })
   creador: Usuario;
 
-
   @OneToMany(() => Seccion, (seccion) => seccion.formulario)
   secciones: Seccion[];
 
-@OneToMany(() => FichaRespondida, (ficha) => ficha.formulario)
-fichas_respondidas: FichaRespondida[];
+  @OneToMany(() => FichaRespondida, (ficha) => ficha.formulario)
+  fichas_respondidas: FichaRespondida[];
 }
