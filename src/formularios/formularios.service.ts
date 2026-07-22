@@ -13,21 +13,24 @@ export class FormulariosService {
   ) {}
 
   async create(createFormularioDto: CreateFormularioDto, usuarioId: string) {
+    // 1. Buscamos la última versión para ese periodo
     const ultimaVersion = await this.formulariosRepository.findOne({
       where: { periodo_id: createFormularioDto.periodo_id, fecha_desactivacion: IsNull() },
       order: { version: 'DESC' },
       select: { version: true },
     });
-
+    // 2. Calculamos la nueva versión
     const nuevaVersion = ultimaVersion ? ultimaVersion.version + 1 : 1;
-
+    // 3. Preparamos el objeto para guardar
     const nuevoFormulario = this.formulariosRepository.create({
       ...createFormularioDto,
       version: nuevaVersion,
       creado_por: usuarioId,
     });
+    // 4. Guardamos en la base de datos
+    const formularioGuardado = await this.formulariosRepository.save(nuevoFormulario);
 
-    return this.formulariosRepository.save(nuevoFormulario);
+    return this.findOne(formularioGuardado.id);
   }
 
   findAll() {
