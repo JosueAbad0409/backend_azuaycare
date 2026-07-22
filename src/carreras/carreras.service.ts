@@ -14,18 +14,32 @@ export class CarrerasService {
 
   async create(createCarreraDto: CreateCarreraDto) {
     const nombreSanitizado = createCarreraDto.nombre.toUpperCase().trim();
+    const correoSanitizado = createCarreraDto.correo_institucional.toLowerCase().trim();
 
-    const existe = await this.carrerasRepository.findOne({
+    // 1. Validar que no exista el nombre
+    const existeNombre = await this.carrerasRepository.findOne({
       where: { nombre: nombreSanitizado, fecha_desactivacion: IsNull() },
       select: { id: true },
     });
 
-    if (existe) {
+    if (existeNombre) {
       throw new BadRequestException('Ya existe una carrera activa registrada con ese nombre.');
     }
 
+    // 2. Validar que no exista el correo institucional
+    const existeCorreo = await this.carrerasRepository.findOne({
+      where: { correo_institucional: correoSanitizado, fecha_desactivacion: IsNull() },
+      select: { id: true },
+    });
+
+    if (existeCorreo) {
+      throw new BadRequestException('Ya existe una carrera activa registrada con este correo institucional.');
+    }
+
+    // 3. Crear y guardar
     const nuevaCarrera = this.carrerasRepository.create({
       nombre: nombreSanitizado,
+      correo_institucional: correoSanitizado,
     });
 
     return this.carrerasRepository.save(nuevaCarrera);
@@ -34,7 +48,8 @@ export class CarrerasService {
   findAll() {
     return this.carrerasRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      select: { id: true, nombre: true },
+      // Agregamos el correo al select para que Postman lo devuelva
+      select: { id: true, nombre: true, correo_institucional: true }, 
       order: { nombre: 'ASC' },
     });
   }
@@ -42,7 +57,8 @@ export class CarrerasService {
   async findOne(id: string) {
     const carrera = await this.carrerasRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      select: { id: true, nombre: true },
+      // Agregamos el correo al select
+      select: { id: true, nombre: true, correo_institucional: true },
     });
 
     if (!carrera) {
@@ -56,16 +72,28 @@ export class CarrerasService {
     await this.findOne(id); // Valida que exista
     const datosActualizados: Partial<Carrera> = {};
 
+    // Si mandan un nuevo nombre en el PATCH
     if (updateCarreraDto.nombre) {
       const nombreSanitizado = updateCarreraDto.nombre.toUpperCase().trim();
       
-      // Validar que el nuevo nombre no choque con otra carrera existente
-      const colision = await this.carrerasRepository.findOne({
+      const colisionNombre = await this.carrerasRepository.findOne({
         where: { nombre: nombreSanitizado, id: Not(id), fecha_desactivacion: IsNull() }
       });
 
-      if (colision) throw new BadRequestException('El nuevo nombre ya pertenece a otra carrera.');
+      if (colisionNombre) throw new BadRequestException('El nuevo nombre ya pertenece a otra carrera.');
       datosActualizados.nombre = nombreSanitizado;
+    }
+
+    // Si mandan un nuevo correo en el PATCH
+    if (updateCarreraDto.correo_institucional) {
+      const correoSanitizado = updateCarreraDto.correo_institucional.toLowerCase().trim();
+      
+      const colisionCorreo = await this.carrerasRepository.findOne({
+        where: { correo_institucional: correoSanitizado, id: Not(id), fecha_desactivacion: IsNull() }
+      });
+
+      if (colisionCorreo) throw new BadRequestException('El nuevo correo institucional ya pertenece a otra carrera.');
+      datosActualizados.correo_institucional = correoSanitizado;
     }
 
     await this.carrerasRepository.update(id, datosActualizados);
