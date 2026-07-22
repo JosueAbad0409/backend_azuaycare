@@ -1,8 +1,15 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class CreateCarreraDto {
   @IsString({ message: 'El nombre de la carrera debe ser un texto.' })
   @IsNotEmpty({ message: 'El nombre de la carrera es obligatorio.' })
   @MaxLength(150, { message: 'El nombre no puede superar los 150 caracteres.' })
   nombre: string;
+
+  @IsEmail({}, { message: 'Debe ser un correo electrónico válido.' })
+  @IsNotEmpty({ message: 'El correo institucional es obligatorio.' })
+  @MaxLength(150, { message: 'El correo no puede superar los 150 caracteres.' })
+  correo_institucional: string;
+
+
 }
