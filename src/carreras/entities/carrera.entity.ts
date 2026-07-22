@@ -12,7 +12,7 @@ export class Carrera {
   nombre: string;
 
   @Column({ name: 'correo_institucional',unique: true, type: 'varchar', nullable: false, length: 150})
-  coreo_institucional: string;
+  correo_institucional: string;
 
 
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
