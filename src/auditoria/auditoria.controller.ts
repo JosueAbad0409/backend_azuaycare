@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { AuditoriaService } from './auditoria.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -12,7 +12,10 @@ export class AuditoriaController {
   // La auditoría suele ser de solo lectura mediante la API, la creación ocurre internamente
   @Get()
   @Roles('COORDINADOR_BIENESTAR')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.auditoriaService.findAll();
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter'; 
@@ -15,11 +15,31 @@ export class RespuestasFormularioService {
   ) {}
 
   async guardarMuchas(dtos: CreateRespuestasFormularioDto[], usuarioId: string) {
+    if (!dtos.length) return { success: true, message: 'Sin respuestas para guardar.' };
+
+    const fichasIdsUnicas = [...new Set(dtos.map(dto => dto.ficha_id))];
+    
+    for (const fId of fichasIdsUnicas) {
+      const ficha = await this.dataSource.getRepository('FichaRespondida').findOne({ 
+        where: { id: fId }, 
+        select: { usuario_id: true } 
+      });
+
+      if (!ficha || (ficha as any).usuario_id !== usuarioId) {
+        throw new ForbiddenException(`No tienes permiso para insertar respuestas en la ficha seleccionada.`);
+      }
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      // 🔥 SOLUCIÓN 1: Limpieza previa de respuestas para la(s) ficha(s)
+      for (const fId of fichasIdsUnicas) {
+        await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
+      }
+
       const respuestasGuardadas: RespuestasFormulario[] = [];
       let fichaId = '';
 
@@ -35,7 +55,6 @@ export class RespuestasFormularioService {
 
         const respuestaSalvada = await queryRunner.manager.save(nuevaRespuesta);
 
-        // Guardado de la relación múltiple (Tabla pivote)
         if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
           const registrosIntermedios = dto.opciones_seleccionadas.map(opcionId => ({
             respuesta_id: respuestaSalvada.id,
@@ -55,7 +74,6 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
-      // Disparamos el evento para que otro módulo/servicio recalcule totales en segundo plano
       if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }
@@ -79,9 +97,13 @@ export class RespuestasFormularioService {
     });
   }
 
-  findAll() {
+  findAll( skip: number=0, take: number=10) {
     return this.respuestasRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
+      relations: { pregunta: true },
+      order: { created_at: 'DESC' },
     });
   }
 

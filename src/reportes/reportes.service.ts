@@ -35,7 +35,7 @@ export class ReportesService {
       ])
       .from('fichas_respondidas', 'f')
       .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-      .innerJoin('carreras', 'c', 'c.id = u.carrera_id')
+      .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
       .leftJoin('niveles_economicos', 'n', 'n.id = f.nivel_economico_id')
       .where('f.periodo_id = :periodoId', { periodoId })
       .andWhere('f.fecha_desactivacion IS NULL')

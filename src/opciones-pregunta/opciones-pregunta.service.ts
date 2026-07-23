@@ -20,9 +20,11 @@ export class OpcionesPreguntaService {
     return this.opcionesRepository.save(nuevaOpcion);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.opcionesRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       order: { orden: 'ASC' },
     });
   }

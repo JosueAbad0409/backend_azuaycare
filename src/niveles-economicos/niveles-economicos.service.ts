@@ -26,9 +26,11 @@ export class NivelesEconomicosService {
     return this.nivelesRepository.save(nuevoNivel);
   }
 
-  findAll() {
+  findAll( skip: number=0, take: number=10) {
     return this.nivelesRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       relations: { periodo: true },
       order: { orden: 'ASC' },
     });
@@ -76,7 +78,7 @@ export class NivelesEconomicosService {
   }
 
   
-  async determinarNivel(balance: number, periodoId: string): Promise<NivelesEconomico | null> {
+  async determinarNivel(balance: number, periodoId: string): Promise<NivelesEconomico> {
     const niveles = await this.findByPeriodo(periodoId);
 
     for (const nivel of niveles) {
@@ -87,6 +89,9 @@ export class NivelesEconomicosService {
         return nivel;
       }
     }
-    return null;
+    
+    // 👈 En lugar de retornar null en silencio, disparamos una alerta clara[cite: 2]
+    throw new BadRequestException(`El balance calculado ($${balance}) no coincide con ningún rango socioeconómico configurado.`);
   }
+
 }

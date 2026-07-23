@@ -25,8 +25,11 @@ export class CoordinadoresCarrerasService {
     return this.coordinadoresRepository.save(nuevaAsignacion);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.coordinadoresRepository.find({
+      skip,
+      take,
+      order: { carrera: { nombre: 'ASC' } },
       relations: { usuario: true, carrera: true },
     });
   }

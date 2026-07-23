@@ -36,9 +36,11 @@ export class CiclosService {
     return this.ciclosRepository.save(nuevoCiclo);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.ciclosRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       relations: { carrera: true },
       order: { carrera_id: 'ASC', nombre: 'ASC' },
     });

@@ -7,6 +7,9 @@ import {
   Param,
   Delete,
   UseGuards,
+  Req,
+  ForbiddenException,
+  Query,
 } from '@nestjs/common';
 import { UsuariosService } from './usuarios.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
@@ -14,6 +17,7 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
 
 @Controller('usuarios')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,13 +32,24 @@ export class UsuariosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA') // Restringido a coordinadores
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.usuariosService.findAll();
   }
 
   @Get(':id')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO') // Permite auto-consulta[cite: 1]
-  findOne(@Param('id') id: string) {
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO') 
+  findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
+    const usuarioActual = req.user;
+    const esCoordinador = usuarioActual.rol.includes('COORDINADOR');
+    
+    // Si no es coordinador, solo puede consultarse a sí mismo
+    if (!esCoordinador && usuarioActual.id !== id) {
+      throw new ForbiddenException('No tienes autorización para ver los datos de otros usuarios.');
+    }
+
     return this.usuariosService.findOne(id);
   }
 

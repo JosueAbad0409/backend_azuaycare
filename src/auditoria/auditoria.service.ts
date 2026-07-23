@@ -16,8 +16,10 @@ export class AuditoriaService {
     return this.auditoriaRepository.save(nuevaAuditoria);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.auditoriaRepository.find({
+      skip,
+      take,
       order: { created_at: 'DESC' },
       relations: { usuario: true },
     });

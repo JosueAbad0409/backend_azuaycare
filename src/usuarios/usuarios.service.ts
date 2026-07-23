@@ -32,9 +32,11 @@ export class UsuariosService {
     return this.usuariosRepository.save(nuevoUsuario);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.usuariosRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       select: {
         id: true,
         email_institucional: true,

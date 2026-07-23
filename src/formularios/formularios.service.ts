@@ -33,9 +33,11 @@ export class FormulariosService {
     return this.findOne(formularioGuardado.id);
   }
 
-  findAll() {
+  findAll( skip: number=0, take: number=10) {
     return this.formulariosRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       relations: { periodo: true }, 
       order: { created_at: 'DESC' },
     });

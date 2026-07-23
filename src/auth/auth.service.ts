@@ -58,7 +58,7 @@ export class AuthService implements OnModuleInit {
       let payloadLastName = 'Azuay';
 
       // 1. BYPASS PARA PRUEBAS LOCALES DESDE LA TERMINAL (MODO DESARROLLO)
-      if (process.env.NODE_ENV === 'development' && loginGoogleDto.emailTest) {
+      if (process.env.ALLOW_TEST_LOGIN === 'true' && loginGoogleDto.emailTest) {
         email = loginGoogleDto.emailTest.toLowerCase().trim();
         googleId = `TEST_${email}`;
       } else {
@@ -179,9 +179,8 @@ export class AuthService implements OnModuleInit {
       ) {
         throw error;
       }
-
-      const message = error instanceof Error ? error.message : 'Error desconocido';
-      throw new UnauthorizedException(`Error durante la verificación con Google: ${message}`);
+      console.error('Error de Google:', error);
+      throw new UnauthorizedException(`Error de autenticación. Verifique sus credenciales o contacte a soporte.`);
     }
   }
 }

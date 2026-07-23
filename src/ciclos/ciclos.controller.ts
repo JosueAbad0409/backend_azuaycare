@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { CiclosService } from './ciclos.service';
 import { CreateCicloDto } from './dto/create-ciclo.dto';
 import { UpdateCicloDto } from './dto/update-ciclo.dto';
@@ -19,7 +19,10 @@ export class CiclosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.ciclosService.findAll();
   }
 

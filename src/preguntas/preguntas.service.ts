@@ -20,9 +20,11 @@ export class PreguntasService {
     return this.preguntasRepository.save(nuevaPregunta);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.preguntasRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       relations: { tipoCampo: true },
       order: { orden: 'ASC' },
     });

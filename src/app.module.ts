@@ -50,11 +50,17 @@ import { RespuestasMatriz } from './respuestas-matriz/entities/respuestas-matriz
 import { PerfilCoordinadorModule } from './perfil-coordinador/perfil-coordinador.module';
 import { RespuestaOpcionSeleccionada } from './respuestas-formulario/entities/respuestas-opciones-seleccionadas.entity';
 import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordinador.entity';
+import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    EventEmitterModule.forRoot(), 
+    EventEmitterModule.forRoot(),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]), 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -62,7 +68,7 @@ import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordina
         type: 'postgres' as const,
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        synchronize: false,
         logging: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
@@ -91,6 +97,12 @@ import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordina
     HistorialRespuestasModule,
     RespuestasMatrizModule,
     PerfilCoordinadorModule, 
+  ],
+  providers:[
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

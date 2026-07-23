@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { PeriodosMatriculaService } from './periodos-matricula.service';
 import { CreatePeriodoMatriculaDto } from './dto/create-periodos-matricula.dto';
 import { UpdatePeriodoMatriculaDto } from './dto/update-periodos-matricula.dto'; 
@@ -19,7 +19,10 @@ export class PeriodosMatriculaController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.periodosMatriculaService.findAll();
   }
 

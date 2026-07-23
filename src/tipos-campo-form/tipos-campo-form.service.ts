@@ -65,9 +65,11 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
     return this.tiposRepository.save(nuevoTipo);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.tiposRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       order: { nombre: 'ASC' },
     });
   }

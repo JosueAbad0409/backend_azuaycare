@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { NivelesEconomicosService } from './niveles-economicos.service';
 import { CreateNivelesEconomicoDto } from './dto/create-niveles-economico.dto';
 import { UpdateNivelesEconomicoDto } from './dto/update-niveles-economico.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
 
 @Controller('niveles-economicos')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -13,13 +14,16 @@ export class NivelesEconomicosController {
 
   @Post()
   @Roles('COORDINADOR_BIENESTAR')
-  create(@Body() createDto: CreateNivelesEconomicoDto, @Req() req: any) {
+  create(@Body() createDto: CreateNivelesEconomicoDto, @Req() req: RequestWithUser) {
     return this.nivelesService.create(createDto, req.user.id);
   }
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.nivelesService.findAll();
   }
 
@@ -37,7 +41,7 @@ export class NivelesEconomicosController {
 
   @Patch(':id')
   @Roles('COORDINADOR_BIENESTAR')
-  update(@Param('id') id: string, @Body() updateDto: UpdateNivelesEconomicoDto, @Req() req: any) {
+  update(@Param('id') id: string, @Body() updateDto: UpdateNivelesEconomicoDto, @Req() req: RequestWithUser) {
     return this.nivelesService.update(id, updateDto, req.user.id);
   }
 

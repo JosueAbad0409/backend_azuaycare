@@ -13,15 +13,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     @InjectRepository(Usuario)
     private readonly usuariosRepository: Repository<Usuario>,
   ) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('FATAL: JWT_SECRET no está configurado en las variables de entorno.');
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_SECRET') ?? 'dev-secret',
+      secretOrKey: secret,
     });
   }
 
   async validate(payload: { sub: string; email: string; rol: string }) {
-    // Rendimiento: Solo seleccionamos los campos necesarios de la consulta SQL
     const usuario = await this.usuariosRepository.findOne({
       where: { id: payload.sub },
       select: {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { CoordinadoresCarrerasService } from './coordinadores-carreras.service';
 import { CreateCoordinadoresCarreraDto } from './dto/create-coordinadores-carrera.dto';
 import { UpdateCoordinadoresCarreraDto } from './dto/update-coordinadores-carrera.dto';
@@ -19,7 +19,10 @@ export class CoordinadoresCarrerasController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.coordinadoresService.findAll();
   }
 

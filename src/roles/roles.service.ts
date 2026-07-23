@@ -87,9 +87,11 @@ export class RolesService implements OnApplicationBootstrap {
     }
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.rolesRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       select: { id: true, nombre: true },
       order: { nombre: 'ASC' }
     });

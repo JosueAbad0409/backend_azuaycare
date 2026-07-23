@@ -31,9 +31,11 @@ export class PeriodosMatriculaService {
     return this.periodosRepository.save(nuevoPeriodo);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.periodosRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       order: { created_at: 'DESC' },
     });
   }

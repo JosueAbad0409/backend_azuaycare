@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { TiposCampoFormService } from './tipos-campo-form.service';
 import { CreateTipoCampoFormDto } from './dto/create-tipos-campo-form.dto';
 import { UpdateTipoCampoFormDto } from './dto/update-tipos-campo-form.dto';
@@ -19,7 +19,10 @@ export class TiposCampoFormController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.tiposCampoFormService.findAll();
   }
 

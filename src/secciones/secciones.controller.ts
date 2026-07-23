@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { SeccionesService } from './secciones.service';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CreateSeccionDto } from './dto/create-secciones.dto';
 import { UpdateSeccionDto } from './dto/update-secciones.dto';
+import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
 
 @Controller('secciones')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -14,13 +15,16 @@ export class SeccionesController {
 
   @Post()
   @Roles('COORDINADOR_BIENESTAR')
-  create(@Body() createSeccionDto: CreateSeccionDto, @Req() req: any) {
+  create(@Body() createSeccionDto: CreateSeccionDto, @Req() req: RequestWithUser) {
     return this.seccionesService.create(createSeccionDto, req.user.id);
   }
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll() {
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.seccionesService.findAll();
   }
 
@@ -38,7 +42,7 @@ export class SeccionesController {
 
   @Patch(':id')
   @Roles('COORDINADOR_BIENESTAR')
-  update(@Param('id') id: string, @Body() updateSeccionDto: UpdateSeccionDto, @Req() req: any) {
+  update(@Param('id') id: string, @Body() updateSeccionDto: UpdateSeccionDto, @Req() req: RequestWithUser) {
     return this.seccionesService.update(id, updateSeccionDto, req.user.id);
   }
 

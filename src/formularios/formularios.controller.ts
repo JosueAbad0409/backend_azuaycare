@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { FormulariosService } from './formularios.service';
 import { CreateFormularioDto } from './dto/create-formulario.dto';
 import { UpdateFormularioDto } from './dto/update-formulario.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
 
 @Controller('formularios')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -13,7 +14,7 @@ export class FormulariosController {
 
   @Post()
   @Roles('COORDINADOR_BIENESTAR')
-  create(@Body() createFormularioDto: CreateFormularioDto, @Req() req: any) {
+  create(@Body() createFormularioDto: CreateFormularioDto, @Req() req: RequestWithUser) {
     const usuarioId = req.user.id; 
     return this.formulariosService.create(createFormularioDto, usuarioId);
   }
@@ -26,7 +27,10 @@ export class FormulariosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll() {
+  findAll( 
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+  ) {
     return this.formulariosService.findAll();
   }
 

@@ -20,9 +20,11 @@ export class SeccionesService {
     return this.seccionesRepository.save(nuevaSeccion);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.seccionesRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       order: { orden: 'ASC' },
     });
   }

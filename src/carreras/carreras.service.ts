@@ -45,9 +45,11 @@ export class CarrerasService {
     return this.carrerasRepository.save(nuevaCarrera);
   }
 
-  findAll() {
+  findAll(skip: number=0, take: number=10) {
     return this.carrerasRepository.find({
       where: { fecha_desactivacion: IsNull() },
+      skip,
+      take,
       // Agregamos el correo al select para que Postman lo devuelva
       select: { id: true, nombre: true, correo_institucional: true }, 
       order: { nombre: 'ASC' },
