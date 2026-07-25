@@ -13,11 +13,9 @@ export class RespuestasFormularioService {
     private readonly respuestasRepository: Repository<RespuestasFormulario>,
     private readonly dataSource: DataSource,
     private readonly eventEmitter: EventEmitter2,
-    // 🔒 Inyectamos el servicio de documentos para acoplarlo a la transacción
     private readonly documentosService: DocumentosRespaldoService, 
   ) {}
 
-  // 🔒 Se añade el parámetro de archivos (o el DTO correspondiente para los documentos)
   async guardarMuchas(dtos: CreateRespuestasFormularioDto[], usuarioId: string, archivos?: Express.Multer.File[]) {
     if (!dtos.length) return { success: true, message: 'Sin respuestas para guardar.' };
 
@@ -76,14 +74,45 @@ export class RespuestasFormularioService {
         respuestasGuardadas.push(respuestaSalvada);
       }
 
-      // 🔒 SOLUCIÓN DE AUDITORÍA: Subida de archivos integrada a la transacción
-      // Si esto falla por cualquier motivo (ej. timeout, error de S3, disco lleno), 
-      // lanzará un throw y caerá directamente en el catch para hacer el rollback.
+      // 🔥 LÓGICA DINÁMICA DE CÁLCULO USANDO variable_calculo
+      if (fichaId) {
+        // 1. Consultamos las respuestas usando el formato de objeto para relations
+        const respuestasConPreguntas = await queryRunner.manager.find(RespuestasFormulario, {
+          where: { ficha_id: fichaId },
+          relations: { pregunta: true }, // 👈 Corregido a objeto para evitar errores de TypeScript
+        });
+
+        // 2. Inicializamos acumuladores dinámicos
+        const totalesDinamicos: Record<string, number> = {
+          ingresos: 0,
+          egresos: 0,
+        };
+
+        // 3. Recorremos y sumamos basándonos en la etiqueta de la pregunta
+        for (const resp of respuestasConPreguntas) {
+          const variable = resp.pregunta?.variable_calculo;
+          const valorNum = resp.valor_numerico;
+
+          if (variable && valorNum !== null && valorNum !== undefined) {
+            const key = variable.toLowerCase();
+            if (totalesDinamicos[key] === undefined) {
+              totalesDinamicos[key] = 0;
+            }
+            totalesDinamicos[key] += Number(valorNum);
+          }
+        }
+
+        // 4. Actualizamos la ficha respondida dentro de la misma transacción
+        await queryRunner.manager.update('FichaRespondida', fichaId, {
+          total_ingresos: totalesDinamicos.ingresos || 0,
+          total_egresos: totalesDinamicos.egresos || 0,
+          balance_final: (totalesDinamicos.ingresos || 0) - (totalesDinamicos.egresos || 0),
+        });
+      }
+
       if (archivos && archivos.length > 0) {
         const documentosSubidos = await this.documentosService.subirMultiples(archivos);
         
-        // Vincular los documentos subidos a la base de datos usando el queryRunner
-        // Asegúrate de tener la entidad DocumentoRespaldo importada
         const documentosAGuardar = documentosSubidos.map(doc => ({
           ...doc,
           ficha_id: fichaId,
@@ -92,7 +121,7 @@ export class RespuestasFormularioService {
         await queryRunner.manager
             .createQueryBuilder()
             .insert()
-            .into('documentos_respaldo') // O usa la Entidad directamente
+            .into('documentos_respaldo') 
             .values(documentosAGuardar)
             .execute();
       }
@@ -105,10 +134,9 @@ export class RespuestasFormularioService {
 
       return {
         success: true,
-        message: `${respuestasGuardadas.length} respuestas procesadas y almacenadas con éxito.`,
+        message: `${respuestasGuardadas.length} respuestas procesadas, calculadas y almacenadas con éxito.`,
       };
     } catch (error) {
-      // 🔒 Si falla la BD O falla la subida del documento, se revierte TODO.
       await queryRunner.rollbackTransaction();
       throw error;
     } finally {

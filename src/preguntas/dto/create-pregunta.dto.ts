@@ -19,6 +19,11 @@ export class CreatePreguntaDto {
   @MaxLength(50, { message: 'La categoría financiera no puede superar los 50 caracteres.' })
   categoria_financiera?: string;
 
+  @IsString({ message: 'La variable de cálculo debe ser texto.' })
+  @IsOptional()
+  @MaxLength(50, { message: 'La variable de cálculo no puede superar los 50 caracteres.' })
+  variable_calculo?: string;
+
   @IsBoolean({ message: 'El campo es_obligatorio debe ser un booleano (true o false).' })
   @IsOptional()
   es_obligatorio?: boolean;

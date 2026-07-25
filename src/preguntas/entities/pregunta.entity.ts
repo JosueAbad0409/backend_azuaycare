@@ -34,8 +34,12 @@ export class Pregunta {
   @Column({ name: 'categoria_financiera', type: 'character varying', length: 50, default: 'NINGUNO' })
   categoria_financiera: string;
 
+  // 🔥 NUEVO CAMPO: Etiqueta de cálculo dinámico para sumatorias
+  @Column({ name: 'variable_calculo', type: 'varchar', length: 50, nullable: true })
+  variable_calculo: string | null;
+
   @Column({ name: 'es_obligatorio', type: 'boolean', default: true })
-  es_obligatorio: boolean; // 👈 Corregido para mapear exactamente el campo de la DB
+  es_obligatorio: boolean;
 
   @Column({ type: 'integer', default: 1 })
   orden: number;
@@ -94,8 +98,4 @@ export class Pregunta {
 
   @OneToMany(() => RespuestasFormulario, (respuesta) => respuesta.pregunta)
   respuestas: RespuestasFormulario[];
-
-
-
-
 }
