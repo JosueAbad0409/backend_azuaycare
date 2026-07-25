@@ -52,11 +52,13 @@ import { RespuestaOpcionSeleccionada } from './respuestas-formulario/entities/re
 import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordinador.entity';
 import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { CacheModule } from '@nestjs/cache-manager';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
+    CacheModule.register({isGlobal: true }),
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
@@ -68,7 +70,7 @@ import { APP_GUARD } from '@nestjs/core';
         type: 'postgres' as const,
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
         logging: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),

@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Req, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req, Query, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express'; 
 import { RespuestasFormularioService } from './respuestas-formulario.service';
 import { CreateRespuestasFormularioDto } from './dto/create-respuestas-formulario.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,8 +14,20 @@ export class RespuestasFormularioController {
 
   @Post('enviar-bloque')
   @Roles('ESTUDIANTE', 'INVITADO')
-  createBulk(@Body() createDtos: CreateRespuestasFormularioDto[], @Req() req: RequestWithUser) {
-    return this.respuestasService.guardarMuchas(createDtos, req.user.id);
+  @UseInterceptors(FilesInterceptor('archivos')) 
+  createBulk(
+    // 🔒 Al usar multipart/form-data para enviar archivos, el array de DTOs suele llegar como un string JSON
+    @Body('respuestas') respuestasData: string | CreateRespuestasFormularioDto[], 
+    @Req() req: RequestWithUser,
+    @UploadedFiles() archivos: Express.Multer.File[] // 🔒 Captura los archivos
+  ) {
+    // Parseamos la data si el frontend la envió como string (común en FormData)
+    const createDtos: CreateRespuestasFormularioDto[] = typeof respuestasData === 'string' 
+      ? JSON.parse(respuestasData) 
+      : respuestasData;
+
+    // Pasamos los DTOs, el usuario y los archivos al servicio para la transacción completa
+    return this.respuestasService.guardarMuchas(createDtos, req.user.id, archivos);
   }
 
   @Get('ficha/:fichaId')
@@ -29,7 +42,9 @@ export class RespuestasFormularioController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.respuestasService.findAll();
+    // 🔥 SOLUCIÓN: Pasamos los parámetros al servicio. 
+    // Usamos el signo "+" (+skip, +take) para asegurar que NestJS los trate como números y no como strings.
+    return this.respuestasService.findAll(+skip, +take);
   }
 
   @Get(':id')

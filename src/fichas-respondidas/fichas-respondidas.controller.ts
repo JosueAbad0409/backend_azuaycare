@@ -24,7 +24,7 @@ export class FichasRespondidasController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.fichasService.findAll();
+    return this.fichasService.findAll(+skip, +take);
   }
 
   @Get('mis-fichas')

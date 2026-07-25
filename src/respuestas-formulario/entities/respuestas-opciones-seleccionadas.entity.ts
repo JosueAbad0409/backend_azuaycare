@@ -1,8 +1,10 @@
-import { Entity, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { RespuestasFormulario } from './respuestas-formulario.entity';
 import { OpcionPregunta } from '../../opciones-pregunta/entities/opciones-pregunta.entity';
 
 @Entity({ name: 'respuestas_opciones_seleccionadas' })
+@Index('IDX_OPCION_SELECCIONADA_RESPUESTA', ['respuesta_id'])
+@Index('IDX_OPCION_SELECCIONADA_OPCION', ['opcion_id'])
 export class RespuestaOpcionSeleccionada {
   @PrimaryColumn({ type: 'uuid' })
   respuesta_id: string;
@@ -18,4 +20,3 @@ export class RespuestaOpcionSeleccionada {
   @JoinColumn({ name: 'opcion_id' })
   opcion: OpcionPregunta;
 }
-

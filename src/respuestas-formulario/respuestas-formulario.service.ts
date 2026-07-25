@@ -4,6 +4,7 @@ import { Repository, DataSource, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter'; 
 import { RespuestasFormulario } from './entities/respuestas-formulario.entity';
 import { CreateRespuestasFormularioDto } from './dto/create-respuestas-formulario.dto';
+import { DocumentosRespaldoService } from '../documentos-respaldo/documentos-respaldo.service';
 
 @Injectable()
 export class RespuestasFormularioService {
@@ -11,10 +12,13 @@ export class RespuestasFormularioService {
     @InjectRepository(RespuestasFormulario)
     private readonly respuestasRepository: Repository<RespuestasFormulario>,
     private readonly dataSource: DataSource,
-    private readonly eventEmitter: EventEmitter2, 
+    private readonly eventEmitter: EventEmitter2,
+    // 🔒 Inyectamos el servicio de documentos para acoplarlo a la transacción
+    private readonly documentosService: DocumentosRespaldoService, 
   ) {}
 
-  async guardarMuchas(dtos: CreateRespuestasFormularioDto[], usuarioId: string) {
+  // 🔒 Se añade el parámetro de archivos (o el DTO correspondiente para los documentos)
+  async guardarMuchas(dtos: CreateRespuestasFormularioDto[], usuarioId: string, archivos?: Express.Multer.File[]) {
     if (!dtos.length) return { success: true, message: 'Sin respuestas para guardar.' };
 
     const fichasIdsUnicas = [...new Set(dtos.map(dto => dto.ficha_id))];
@@ -35,7 +39,7 @@ export class RespuestasFormularioService {
     await queryRunner.startTransaction();
 
     try {
-      // 🔥 SOLUCIÓN 1: Limpieza previa de respuestas para la(s) ficha(s)
+      // Limpieza previa de respuestas para la(s) ficha(s)
       for (const fId of fichasIdsUnicas) {
         await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
       }
@@ -72,6 +76,27 @@ export class RespuestasFormularioService {
         respuestasGuardadas.push(respuestaSalvada);
       }
 
+      // 🔒 SOLUCIÓN DE AUDITORÍA: Subida de archivos integrada a la transacción
+      // Si esto falla por cualquier motivo (ej. timeout, error de S3, disco lleno), 
+      // lanzará un throw y caerá directamente en el catch para hacer el rollback.
+      if (archivos && archivos.length > 0) {
+        const documentosSubidos = await this.documentosService.subirMultiples(archivos);
+        
+        // Vincular los documentos subidos a la base de datos usando el queryRunner
+        // Asegúrate de tener la entidad DocumentoRespaldo importada
+        const documentosAGuardar = documentosSubidos.map(doc => ({
+          ...doc,
+          ficha_id: fichaId,
+        }));
+        
+        await queryRunner.manager
+            .createQueryBuilder()
+            .insert()
+            .into('documentos_respaldo') // O usa la Entidad directamente
+            .values(documentosAGuardar)
+            .execute();
+      }
+
       await queryRunner.commitTransaction();
 
       if (fichaId) {
@@ -83,6 +108,7 @@ export class RespuestasFormularioService {
         message: `${respuestasGuardadas.length} respuestas procesadas y almacenadas con éxito.`,
       };
     } catch (error) {
+      // 🔒 Si falla la BD O falla la subida del documento, se revierte TODO.
       await queryRunner.rollbackTransaction();
       throw error;
     } finally {

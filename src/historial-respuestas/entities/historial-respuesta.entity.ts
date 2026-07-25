@@ -13,31 +13,17 @@ export class HistorialRespuesta {
   @Column({ name: 'usuario_id', type: 'uuid', nullable: false })
   usuario_id: string;
 
-  @Column({ type: 'text', nullable: true })
-  valor_texto_anterior: string | null;
-
-  @Column({
-    type: 'numeric',
-    nullable: true,
-    transformer: {
-      to: (value: number | null) => value,
-      from: (value: string | null) => (value ? parseFloat(value) : null),
-    },
-  })
-  valor_numerico_anterior: number | null;
-
-  @Column({ type: 'text', nullable: true })
-  valor_texto_nuevo: string | null;
-
-  @Column({
-    type: 'numeric',
-    nullable: true,
-    transformer: {
-      to: (value: number | null) => value,
-      from: (value: string | null) => (value ? parseFloat(value) : null),
-    },
-  })
-  valor_numerico_nuevo: number | null;
+  @Column({ type: 'jsonb', nullable: false })
+  cambios_realizados: {
+    datos_anteriores: {
+      valor_texto: string | null;
+      valor_numerico: number | null;
+    };
+    datos_nuevos: {
+      valor_texto: string | null;
+      valor_numerico: number | null;
+    };
+  };
 
   @CreateDateColumn({
     type: 'timestamp with time zone',

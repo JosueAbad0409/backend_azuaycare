@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express'; // 👈 Solo agrega la palabra "type" aquí
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+// 🔒 Ya no necesitamos 'Res' ni 'Response' de express
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,8 +14,7 @@ export class ReportesController {
   @Roles('COORDINADOR_BIENESTAR')
   async descargarReporteSocioeconomico(
     @Param('periodoId') periodoId: string,
-    @Res() res: Response,
   ) {
-    return this.reportesService.exportarSocioeconomicoExcel(res, periodoId);
+    return this.reportesService.obtenerDatosReporteDinamico(periodoId);
   }
 }

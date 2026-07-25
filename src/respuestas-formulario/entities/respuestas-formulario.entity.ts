@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, Index } from 'typeorm';
 import { FichaRespondida } from '../../fichas-respondidas/entities/ficha-respondida.entity';
 import { Pregunta } from '../../preguntas/entities/pregunta.entity';
 import { RespuestaOpcionSeleccionada } from './respuestas-opciones-seleccionadas.entity';
@@ -6,6 +6,8 @@ import { RespuestasMatriz } from 'src/respuestas-matriz/entities/respuestas-matr
 import { DocumentoRespaldo } from 'src/documentos-respaldo/entities/documentos-respaldo.entity';
 
 @Entity({ name: 'respuestas' }) 
+@Index('IDX_RESPUESTAS_FICHA_ID', ['ficha_id'])
+@Index('IDX_RESPUESTAS_PREGUNTA_ID', ['pregunta_id'])
 export class RespuestasFormulario {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -39,8 +41,6 @@ export class RespuestasFormulario {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-
-  
   @ManyToOne(() => FichaRespondida, (ficha) => ficha.respuestas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ficha_id' })
   ficha: FichaRespondida;
