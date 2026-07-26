@@ -1,18 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { PeriodoMatricula } from './entities/periodos-matricula.entity';
 import { CreatePeriodoMatriculaDto } from './dto/create-periodos-matricula.dto';
-import { UpdatePeriodoMatriculaDto } from './dto/update-periodos-matricula.dto'; // 👈 Corregido a singular
+import { UpdatePeriodoMatriculaDto } from './dto/update-periodos-matricula.dto';
+import { FormulariosService } from 'src/formularios/formularios.service';
 
 @Injectable()
 export class PeriodosMatriculaService {
   constructor(
     @InjectRepository(PeriodoMatricula)
     private readonly periodosRepository: Repository<PeriodoMatricula>,
+    @Inject(forwardRef(() => FormulariosService))
+    private readonly formulariosService: FormulariosService,
   ) {}
 
-  async create(createDto: CreatePeriodoMatriculaDto) {
+  async create(createDto: CreatePeriodoMatriculaDto, usuarioId?: string) {
     if (createDto.fecha_inicio >= createDto.fecha_fin) {
       throw new BadRequestException('La fecha de inicio no puede ser mayor o igual a la fecha de fin.');
     }
@@ -28,10 +31,42 @@ export class PeriodosMatriculaService {
       nombre: nombreSanitizado,
     });
 
-    return this.periodosRepository.save(nuevoPeriodo);
+    const periodoGuardado = await this.periodosRepository.save(nuevoPeriodo);
+
+    // Si se especificó clonar un formulario origen en la misma solicitud
+    if (createDto.clonar_formulario_origen_id && usuarioId) {
+      await this.formulariosService.clonarHaciaNuevoPeriodo(
+        createDto.clonar_formulario_origen_id,
+        periodoGuardado.id,
+        usuarioId,
+      );
+    }
+
+    return this.findOne(periodoGuardado.id);
   }
 
-  findAll(skip: number=0, take: number=10) {
+  async activarNuevoPeriodo(createDto: CreatePeriodoMatriculaDto, usuarioId: string) {
+    createDto.activo = true;
+    return this.create(createDto, usuarioId);
+  }
+
+  async cerrarYBloquear(id: string) {
+    const periodo = await this.findOne(id);
+
+    if (periodo.bloqueado) {
+      throw new BadRequestException('El periodo de matrícula ya se encuentra bloqueado.');
+    }
+
+    await this.periodosRepository.update(id, {
+      bloqueado: true,
+      fecha_bloqueo: new Date(),
+      activo: false,
+    });
+
+    return this.findOne(id);
+  }
+
+  findAll(skip: number = 0, take: number = 10) {
     return this.periodosRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip,
@@ -52,8 +87,13 @@ export class PeriodosMatriculaService {
     return periodo;
   }
 
-  async update(id: string, updateDto: UpdatePeriodoMatriculaDto) { // 👈 Tipado corregido
-    await this.findOne(id);
+  async update(id: string, updateDto: UpdatePeriodoMatriculaDto) {
+    const periodo = await this.findOne(id);
+
+    if (periodo.bloqueado) {
+      throw new BadRequestException('No se puede modificar un periodo de matrícula que ha sido bloqueado.');
+    }
+
     const datosActualizados: Partial<PeriodoMatricula> = { ...updateDto };
 
     if (updateDto.nombre) {
@@ -70,7 +110,7 @@ export class PeriodosMatriculaService {
 
   async remove(id: string) {
     const periodo = await this.findOne(id);
-    
+
     if (periodo.activo) {
       throw new BadRequestException('No se puede eliminar un periodo de matrícula activo.');
     }

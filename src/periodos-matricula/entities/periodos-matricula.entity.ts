@@ -8,7 +8,7 @@ export class PeriodoMatricula {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', nullable: false, length: 100, })
+  @Column({ type: 'varchar', nullable: false, length: 100 })
   nombre: string;
 
   @Column({ type: 'date', nullable: false })
@@ -19,6 +19,12 @@ export class PeriodoMatricula {
 
   @Column({ type: 'boolean', default: false })
   activo: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  bloqueado: boolean;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  fecha_bloqueo: Date | null;
 
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
@@ -37,5 +43,4 @@ export class PeriodoMatricula {
 
   @OneToMany(() => FichaRespondida, (ficha) => ficha.periodo)
   fichas_respondidas: FichaRespondida[];
-
 }

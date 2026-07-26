@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsString, IsDate, MaxLength, IsOptional } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsString, IsDate, MaxLength, IsOptional, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePeriodoMatriculaDto {
@@ -17,7 +17,11 @@ export class CreatePeriodoMatriculaDto {
   @IsNotEmpty({ message: 'La fecha de fin es obligatoria.' })
   fecha_fin: Date;
 
-  @IsBoolean({ message: 'El estado activo debe ser un valor booleano (true o false).' })
+  @IsBoolean({ message: 'El estado activo debe ser un valor booleano.' })
   @IsOptional()
   activo?: boolean;
+
+  @IsUUID('4', { message: 'El ID del formulario origen debe ser un UUID válido.' })
+  @IsOptional()
+  clonar_formulario_origen_id?: string;
 }
