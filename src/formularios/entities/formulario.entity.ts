@@ -9,7 +9,6 @@ export class Formulario {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // NUEVAS COLUMNAS AÑADIDAS
   @Column({ type: 'varchar', length: 255, nullable: false })
   titulo: string;
 
@@ -21,6 +20,12 @@ export class Formulario {
 
   @Column({ name: 'periodo_id', type: 'uuid', nullable: false })
   periodo_id: string;
+
+  @Column({ name: 'periodo_origen_id', type: 'uuid', nullable: true })
+  periodo_origen_id: string | null;
+
+  @Column({ name: 'dias_plazo_modificacion', type: 'integer', nullable: true })
+  dias_plazo_modificacion: number | null;
 
   @Column({ type: 'integer', nullable: false, default: 1 })
   version: number;
@@ -50,9 +55,13 @@ export class Formulario {
   fecha_desactivacion: Date | null;
 
   // Uniones/Relaciones Físicas
-  @ManyToOne(() => PeriodoMatricula, (periodo) => periodo.formularios, {onDelete: 'NO ACTION',})
+  @ManyToOne(() => PeriodoMatricula, (periodo) => periodo.formularios, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
+
+  @ManyToOne(() => Formulario, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'periodo_origen_id' })
+  formularioOrigen: Formulario;
 
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'creado_por' })

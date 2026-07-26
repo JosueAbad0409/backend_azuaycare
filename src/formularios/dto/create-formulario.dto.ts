@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreateFormularioDto {
   @IsUUID('4', { message: 'El periodo_id debe ser un UUID válido.' })
@@ -17,4 +17,9 @@ export class CreateFormularioDto {
   @IsString({ message: 'El tipo de formulario debe ser un texto.' })
   @IsOptional()
   tipo?: string;
+
+  @IsInt({ message: 'Los días de plazo de modificación deben ser un número entero.' })
+  @Min(1, { message: 'El plazo debe ser de al menos 1 día.' })
+  @IsOptional()
+  dias_plazo_modificacion?: number | null;
 }

@@ -1,18 +1,31 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Formulario } from './entities/formulario.entity';
-import { PeriodoMatricula } from '../periodos-matricula/entities/periodos-matricula.entity';
-import { UsuariosModule } from '../usuarios/usuarios.module'; // 👈 Módulo importado
-import { FormulariosController } from './formularios.controller';
 import { FormulariosService } from './formularios.service';
+import { FormulariosController } from './formularios.controller';
+import { Formulario } from './entities/formulario.entity';
+import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
+import { Seccion } from 'src/secciones/entities/secciones.entity';
+import { Pregunta } from 'src/preguntas/entities/pregunta.entity';
+import { OpcionPregunta } from 'src/opciones-pregunta/entities/opciones-pregunta.entity';
+import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
+import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
+import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Formulario, PeriodoMatricula]), 
-    UsuariosModule // 👈 Reemplaza la inyección directa de la entidad por el módulo exportador
-  ], 
+    TypeOrmModule.forFeature([
+      Formulario,
+      PeriodoMatricula,
+      Seccion,
+      Pregunta,
+      OpcionPregunta,
+      FilaMatriz,
+      ColumnaMatriz,
+      PreguntaDependencia,
+    ]),
+  ],
   controllers: [FormulariosController],
   providers: [FormulariosService],
-  exports: [TypeOrmModule, FormulariosService],
+  exports: [FormulariosService],
 })
 export class FormulariosModule {}

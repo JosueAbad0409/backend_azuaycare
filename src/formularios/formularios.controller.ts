@@ -15,8 +15,19 @@ export class FormulariosController {
   @Post()
   @Roles('COORDINADOR_BIENESTAR')
   create(@Body() createFormularioDto: CreateFormularioDto, @Req() req: RequestWithUser) {
-    const usuarioId = req.user.id; 
+    const usuarioId = req.user.id;
     return this.formulariosService.create(createFormularioDto, usuarioId);
+  }
+
+  @Post(':id/clonar-a-periodo/:periodoNuevoId')
+  @Roles('COORDINADOR_CARRERA', 'COORDINADOR_BIENESTAR')
+  clonarAPeriodo(
+    @Param('id') id: string,
+    @Param('periodoNuevoId') periodoNuevoId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    const usuarioId = req.user.id;
+    return this.formulariosService.clonarHaciaNuevoPeriodo(id, periodoNuevoId, usuarioId);
   }
 
   @Post(':id/publicar')
@@ -27,11 +38,11 @@ export class FormulariosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll( 
+  findAll(
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.formulariosService.findAll();
+    return this.formulariosService.findAll(skip, take);
   }
 
   @Get(':id')
