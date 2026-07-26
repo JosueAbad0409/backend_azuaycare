@@ -1,5 +1,4 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
-// 🔒 Ya no necesitamos 'Res' ni 'Response' de express
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -10,11 +9,21 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 
-  @Get('socioeconomico/periodo/:periodoId')
-  @Roles('COORDINADOR_BIENESTAR')
-  async descargarReporteSocioeconomico(
-    @Param('periodoId') periodoId: string,
-  ) {
-    return this.reportesService.obtenerDatosReporteDinamico(periodoId);
+  @Get('estructura-agregada/:formularioId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerEstructuraAgregada(@Param('formularioId') formularioId: string) {
+    return this.reportesService.obtenerEstructuraAgregada(formularioId);
+  }
+
+  @Get('dataset-plano/:periodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerDatasetPlano(@Param('periodoId') periodoId: string) {
+    return this.reportesService.obtenerDatasetPlano(periodoId);
+  }
+
+  @Get('formularios-disponibles/:periodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerFormulariosDisponibles(@Param('periodoId') periodoId: string) {
+    return this.reportesService.obtenerFormulariosDisponibles(periodoId);
   }
 }

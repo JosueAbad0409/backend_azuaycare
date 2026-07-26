@@ -5,6 +5,16 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RespuestasFormulario } from './entities/respuestas-formulario.entity';
 import { CreateRespuestasFormularioDto } from './dto/create-respuestas-formulario.dto';
 import { DocumentosRespaldoService } from '../documentos-respaldo/documentos-respaldo.service';
+import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
+import { Formulario } from 'src/formularios/entities/formulario.entity';
+
+// Interfaz para la respuesta precargada
+export interface RespuestaPrecargadaItem {
+  pregunta_id: string;
+  valor_texto: string | null;
+  valor_numerico: number | null;
+  opciones_seleccionadas: string[];
+}
 
 @Injectable()
 export class RespuestasFormularioService {
@@ -16,15 +26,20 @@ export class RespuestasFormularioService {
     private readonly documentosService: DocumentosRespaldoService, 
   ) {}
 
-  async guardarMuchas(dtos: CreateRespuestasFormularioDto[], usuarioId: string, archivos?: Express.Multer.File[]) {
+  async guardarMuchas(
+    dtos: CreateRespuestasFormularioDto[], 
+    usuarioId: string, 
+    archivos?: Express.Multer.File[],
+    esEnvioFinal: boolean = false,
+  ) {
     if (!dtos.length) return { success: true, message: 'Sin respuestas para guardar.' };
 
     const fichasIdsUnicas = [...new Set(dtos.map(dto => dto.ficha_id))];
     
     for (const fId of fichasIdsUnicas) {
-      const ficha = await this.dataSource.getRepository('FichaRespondida').findOne({ 
+      const ficha = await this.dataSource.getRepository(FichaRespondida).findOne({ 
         where: { id: fId }, 
-        select: { usuario_id: true } 
+        select: { id: true, usuario_id: true, estado_ficha: true, formulario_id: true } as any
       });
 
       if (!ficha || (ficha as any).usuario_id !== usuarioId) {
@@ -37,7 +52,7 @@ export class RespuestasFormularioService {
     await queryRunner.startTransaction();
 
     try {
-      // Limpieza previa de respuestas para la(s) ficha(s)
+      // Limpieza previa de respuestas anteriores de la ficha
       for (const fId of fichasIdsUnicas) {
         await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
       }
@@ -74,21 +89,23 @@ export class RespuestasFormularioService {
         respuestasGuardadas.push(respuestaSalvada);
       }
 
-      // 🔥 LÓGICA DINÁMICA DE CÁLCULO USANDO variable_calculo
+      // 🔥 LÓGICA DE CÁLCULO Y GESTIÓN DE ESTADO / PLAZOS
       if (fichaId) {
-        // 1. Consultamos las respuestas usando el formato de objeto para relations
-        const respuestasConPreguntas = await queryRunner.manager.find(RespuestasFormulario, {
-          where: { ficha_id: fichaId },
-          relations: { pregunta: true }, // 👈 Corregido a objeto para evitar errores de TypeScript
+        const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
+          where: { id: fichaId },
+          relations: { formulario: true },
         });
 
-        // 2. Inicializamos acumuladores dinámicos
+        const respuestasConPreguntas = await queryRunner.manager.find(RespuestasFormulario, {
+          where: { ficha_id: fichaId },
+          relations: { pregunta: true },
+        });
+
         const totalesDinamicos: Record<string, number> = {
           ingresos: 0,
           egresos: 0,
         };
 
-        // 3. Recorremos y sumamos basándonos en la etiqueta de la pregunta
         for (const resp of respuestasConPreguntas) {
           const variable = resp.pregunta?.variable_calculo;
           const valorNum = resp.valor_numerico;
@@ -102,12 +119,26 @@ export class RespuestasFormularioService {
           }
         }
 
-        // 4. Actualizamos la ficha respondida dentro de la misma transacción
-        await queryRunner.manager.update('FichaRespondida', fichaId, {
+        const datosUpdateFicha: any = {
           total_ingresos: totalesDinamicos.ingresos || 0,
           total_egresos: totalesDinamicos.egresos || 0,
           balance_final: (totalesDinamicos.ingresos || 0) - (totalesDinamicos.egresos || 0),
-        });
+        };
+
+        // Si cambia de BORRADOR a ENVIADA y el formulario tiene plazo de modificación configurado
+        if (fichaActual && esEnvioFinal && (fichaActual as any).estado_ficha === 'BORRADOR') {
+          datosUpdateFicha.estado_ficha = 'ENVIADA';
+          
+          if (fichaActual.formulario?.dias_plazo_modificacion) {
+            const fechaLimite = new Date();
+            fechaLimite.setDate(fechaLimite.getDate() + fichaActual.formulario.dias_plazo_modificacion);
+            datosUpdateFicha.fecha_limite_edicion = fechaLimite;
+          } else {
+            datosUpdateFicha.fecha_limite_edicion = null;
+          }
+        }
+
+        await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha);
       }
 
       if (archivos && archivos.length > 0) {
@@ -134,7 +165,7 @@ export class RespuestasFormularioService {
 
       return {
         success: true,
-        message: `${respuestasGuardadas.length} respuestas procesadas, calculadas y almacenadas con éxito.`,
+        message: `${respuestasGuardadas.length} respuestas procesadas y almacenadas con éxito.`,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -144,14 +175,94 @@ export class RespuestasFormularioService {
     }
   }
 
+  async obtenerPrecarga(periodoNuevoId: string, usuarioId: string) {
+    const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
+      where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
+      relations: {
+        secciones: {
+          preguntas: true,
+        },
+      },
+    });
+
+    if (!formularioNuevo) {
+      throw new NotFoundException('No existe un formulario publicado para el nuevo periodo especificado.');
+    }
+
+    if (!formularioNuevo.periodo_origen_id) {
+      return {
+        es_precargable: false,
+        message: 'El formulario del nuevo periodo no proviene de una clonación previa.',
+        respuestas_precargadas: [],
+        preguntas_nuevas_pendientes: [],
+      };
+    }
+
+    const fichaAnterior = await this.dataSource.getRepository(FichaRespondida).findOne({
+      where: { 
+        usuario_id: usuarioId, 
+        formulario_id: formularioNuevo.periodo_origen_id,
+        fecha_desactivacion: IsNull() 
+      } as any,
+      order: { created_at: 'DESC' } as any,
+      relations: {
+        respuestas: {
+          opcionesSeleccionadas: true,
+          pregunta: true,
+        },
+      } as any,
+    });
+
+    if (!fichaAnterior) {
+      return {
+        es_precargable: false,
+        message: 'No se encontró una ficha respondida en el periodo anterior para este usuario.',
+        respuestas_precargadas: [],
+        preguntas_nuevas_pendientes: [],
+      };
+    }
+
+    const preguntasFormularioNuevo = (formularioNuevo.secciones || []).flatMap(s => s.preguntas || []);
+    
+    // Tipado explícito para evitar inferencia de 'never[]'
+    const respuestasPrecargadas: RespuestaPrecargadaItem[] = [];
+    const preguntasNuevasPendientes: string[] = [];
+
+    const respuestasAnteriores = (fichaAnterior as any).respuestas || [];
+
+    for (const preguntaNueva of preguntasFormularioNuevo) {
+      const respuestaCoincidente = respuestasAnteriores.find(
+        (r: any) => r.pregunta?.enunciado === preguntaNueva.enunciado || r.pregunta_id === preguntaNueva.id
+      );
+
+      if (respuestaCoincidente) {
+        respuestasPrecargadas.push({
+          pregunta_id: preguntaNueva.id,
+          valor_texto: respuestaCoincidente.valor_texto,
+          valor_numerico: respuestaCoincidente.valor_numerico,
+          opciones_seleccionadas: respuestaCoincidente.opcionesSeleccionadas?.map((o: any) => o.opcion_id) || [],
+        });
+      } else {
+        preguntasNuevasPendientes.push(preguntaNueva.id);
+      }
+    }
+
+    return {
+      es_precargable: true,
+      ficha_origen_id: fichaAnterior.id,
+      respuestas_precargadas: respuestasPrecargadas,
+      preguntas_nuevas_pendientes: preguntasNuevasPendientes,
+    };
+  }
+
   async findByFicha(fichaId: string) {
     return this.respuestasRepository.find({
       where: { ficha_id: fichaId, fecha_desactivacion: IsNull() },
-      relations: { pregunta: true },
+      relations: { pregunta: true, opcionesSeleccionadas: true, documentos: true },
     });
   }
 
-  findAll( skip: number=0, take: number=10) {
+  findAll(skip: number = 0, take: number = 10) {
     return this.respuestasRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip,
@@ -164,7 +275,7 @@ export class RespuestasFormularioService {
   async findOne(id: string) {
     const respuesta = await this.respuestasRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { pregunta: true },
+      relations: { pregunta: true, opcionesSeleccionadas: true },
     });
     if (!respuesta) {
       throw new NotFoundException('La respuesta solicitada no existe o está inactiva.');

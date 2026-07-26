@@ -16,18 +16,27 @@ export class RespuestasFormularioController {
   @Roles('ESTUDIANTE', 'INVITADO')
   @UseInterceptors(FilesInterceptor('archivos')) 
   createBulk(
-    // 🔒 Al usar multipart/form-data para enviar archivos, el array de DTOs suele llegar como un string JSON
     @Body('respuestas') respuestasData: string | CreateRespuestasFormularioDto[], 
+    @Query('es_envio_final') esEnvioFinal = 'false',
     @Req() req: RequestWithUser,
-    @UploadedFiles() archivos: Express.Multer.File[] // 🔒 Captura los archivos
+    @UploadedFiles() archivos: Express.Multer.File[]
   ) {
-    // Parseamos la data si el frontend la envió como string (común en FormData)
     const createDtos: CreateRespuestasFormularioDto[] = typeof respuestasData === 'string' 
       ? JSON.parse(respuestasData) 
       : respuestasData;
 
-    // Pasamos los DTOs, el usuario y los archivos al servicio para la transacción completa
-    return this.respuestasService.guardarMuchas(createDtos, req.user.id, archivos);
+    const esFinal = esEnvioFinal === 'true';
+
+    return this.respuestasService.guardarMuchas(createDtos, req.user.id, archivos, esFinal);
+  }
+
+  @Get('precarga/:periodoNuevoId')
+  @Roles('ESTUDIANTE', 'INVITADO')
+  obtenerPrecarga(
+    @Param('periodoNuevoId') periodoNuevoId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.respuestasService.obtenerPrecarga(periodoNuevoId, req.user.id);
   }
 
   @Get('ficha/:fichaId')
@@ -42,8 +51,6 @@ export class RespuestasFormularioController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    // 🔥 SOLUCIÓN: Pasamos los parámetros al servicio. 
-    // Usamos el signo "+" (+skip, +take) para asegurar que NestJS los trate como números y no como strings.
     return this.respuestasService.findAll(+skip, +take);
   }
 

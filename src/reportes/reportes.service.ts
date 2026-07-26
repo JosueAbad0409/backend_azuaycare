@@ -5,9 +5,162 @@ import { DataSource } from 'typeorm';
 export class ReportesService {
   constructor(private readonly dataSource: DataSource) {}
 
-  // 🔥 SOLUCIÓN AUDITORÍA: El backend ya no arma el Excel. 
-  // Ahora devuelve un JSON dinámico pivotado con jsonb_object_agg.
-  async obtenerDatosReporteDinamico(periodoId: string) {
+  /**
+   * Genera el JSON estructurado con métricas y agregaciones por cada pregunta
+   * para dibujar gráficos automáticos en el dashboard sin hardcodear nada en el frontend.
+   */
+  async obtenerEstructuraAgregada(formularioId: string) {
+    const formulario = await this.dataSource.query(
+      `SELECT id, titulo, descripcion, periodo_id FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [formularioId],
+    );
+
+    if (!formulario || formulario.length === 0) {
+      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
+    }
+
+    // 1. Obtener Secciones y Preguntas ordenadas
+    const estructuraFormulario = await this.dataSource.query(
+      `
+      SELECT 
+        s.id AS seccion_id,
+        s.nombre AS seccion_nombre,
+        s.orden AS seccion_orden,
+        p.id AS pregunta_id,
+        p.enunciado,
+        p.orden AS pregunta_orden,
+        t.nombre AS tipo_campo
+      FROM secciones s
+      INNER JOIN preguntas p ON p.seccion_id = s.id AND p.fecha_desactivacion IS NULL
+      INNER JOIN tipos_campo_form t ON t.id = p.tipo_campo_id
+      WHERE s.formulario_id = $1 AND s.fecha_desactivacion IS NULL
+      ORDER BY s.orden ASC, p.orden ASC
+      `,
+      [formularioId],
+    );
+
+    // 2. Total de fichas enviadas para cálculo de porcentajes
+    const totalFichasQuery = await this.dataSource.query(
+      `SELECT COUNT(id)::int AS total FROM fichas_respondidas WHERE formulario_id = $1 AND fecha_desactivacion IS NULL`,
+      [formularioId],
+    );
+    const totalFichas = totalFichasQuery[0]?.total || 0;
+
+    // 🔥 SOLUCIÓN AL TS2345: Tipado explícito 'any[]' para evitar la inferencia 'never[]'
+    const reporteEstructurado: any[] = [];
+
+    // 3. Procesar cada pregunta según su tipo
+    for (const preg of estructuraFormulario) {
+      const tipoCampo = preg.tipo_campo.toUpperCase();
+      let metricas: any = null;
+
+      if (tipoCampo.includes('OPCION') || tipoCampo.includes('SELECT') || tipoCampo.includes('CHECKBOX') || tipoCampo.includes('RADIO')) {
+        // Conteo por cada opción
+        const opcionesConteo = await this.dataSource.query(
+          `
+          SELECT 
+            op.id AS opcion_id,
+            op.texto_opcion,
+            COUNT(ros.respuesta_id)::int AS conteo
+          FROM opciones_pregunta op
+          LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.opcion_id = op.id
+          LEFT JOIN respuestas r ON r.id = ros.respuesta_id AND r.pregunta_id = $1 AND r.fecha_desactivacion IS NULL
+          WHERE op.pregunta_id = $1 AND op.fecha_desactivacion IS NULL
+          GROUP BY op.id, op.texto_opcion, op.orden
+          ORDER BY op.orden ASC
+          `,
+          [preg.pregunta_id],
+        );
+
+        metricas = {
+          tipo_grafico: 'PIE_O_BARRA',
+          opciones: opcionesConteo.map((o: any) => ({
+            opcion_id: o.opcion_id,
+            texto: o.texto_opcion,
+            conteo: o.conteo,
+            porcentaje: totalFichas > 0 ? parseFloat(((o.conteo / totalFichas) * 100).toFixed(2)) : 0,
+          })),
+        };
+      } else if (tipoCampo.includes('NUMERIC') || tipoCampo.includes('NUMERO') || tipoCampo.includes('MONEDA')) {
+        // 🔥 SOLUCIÓN AL TS1109: Se corrigió 'await.this' por 'await this'
+        const numStats = await this.dataSource.query(
+          `
+          SELECT 
+            COALESCE(AVG(valor_numerico), 0)::float AS promedio,
+            COALESCE(MIN(valor_numerico), 0)::float AS minimo,
+            COALESCE(MAX(valor_numerico), 0)::float AS maximo,
+            COALESCE(SUM(valor_numerico), 0)::float AS suma
+          FROM respuestas
+          WHERE pregunta_id = $1 AND fecha_desactivacion IS NULL
+          `,
+          [preg.pregunta_id],
+        );
+
+        metricas = {
+          tipo_grafico: 'METRICA_NUMERICA',
+          promedio: parseFloat((numStats[0]?.promedio || 0).toFixed(2)),
+          minimo: numStats[0]?.minimo || 0,
+          maximo: numStats[0]?.maximo || 0,
+          suma: numStats[0]?.suma || 0,
+        };
+      } else if (tipoCampo.includes('MATRIZ')) {
+        // Matriz por Filas y Columnas
+        const matrizConteo = await this.dataSource.query(
+          `
+          SELECT 
+            rm.fila_id,
+            fm.texto_fila,
+            rm.columna_id,
+            cm.texto_columna,
+            COUNT(rm.respuesta_id)::int AS conteo
+          FROM respuestas_matriz rm
+          INNER JOIN filas_matriz fm ON fm.id = rm.fila_id
+          INNER JOIN columnas_matriz cm ON cm.id = rm.columna_id
+          INNER JOIN respuestas r ON r.id = rm.respuesta_id AND r.pregunta_id = $1 AND r.fecha_desactivacion IS NULL
+          WHERE r.pregunta_id = $1
+          GROUP BY rm.fila_id, fm.texto_fila, rm.columna_id, cm.texto_columna
+          `,
+          [preg.pregunta_id],
+        );
+
+        metricas = {
+          tipo_grafico: 'MATRIZ_AGREGADA',
+          matriz_respuestas: matrizConteo,
+        };
+      } else {
+        // Para campos de texto libre
+        const totalRespuestasTexto = await this.dataSource.query(
+          `SELECT COUNT(id)::int AS conteo FROM respuestas WHERE pregunta_id = $1 AND valor_texto IS NOT NULL AND fecha_desactivacion IS NULL`,
+          [preg.pregunta_id],
+        );
+
+        metricas = {
+          tipo_grafico: 'TEXTO_LIBRE',
+          total_respuestas: totalRespuestasTexto[0]?.conteo || 0,
+        };
+      }
+
+      reporteEstructurado.push({
+        seccion_id: preg.seccion_id,
+        seccion_nombre: preg.seccion_nombre,
+        pregunta_id: preg.pregunta_id,
+        enunciado: preg.enunciado,
+        tipo_campo: preg.tipo_campo,
+        metricas,
+      });
+    }
+
+    return {
+      formulario: formulario[0],
+      total_fichas_respondidas: totalFichas,
+      estructura_agregada: reporteEstructurado,
+    };
+  }
+
+  /**
+   * Dataset plano fila por fila para alimentar la tabla dinámica y los filtros cruzados del frontend.
+   */
+  async obtenerDatasetPlano(periodoId: string) {
     const periodo = await this.dataSource.manager.query(
       `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
       [periodoId],
@@ -17,7 +170,6 @@ export class ReportesService {
       throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
     }
 
-    // Consulta nativa para hacer el pivot de filas a columnas (Preguntas -> Respuestas)
     const query = `
       SELECT
         u.cedula AS "cedula",
@@ -31,10 +183,9 @@ export class ReportesService {
         f.balance_final AS "balance",
         n.nombre AS "nivel_economico",
         
-        -- 🔥 Pivot dinámico de PostgreSQL: convierte las múltiples filas de respuestas en un solo objeto JSON
         (
           SELECT jsonb_object_agg(
-            p.enunciado, -- Asumiendo que 'enunciado' es la columna en tu tabla de preguntas
+            p.enunciado,
             COALESCE(r.valor_texto, r.valor_numerico::text, '')
           )
           FROM respuestas r
@@ -55,7 +206,22 @@ export class ReportesService {
     return {
       periodo: periodo[0].nombre,
       total_registros: resultados.length,
-      datos: resultados, // Este array se enviará al Frontend para generar el Excel/PDF
+      datos: resultados,
     };
+  }
+
+  /**
+   * Obtiene la lista de formularios de un periodo para alimentar el dropdown del dashboard.
+   */
+  async obtenerFormulariosDisponibles(periodoId: string) {
+    return this.dataSource.query(
+      `
+      SELECT id, titulo, descripcion, publicado, fecha_publicacion, version
+      FROM formularios
+      WHERE periodo_id = $1 AND fecha_desactivacion IS NULL
+      ORDER BY version DESC, created_at DESC
+      `,
+      [periodoId],
+    );
   }
 }

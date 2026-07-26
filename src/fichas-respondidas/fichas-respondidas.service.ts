@@ -4,6 +4,7 @@ import { Repository, IsNull } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
 import { CreateFichaRespondidaDto } from './dto/create-ficha-respondida.dto';
 import { UpdateFichaRespondidaDto } from './dto/update-ficha-respondida.dto';
+import { ReabrirFichaDto } from './dto/reabrir-ficha.dto';
 import { NivelesEconomicosService } from '../niveles-economicos/niveles-economicos.service'; 
 
 @Injectable()
@@ -39,7 +40,7 @@ export class FichasRespondidasService {
     const nuevaFicha = this.fichasRepository.create({
       ...createDto,
       usuario_id: usuarioId,
-      estado_ficha: 'BORRADOR', // Forzamos siempre a borrador en la creación
+      estado_ficha: 'BORRADOR',
       total_ingresos: ingresos,
       total_egresos: egresos,
       balance_final: balanceCalculado,
@@ -49,28 +50,26 @@ export class FichasRespondidasService {
     return this.fichasRepository.save(nuevaFicha);
   }
 
-  findAll(skip: number=0, take: number=10) {
+  findAll(skip: number = 0, take: number = 10) {
     return this.fichasRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip,
       take,
-      relations: { usuario: true, periodo: true },
+      relations: { usuario: true, periodo: true, cerradoPorUsuario: true },
       order: { created_at: 'DESC' },
     });
   }
 
-  // Agregamos el parámetro opcional user para chequear el IDOR
   async findOne(id: string, user?: any) {
     const ficha = await this.fichasRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { usuario: true, periodo: true, formulario: true },
+      relations: { usuario: true, periodo: true, formulario: true, cerradoPorUsuario: true },
     });
 
     if (!ficha) {
       throw new NotFoundException('La ficha solicitada no existe o fue dada de baja.');
     }
 
-    // Validación de Propiedad (IDOR)
     if (user && !user.rol.includes('COORDINADOR') && ficha.usuario_id !== user.id) {
       throw new ForbiddenException('No tienes permiso sobre la ficha de otro usuario.');
     }
@@ -87,16 +86,30 @@ export class FichasRespondidasService {
   }
 
   async update(id: string, updateDto: UpdateFichaRespondidaDto, user: any) {
-    const fichaExistente = await this.findOne(id, user); // Ya valida propiedad aquí
-
+    const fichaExistente = await this.findOne(id, user);
     const esCoordinador = user.rol.includes('COORDINADOR');
 
-    // Evita alteración de campos si ya fue enviada
-    if (fichaExistente.estado_ficha !== 'BORRADOR' && !esCoordinador) {
-      throw new BadRequestException('No puedes editar una ficha que ya fue enviada o validad.');
+    // Validación de Bloqueo / Plazo Vencido
+    if (!esCoordinador) {
+      if (fichaExistente.estado_ficha === 'CERRADA_MANUAL') {
+        throw new BadRequestException('Esta ficha fue cerrada manualmente por Bienestar Estudiantil y no admite modificaciones.');
+      }
+
+      if (fichaExistente.estado_ficha === 'CERRADA_POR_PLAZO') {
+        throw new BadRequestException('El plazo máximo de modificación de esta ficha ha expirado.');
+      }
+
+      if (fichaExistente.fecha_limite_edicion && new Date() > new Date(fichaExistente.fecha_limite_edicion)) {
+        // Marcamos proactivamente como CERRADA_POR_PLAZO
+        await this.fichasRepository.update(id, { estado_ficha: 'CERRADA_POR_PLAZO' });
+        throw new BadRequestException('El plazo de edición de la ficha ha vencido.');
+      }
+
+      if (fichaExistente.estado_ficha !== 'BORRADOR') {
+        throw new BadRequestException('No puedes editar una ficha que ya fue enviada o validada.');
+      }
     }
 
-    // Evita que el estudiante altere su propio estado
     if (updateDto.estado_ficha && !esCoordinador) {
       delete updateDto.estado_ficha;
     }
@@ -116,10 +129,43 @@ export class FichasRespondidasService {
     return this.findOne(id, user);
   }
 
+  async cerrarManual(id: string, coordinadorId: string) {
+    const ficha = await this.findOne(id);
+
+    if (ficha.estado_ficha === 'CERRADA_MANUAL') {
+      throw new BadRequestException('La ficha ya se encuentra cerrada manualmente.');
+    }
+
+    await this.fichasRepository.update(id, {
+      estado_ficha: 'CERRADA_MANUAL',
+      cerrado_manual_por: coordinadorId,
+    });
+
+    return this.findOne(id);
+  }
+
+  async reabrir(id: string, coordinadorId: string, reabrirDto?: ReabrirFichaDto) {
+    const ficha = await this.findOne(id);
+
+    const datosReapertura: Partial<FichaRespondida> = {
+      estado_ficha: 'ENVIADA',
+      cerrado_manual_por: coordinadorId,
+    };
+
+    if (reabrirDto?.dias_extension) {
+      const nuevaFechaLimite = new Date();
+      nuevaFechaLimite.setDate(nuevaFechaLimite.getDate() + reabrirDto.dias_extension);
+      datosReapertura.fecha_limite_edicion = nuevaFechaLimite;
+    }
+
+    await this.fichasRepository.update(id, datosReapertura);
+    return this.findOne(id);
+  }
+
   async remove(id: string, user: any) {
-    const ficha = await this.findOne(id, user); // Ya valida propiedad aquí
+    const ficha = await this.findOne(id, user);
     
-    if (ficha.estado_ficha === 'VALIDADO' || ficha.estado_ficha === 'ENVIADO') {
+    if (ficha.estado_ficha === 'VALIDADO' || ficha.estado_ficha === 'ENVIADO' || ficha.estado_ficha === 'ENVIADA') {
       throw new BadRequestException('No se pueden eliminar fichas que ya han sido enviadas o validadas.');
     }
 
@@ -128,13 +174,12 @@ export class FichasRespondidasService {
   }
 
   async cambiarEstado(id: string, estado: string) {
-    const ficha = await this.findOne(id); // Para coordinadores
+    await this.findOne(id);
     await this.fichasRepository.update(id, { estado_ficha: estado });
     return this.findOne(id);
   }
 
   async recalcularNivelSocioeconomico(id: string, totalIngresos: number, totalEgresos: number) {
-    // Como esto se ejecuta desde un listener interno, no pasamos el 'user' 
     const ficha = await this.findOne(id); 
     const balanceCalculado = totalIngresos - totalEgresos;
 
@@ -144,7 +189,7 @@ export class FichasRespondidasService {
       total_ingresos: totalIngresos,
       total_egresos: totalEgresos,
       nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
-      estado_ficha: 'ENVIADO', // 🔥 SOLUCIÓN 2: Transición de estado corregida
+      estado_ficha: 'ENVIADA',
     });
 
     return this.findOne(id);
