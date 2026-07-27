@@ -1,6 +1,20 @@
-import { Controller, Get, Post, Body, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { 
+  Controller, 
+  Post, 
+  Get,
+  Delete,
+  UseInterceptors, 
+  UploadedFile, 
+  Body, 
+  ParseFilePipe, 
+  MaxFileSizeValidator, 
+  FileTypeValidator,
+  UseGuards,
+  Req,
+  Param
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentosRespaldoService } from './documentos-respaldo.service';
-import { CreateDocumentosRespaldoDto } from './dto/create-documentos-respaldo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -11,10 +25,36 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class DocumentosRespaldoController {
   constructor(private readonly documentosService: DocumentosRespaldoService) {}
 
-  @Post()
+  @Post('upload')
   @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
-  create(@Body() createDto: CreateDocumentosRespaldoDto, @Req() req: RequestWithUser) {
-    return this.documentosService.create(createDto, req.user.id, req.user.rol);
+  @UseInterceptors(FileInterceptor('file'))
+  async subirDocumento(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }), // 10MB máximo
+          new FileTypeValidator({ fileType: '.(png|jpeg|jpg|pdf)' }),
+        ],
+      }),
+    ) file: Express.Multer.File,
+    @Body('respuesta_id') respuestaId: string,
+    @Req() req: RequestWithUser,
+  ) {
+    // 1. Subir buffer a Supabase Storage mediante el servicio
+    const [archivoSubido] = await this.documentosService.subirMultiples([file]);
+
+    // 2. Registrar la evidencia en la base de datos asociándola a la respuesta
+    return await this.documentosService.create(
+      {
+        respuesta_id: respuestaId,
+        ruta_archivo: archivoSubido.ruta_archivo!,
+        nombre_original: archivoSubido.nombre_original!,
+        mime_type: archivoSubido.mime_type!,
+        tamanio_bytes: archivoSubido.tamanio_bytes!,
+      },
+      req.user.id,
+      req.user.rol,
+    );
   }
 
   @Get('respuesta/:respuestaId')
