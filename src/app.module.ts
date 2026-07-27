@@ -53,6 +53,7 @@ import { PerfilCoordinador } from './perfil-coordinador/entities/perfil-coordina
 import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -98,7 +99,8 @@ import { CacheModule } from '@nestjs/cache-manager';
     HistorialEstadosFichaModule,
     HistorialRespuestasModule,
     RespuestasMatrizModule,
-    PerfilCoordinadorModule, 
+    PerfilCoordinadorModule,
+    MailModule, 
   ],
   providers:[
     {

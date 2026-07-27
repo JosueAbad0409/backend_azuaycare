@@ -8,5 +8,9 @@ export class LoginGoogleDto {
   @IsEmail({}, { message: 'El correo de pruebas no es válido.' })
   @IsOptional()
   emailTest?: string;
+
+  @IsEmail()
+  @IsOptional()
+  email?: string;
 }
 

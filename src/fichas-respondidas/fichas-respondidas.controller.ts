@@ -7,11 +7,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
+import { MailService } from 'src/mail/mail.service';
 
 @Controller('fichas-respondidas')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class FichasRespondidasController {
-  constructor(private readonly fichasService: FichasRespondidasService) {}
+  constructor(
+    private readonly fichasService: FichasRespondidasService,
+    private readonly mailService: MailService
+
+  ) {}
 
   @Post()
   @Roles('ESTUDIANTE', 'INVITADO')
@@ -19,6 +24,14 @@ export class FichasRespondidasController {
     return this.fichasService.create(createDto, req.user.id);
   }
 
+  @Get('test-correo')
+  async testCorreo(@Query('email') email: string) {
+    if (!email) return 'Por favor, envía un email como query param: ?email=tu_correo@gmail.com';
+    
+    await this.mailService.enviarConfirmacionFicha(email, 'Josué (Prueba)');
+    return `Correo de prueba enviado a ${email}. Revisa tu bandeja de entrada o spam.`;
+  }
+  
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   findAll(

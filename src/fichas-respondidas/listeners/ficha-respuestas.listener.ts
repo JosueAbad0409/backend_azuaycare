@@ -2,18 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { FichasRespondidasService } from '../fichas-respondidas.service';
+import { MailService } from 'src/mail/mail.service'; 
 
 @Injectable()
 export class FichaRespuestasListener {
   constructor(
     private readonly fichasService: FichasRespondidasService,
     private readonly dataSource: DataSource,
-  ) {}
+    private readonly mailService: MailService, 
+  ) { }
 
-  @OnEvent('ficha.respuestas.actualizadas', { async: true }) 
+  @OnEvent('ficha.respuestas.actualizadas', { async: true })
   async handleFichaRespuestasActualizadas(payload: { fichaId: string }) {
     try {
-            const resultadoIngresos = await this.dataSource.manager
+      const resultadoIngresos = await this.dataSource.manager
         .createQueryBuilder()
         .select('SUM(r.valor_numerico)', 'total')
         .from('respuestas', 'r')
@@ -23,7 +25,7 @@ export class FichaRespuestasListener {
         .andWhere('r.fecha_desactivacion IS NULL')
         .getRawOne();
 
-           const resultadoEgresos = await this.dataSource.manager
+      const resultadoEgresos = await this.dataSource.manager
         .createQueryBuilder()
         .select('SUM(r.valor_numerico)', 'total')
         .from('respuestas', 'r')
@@ -36,12 +38,32 @@ export class FichaRespuestasListener {
       const totalIngresos = resultadoIngresos?.total ? parseFloat(resultadoIngresos.total) : 0;
       const totalEgresos = resultadoEgresos?.total ? parseFloat(resultadoEgresos.total) : 0;
 
-            await this.fichasService.recalcularNivelSocioeconomico(payload.fichaId, totalIngresos, totalEgresos);
-      
+      // 1. Recalculamos el nivel socioeconómico
+      await this.fichasService.recalcularNivelSocioeconomico(payload.fichaId, totalIngresos, totalEgresos);
+
       console.log(`[Event Success] Ficha ${payload.fichaId} calculada asíncronamente. Ingresos: $${totalIngresos}, Egresos: $${totalEgresos}`);
+
+      // 2. Buscamos el usuario asociado a esta ficha para saber a quién enviarle el correo
+      // (Ajusta 'fichas_respondidas' y 'usuarios' a los nombres reales de tus tablas)
+      const datosUsuario = await this.dataSource.manager
+        .createQueryBuilder()
+        .select(['u.nombres AS nombres', 'u.correo AS correo'])
+        .from('fichas_respondidas', 'f')
+        .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+        .where('f.id = :fichaId', { fichaId: payload.fichaId })
+        .getRawOne();
+
+      // 3. Disparamos el correo a través de Brevo
+      if (datosUsuario && datosUsuario.correo) {
+        await this.mailService.enviarConfirmacionFicha(
+          datosUsuario.correo,
+          datosUsuario.nombres || 'Estudiante'
+        );
+      }
+
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Error desconocido';
-      console.error(`[Event Error] No se pudo recalcular la ficha ${payload.fichaId}:`, msg);
+      console.error(`[Event Error] No se pudo recalcular/notificar la ficha ${payload.fichaId}:`, msg);
     }
   }
 }
