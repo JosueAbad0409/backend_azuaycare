@@ -3,29 +3,28 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { DocumentoRespaldo } from './entities/documentos-respaldo.entity';
 import { CreateDocumentosRespaldoDto } from './dto/create-documentos-respaldo.dto';
-import { Express } from 'express'; // 🔒 Importación necesaria para procesar archivos
+import { Express } from 'express'; 
 
-// 🔥 1. IMPORTAR SUPABASE
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class DocumentosRespaldoService {
-  // 🔥 2. DECLARAR LA PROPIEDAD EN LA CLASE
   private supabase: SupabaseClient;
+
+  // Definimos el nombre del bucket como constante de clase para reutilizarlo
+  private readonly BUCKET_NAME = 'documentos_azuaycare';
 
   constructor(
     @InjectRepository(DocumentoRespaldo)
     private readonly documentosRepository: Repository<DocumentoRespaldo>,
     private readonly dataSource: DataSource,
   ) {
-    // 🔥 3. INICIALIZAR EL CLIENTE CON LAS VARIABLES DEL .ENV
     this.supabase = createClient(
       process.env.SUPABASE_URL as string,
       process.env.SUPABASE_KEY as string
     );
   }
 
-  // Método privado para validar que el documento pertenezca a la ficha del usuario
   private async validarPropiedadDocumento(respuestaId: string, usuarioId: string, rol: string) {
     if (rol.includes('COORDINADOR')) return true;
 
@@ -50,10 +49,24 @@ export class DocumentosRespaldoService {
 
   async findByRespuesta(respuestaId: string, usuarioId: string, rol: string) {
     await this.validarPropiedadDocumento(respuestaId, usuarioId, rol);
-    return this.documentosRepository.find({
+    
+    const documentos = await this.documentosRepository.find({
       where: { respuesta_id: respuestaId, fecha_desactivacion: IsNull() },
       relations: { respuesta: true, verificador: true },
     });
+
+    // 🔥 SEGURIDAD: Transformar el path interno en una URL firmada de corta duración
+    for (const doc of documentos) {
+      const { data, error } = await this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .createSignedUrl(doc.ruta_archivo, 60); // Válido por 60 segundos
+
+      if (!error && data) {
+        doc.ruta_archivo = data.signedUrl;
+      }
+    }
+
+    return documentos;
   }
 
   async remove(id: string, usuarioId: string, rol: string) {
@@ -71,40 +84,33 @@ export class DocumentosRespaldoService {
     return { message: 'Documento de respaldo eliminado con éxito.' };
   }
 
-  // 🔥 NUEVO MÉTODO IMPLEMENTADO CON SUPABASE STORAGE
   async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
     if (!archivos || archivos.length === 0) return [];
 
-    // El nombre exacto del bucket que creaste en el paso anterior
-    const BUCKET_NAME = 'documentos_azuaycare'; 
-
     const promesas = archivos.map(async (archivo) => {
-      // 1. Limpiar el nombre original y generar un nombre único
-      const extension = archivo.originalname.split('.').pop();
-      const nombreLimpio = archivo.originalname.replace(/[^a-zA-Z0-9]/g, '_');
-      const nombreUnico = `${Date.now()}-${nombreLimpio}.${extension}`;
+      const partesNombre = archivo.originalname.split('.');
+      const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
+      const nombreSinExtension = partesNombre.join('');
       
-      // 2. Subir el archivo al bucket de Supabase
+      const nombreLimpio = nombreSinExtension.replace(/[^a-zA-Z0-9]/g, '_');
+      const nombreUnico = extension 
+        ? `${Date.now()}-${nombreLimpio}.${extension}` 
+        : `${Date.now()}-${nombreLimpio}`;
+      
       const { data, error } = await this.supabase.storage
-        .from(BUCKET_NAME)
+        .from(this.BUCKET_NAME)
         .upload(nombreUnico, archivo.buffer, {
           contentType: archivo.mimetype,
           upsert: false,
         });
 
-      // Si falla la subida, se detiene todo y el backend hace rollback
       if (error) {
         throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
       }
 
-      // 3. Obtener la URL pública del archivo recién subido
-      const { data: urlData } = this.supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(data.path);
-
-      // 4. Retornar los datos mapeados EXACTAMENTE a las columnas de tu Entidad
+      // 🔥 SEGURIDAD: Retornamos ÚNICAMENTE el path (data.path) a la base de datos
       return {
-        ruta_archivo: urlData.publicUrl,
+        ruta_archivo: data.path, 
         nombre_original: archivo.originalname,
         mime_type: archivo.mimetype,
         tamanio_bytes: archivo.size,

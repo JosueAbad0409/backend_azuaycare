@@ -33,7 +33,7 @@ export class DocumentosRespaldoController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }), // 10MB máximo
-          new FileTypeValidator({ fileType: '.(png|jpeg|jpg|pdf)' }),
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }), // 🔥 Expresión regular más segura
         ],
       }),
     ) file: Express.Multer.File,

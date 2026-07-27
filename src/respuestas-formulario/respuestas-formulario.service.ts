@@ -39,7 +39,7 @@ export class RespuestasFormularioService {
     for (const fId of fichasIdsUnicas) {
       const ficha = await this.dataSource.getRepository(FichaRespondida).findOne({ 
         where: { id: fId }, 
-        select: { id: true, usuario_id: true, estado_ficha: true, formulario_id: true } as any
+        select: ['id', 'usuario_id', 'estado_ficha', 'formulario_id'] as any
       });
 
       if (!ficha || (ficha as any).usuario_id !== usuarioId) {
@@ -52,7 +52,7 @@ export class RespuestasFormularioService {
     await queryRunner.startTransaction();
 
     try {
-      // Limpieza previa de respuestas anteriores de la ficha
+      // 1. Limpieza previa de respuestas anteriores de la ficha (Borradores)
       for (const fId of fichasIdsUnicas) {
         await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
       }
@@ -60,6 +60,7 @@ export class RespuestasFormularioService {
       const respuestasGuardadas: RespuestasFormulario[] = [];
       let fichaId = '';
 
+      // 2. Inserción de nuevas respuestas
       for (const dto of dtos) {
         fichaId = dto.ficha_id;
 
@@ -89,7 +90,7 @@ export class RespuestasFormularioService {
         respuestasGuardadas.push(respuestaSalvada);
       }
 
-      // 🔥 LÓGICA DE CÁLCULO Y GESTIÓN DE ESTADO / PLAZOS
+      // 🔥 3. LÓGICA DE CÁLCULO Y GESTIÓN DE ESTADO / PLAZOS (Envío Definitivo)
       if (fichaId) {
         const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
           where: { id: fichaId },
@@ -101,28 +102,27 @@ export class RespuestasFormularioService {
           relations: { pregunta: true },
         });
 
-        const totalesDinamicos: Record<string, number> = {
-          ingresos: 0,
-          egresos: 0,
-        };
+        let totalIngresos = 0;
+        let totalEgresos = 0;
 
+        // Sumatoria basada en la categoria_financiera del Paso 1
         for (const resp of respuestasConPreguntas) {
-          const variable = resp.pregunta?.variable_calculo;
+          const categoria = resp.pregunta?.categoria_financiera;
           const valorNum = resp.valor_numerico;
 
-          if (variable && valorNum !== null && valorNum !== undefined) {
-            const key = variable.toLowerCase();
-            if (totalesDinamicos[key] === undefined) {
-              totalesDinamicos[key] = 0;
+          if (valorNum !== null && valorNum !== undefined) {
+            if (categoria === 'INGRESO') {
+              totalIngresos += Number(valorNum);
+            } else if (categoria === 'EGRESO') {
+              totalEgresos += Number(valorNum);
             }
-            totalesDinamicos[key] += Number(valorNum);
           }
         }
 
         const datosUpdateFicha: any = {
-          total_ingresos: totalesDinamicos.ingresos || 0,
-          total_egresos: totalesDinamicos.egresos || 0,
-          balance_final: (totalesDinamicos.ingresos || 0) - (totalesDinamicos.egresos || 0),
+          total_ingresos: totalIngresos,
+          total_egresos: totalEgresos,
+          balance_final: totalIngresos - totalEgresos,
         };
 
         // Si cambia de BORRADOR a ENVIADA y el formulario tiene plazo de modificación configurado
@@ -138,9 +138,11 @@ export class RespuestasFormularioService {
           }
         }
 
+        // Cierre atómico del estado del expediente
         await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha);
       }
 
+      // 4. Manejo de archivos (Conectará con el Paso 4)
       if (archivos && archivos.length > 0) {
         const documentosSubidos = await this.documentosService.subirMultiples(archivos);
         
@@ -159,6 +161,7 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
+      // Dispara el Event Listener asíncrono (Conectará con el Paso 5)
       if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }

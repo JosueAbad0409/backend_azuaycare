@@ -183,15 +183,18 @@ export class FichasRespondidasService {
     const ficha = await this.findOne(id); 
     const balanceCalculado = totalIngresos - totalEgresos;
 
+    // Contrastamos el balance con los rangos configurados
     const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, ficha.periodo_id);
 
+    // Actualizamos el expediente
     await this.fichasRepository.update(id, {
       total_ingresos: totalIngresos,
       total_egresos: totalEgresos,
+      balance_final: balanceCalculado,
       nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
-      estado_ficha: 'ENVIADA',
     });
 
     return this.findOne(id);
   }
+
 }

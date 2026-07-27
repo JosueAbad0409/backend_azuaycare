@@ -61,10 +61,36 @@ export class FormulariosService {
   }
 
   async publicarFormulario(id: string) {
-    const formulario = await this.findOne(id);
+    // 1. Cargamos el formulario con sus relaciones usando la sintaxis de objeto
+    const formulario = await this.formulariosRepository.findOne({
+      where: { id, fecha_desactivacion: IsNull() },
+      relations: {
+        secciones: {
+          preguntas: true,
+        },
+      }, 
+    });
 
+    if (!formulario) {
+      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
+    }
+
+    // 2. Control de estado
     if (formulario.publicado) {
       throw new BadRequestException('Este formulario ya se encuentra publicado.');
+    }
+
+    // 3. Validación de integridad (No publicar si está vacío)
+    if (!formulario.secciones || formulario.secciones.length === 0) {
+      throw new BadRequestException('No se puede publicar un formulario sin secciones estructuradas.');
+    }
+
+    const tienePreguntas = formulario.secciones.some(
+      (seccion) => seccion.preguntas && seccion.preguntas.length > 0
+    );
+
+    if (!tienePreguntas) {
+      throw new BadRequestException('No se puede publicar un formulario sin al menos una pregunta dentro de sus secciones.');
     }
 
     await this.formulariosRepository.update(id, {
@@ -77,6 +103,11 @@ export class FormulariosService {
 
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
     const formulario = await this.findOne(id);
+
+    // 🔥 BLOQUEO ESTRATÉGICO: Congelamiento del diseño si está publicado
+    if (formulario.publicado) {
+      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
+    }
 
     if (formulario.periodo && (formulario.periodo as any).bloqueado) {
       throw new BadRequestException('No se puede modificar un formulario de un periodo que se encuentra bloqueado.');
