@@ -100,7 +100,6 @@ export class FichasRespondidasService {
       }
 
       if (fichaExistente.fecha_limite_edicion && new Date() > new Date(fichaExistente.fecha_limite_edicion)) {
-        // Marcamos proactivamente como CERRADA_POR_PLAZO
         await this.fichasRepository.update(id, { estado_ficha: 'CERRADA_POR_PLAZO' });
         throw new BadRequestException('El plazo de edición de la ficha ha vencido.');
       }
@@ -183,10 +182,8 @@ export class FichasRespondidasService {
     const ficha = await this.findOne(id); 
     const balanceCalculado = totalIngresos - totalEgresos;
 
-    // Contrastamos el balance con los rangos configurados
     const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, ficha.periodo_id);
 
-    // Actualizamos el expediente
     await this.fichasRepository.update(id, {
       total_ingresos: totalIngresos,
       total_egresos: totalEgresos,
@@ -196,5 +193,4 @@ export class FichasRespondidasService {
 
     return this.findOne(id);
   }
-
 }

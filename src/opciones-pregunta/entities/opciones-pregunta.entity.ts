@@ -1,8 +1,9 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn, Index } from 'typeorm';
 import { Pregunta } from '../../preguntas/entities/pregunta.entity';
 import { Usuario } from 'src/usuarios/entities/usuario.entity';
 
 @Entity({ name: 'opciones_pregunta' })
+@Index('IDX_OPCION_PREGUNTA_ID', ['pregunta_id'])
 export class OpcionPregunta {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,7 +22,6 @@ export class OpcionPregunta {
 
   @Column ({name: 'activo', type: 'boolean', default: true })
   activo: boolean;
-
 
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;
@@ -49,5 +49,4 @@ export class OpcionPregunta {
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'actualizado_por' })
   actualizador: Usuario;
-
 }

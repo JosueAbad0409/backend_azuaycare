@@ -6,7 +6,8 @@ import {
   ManyToOne, 
   OneToMany, 
   PrimaryGeneratedColumn, 
-  UpdateDateColumn 
+  UpdateDateColumn,
+  Index
 } from 'typeorm';
 import { Seccion } from '../../secciones/entities/secciones.entity';
 import { TipoCampoForm } from '../../tipos-campo-form/entities/tipos-campo-form.entity';
@@ -18,6 +19,7 @@ import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity'
 import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
 
 @Entity({ name: 'preguntas' })
+@Index('IDX_PREGUNTA_SECCION_ID', ['seccion_id'])
 export class Pregunta {
   @PrimaryGeneratedColumn('uuid')
   id: string;

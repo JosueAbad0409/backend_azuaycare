@@ -7,7 +7,6 @@ import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respues
 
 @Injectable()
 export class FichaRespuestasListener {
-  // Utilizamos el Logger nativo de NestJS para mejores trazas en consola
   private readonly logger = new Logger(FichaRespuestasListener.name);
 
   constructor(
@@ -19,7 +18,7 @@ export class FichaRespuestasListener {
   @OnEvent('ficha.respuestas.actualizadas', { async: true })
   async handleFichaRespuestasActualizadas(payload: { fichaId: string }) {
     try {
-      // 1. Sumatoria de Ingresos usando el QueryBuilder con entidades
+      // 1. Sumatoria de Ingresos (Filtrando por categoria_financiera)
       const resultadoIngresos = await this.dataSource.manager
         .createQueryBuilder(RespuestasFormulario, 'r')
         .select('SUM(r.valor_numerico)', 'total')
@@ -28,7 +27,7 @@ export class FichaRespuestasListener {
         .andWhere('p.categoria_financiera = :categoria', { categoria: 'INGRESO' })
         .getRawOne();
 
-      // 2. Sumatoria de Egresos usando el QueryBuilder con entidades
+      // 2. Sumatoria de Egresos
       const resultadoEgresos = await this.dataSource.manager
         .createQueryBuilder(RespuestasFormulario, 'r')
         .select('SUM(r.valor_numerico)', 'total')
@@ -43,17 +42,17 @@ export class FichaRespuestasListener {
       // 3. Recalculamos el nivel socioeconómico y guardamos el balance
       await this.fichasService.recalcularNivelSocioeconomico(payload.fichaId, totalIngresos, totalEgresos);
 
-      this.logger.log(`[Event Success] Ficha ${payload.fichaId} calculada asíncronamente. Ingresos: $${totalIngresos}, Egresos: $${totalEgresos}`);
+      this.logger.log(`[Event Success] Ficha ${payload.fichaId} calculada. Ingresos: $${totalIngresos}, Egresos: $${totalEgresos}`);
 
-      // 4. Buscamos el usuario asociado a esta ficha para saber a quién enviarle el correo
+      // 4. Búsqueda de usuario para notificación
       const datosUsuario = await this.dataSource.manager
         .createQueryBuilder('fichas_respondidas', 'f')
-        .select(['u.nombres AS nombres', 'u.correo AS correo'])
+        .select(['u.primer_nombre AS nombres', 'u.email_institucional AS correo'])
         .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
         .where('f.id = :fichaId', { fichaId: payload.fichaId })
         .getRawOne();
 
-      // 5. Disparamos el correo a través del servicio
+      // 5. Disparamos el correo (si aplica)
       if (datosUsuario && datosUsuario.correo) {
         await this.mailService.enviarConfirmacionFicha(
           datosUsuario.correo,

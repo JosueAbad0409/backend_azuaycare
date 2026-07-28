@@ -1,9 +1,10 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, Index } from 'typeorm';
 import { Formulario } from '../../formularios/entities/formulario.entity';
 import { Usuario } from 'src/usuarios/entities/usuario.entity';
 import { Pregunta } from 'src/preguntas/entities/pregunta.entity';
 
 @Entity({ name: 'secciones' })
+@Index('IDX_SECCION_FORMULARIO_ID', ['formulario_id'])
 export class Seccion {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, DataSource } from 'typeorm';
 import { Pregunta } from './entities/pregunta.entity';
 import { CreatePreguntaDto } from './dto/create-pregunta.dto';
 import { UpdatePreguntaDto } from './dto/update-pregunta.dto';
@@ -16,9 +16,9 @@ export class PreguntasService {
     private readonly seccionesRepository: Repository<Seccion>,
     @InjectRepository(Formulario)
     private readonly formulariosRepository: Repository<Formulario>,
+    private readonly dataSource: DataSource, 
   ) {}
 
-  // 🔥 NUEVO: Validar que el formulario padre no esté publicado
   private async validarFormularioNoPublicadoPorSeccion(seccionId: string) {
     const seccion = await this.seccionesRepository.findOne({ 
       where: { id: seccionId, fecha_desactivacion: IsNull() } 
@@ -91,7 +91,30 @@ export class PreguntasService {
     const pregunta = await this.findOne(id);
     await this.validarFormularioNoPublicadoPorSeccion(pregunta.seccion_id);
 
-    await this.preguntasRepository.update(id, { fecha_desactivacion: new Date() });
-    return { message: 'Pregunta eliminada lógicamente con éxito.' };
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const now = new Date();
+      // 1. Desactivar pregunta principal
+      await queryRunner.manager.update(Pregunta, id, { fecha_desactivacion: now });
+      
+      // 2. Desactivar elementos hijos (opciones, filas, columnas, dependencias) usando QueryBuilder
+      await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_disparadora_id = :id', { id }).execute();
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+
+    return { message: 'Pregunta y sus dependencias eliminadas lógicamente con éxito.' };
   }
 }

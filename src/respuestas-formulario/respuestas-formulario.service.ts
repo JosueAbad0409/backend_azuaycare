@@ -8,7 +8,6 @@ import { DocumentosRespaldoService } from '../documentos-respaldo/documentos-res
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 import { Formulario } from 'src/formularios/entities/formulario.entity';
 
-// Interfaz para la respuesta precargada
 export interface RespuestaPrecargadaItem {
   pregunta_id: string;
   valor_texto: string | null;
@@ -27,7 +26,7 @@ export class RespuestasFormularioService {
   ) {}
 
   async guardarMuchas(
-    dtos: CreateRespuestasFormularioDto[], 
+    dtos: any[], // Tipado ajustado para aceptar respuestas_matriz
     usuarioId: string, 
     archivos?: Express.Multer.File[],
     esEnvioFinal: boolean = false,
@@ -52,7 +51,7 @@ export class RespuestasFormularioService {
     await queryRunner.startTransaction();
 
     try {
-      // 1. Limpieza previa de respuestas anteriores de la ficha (Borradores)
+      // 1. Limpieza de respuestas anteriores (Borradores)
       for (const fId of fichasIdsUnicas) {
         await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
       }
@@ -73,8 +72,9 @@ export class RespuestasFormularioService {
 
         const respuestaSalvada = await queryRunner.manager.save(nuevaRespuesta);
 
+        // 2.1 Inserción Opciones de Selección Múltiple/Única
         if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
-          const registrosIntermedios = dto.opciones_seleccionadas.map(opcionId => ({
+          const registrosIntermedios = dto.opciones_seleccionadas.map((opcionId: string) => ({
             respuesta_id: respuestaSalvada.id,
             opcion_id: opcionId,
           }));
@@ -87,47 +87,37 @@ export class RespuestasFormularioService {
             .execute();
         }
 
+        // 2.2 Inserción de Respuestas de Matriz (Añadido para el Bloque B)
+        if (dto.respuestas_matriz && dto.respuestas_matriz.length > 0) {
+          const registrosMatriz = dto.respuestas_matriz.map((matriz: any) => ({
+            respuesta_id: respuestaSalvada.id,
+            fila_id: matriz.fila_id,
+            columna_id: matriz.columna_id,
+            valor_texto: matriz.valor_texto ?? null
+          }));
+
+          await queryRunner.manager
+            .createQueryBuilder()
+            .insert()
+            .into('respuestas_matriz') 
+            .values(registrosMatriz)
+            .execute();
+        }
+
         respuestasGuardadas.push(respuestaSalvada);
       }
 
-      // 🔥 3. LÓGICA DE CÁLCULO Y GESTIÓN DE ESTADO / PLAZOS (Envío Definitivo)
+      // 3. GESTIÓN DE ESTADO Y PLAZOS (El cálculo financiero lo hará el Listener)
       if (fichaId) {
         const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
           where: { id: fichaId },
           relations: { formulario: true },
         });
 
-        const respuestasConPreguntas = await queryRunner.manager.find(RespuestasFormulario, {
-          where: { ficha_id: fichaId },
-          relations: { pregunta: true },
-        });
-
-        let totalIngresos = 0;
-        let totalEgresos = 0;
-
-        // Sumatoria basada en la categoria_financiera del Paso 1
-        for (const resp of respuestasConPreguntas) {
-          const categoria = resp.pregunta?.categoria_financiera;
-          const valorNum = resp.valor_numerico;
-
-          if (valorNum !== null && valorNum !== undefined) {
-            if (categoria === 'INGRESO') {
-              totalIngresos += Number(valorNum);
-            } else if (categoria === 'EGRESO') {
-              totalEgresos += Number(valorNum);
-            }
-          }
-        }
-
-        const datosUpdateFicha: any = {
-          total_ingresos: totalIngresos,
-          total_egresos: totalEgresos,
-          balance_final: totalIngresos - totalEgresos,
-        };
-
-        // Si cambia de BORRADOR a ENVIADA y el formulario tiene plazo de modificación configurado
         if (fichaActual && esEnvioFinal && (fichaActual as any).estado_ficha === 'BORRADOR') {
-          datosUpdateFicha.estado_ficha = 'ENVIADA';
+          const datosUpdateFicha: Partial<FichaRespondida> = {
+            estado_ficha: 'ENVIADA',
+          };
           
           if (fichaActual.formulario?.dias_plazo_modificacion) {
             const fechaLimite = new Date();
@@ -136,13 +126,13 @@ export class RespuestasFormularioService {
           } else {
             datosUpdateFicha.fecha_limite_edicion = null;
           }
-        }
 
-        // Cierre atómico del estado del expediente
-        await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha);
+          // Cierre atómico del estado del expediente
+          await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha as any);
+        }
       }
 
-      // 4. Manejo de archivos (Conectará con el Paso 4)
+      // 4. Manejo de archivos
       if (archivos && archivos.length > 0) {
         const documentosSubidos = await this.documentosService.subirMultiples(archivos);
         
@@ -161,14 +151,14 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
-      // Dispara el Event Listener asíncrono (Conectará con el Paso 5)
+      // 5. Dispara el Evento (Aquí ocurre el cálculo de balances y niveles socioeconómicos)
       if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }
 
       return {
         success: true,
-        message: `${respuestasGuardadas.length} respuestas procesadas y almacenadas con éxito.`,
+        message: `${respuestasGuardadas.length} respuestas almacenadas. Balances en cálculo.`,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -181,21 +171,17 @@ export class RespuestasFormularioService {
   async obtenerPrecarga(periodoNuevoId: string, usuarioId: string) {
     const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
       where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
-      relations: {
-        secciones: {
-          preguntas: true,
-        },
-      },
+      relations: { secciones: { preguntas: true } },
     });
 
     if (!formularioNuevo) {
-      throw new NotFoundException('No existe un formulario publicado para el nuevo periodo especificado.');
+      throw new NotFoundException('No existe un formulario publicado para el nuevo periodo.');
     }
 
     if (!formularioNuevo.periodo_origen_id) {
       return {
         es_precargable: false,
-        message: 'El formulario del nuevo periodo no proviene de una clonación previa.',
+        message: 'El formulario no proviene de una clonación previa.',
         respuestas_precargadas: [],
         preguntas_nuevas_pendientes: [],
       };
@@ -219,18 +205,15 @@ export class RespuestasFormularioService {
     if (!fichaAnterior) {
       return {
         es_precargable: false,
-        message: 'No se encontró una ficha respondida en el periodo anterior para este usuario.',
+        message: 'No se encontró una ficha respondida en el periodo anterior.',
         respuestas_precargadas: [],
         preguntas_nuevas_pendientes: [],
       };
     }
 
     const preguntasFormularioNuevo = (formularioNuevo.secciones || []).flatMap(s => s.preguntas || []);
-    
-    // Tipado explícito para evitar inferencia de 'never[]'
     const respuestasPrecargadas: RespuestaPrecargadaItem[] = [];
     const preguntasNuevasPendientes: string[] = [];
-
     const respuestasAnteriores = (fichaAnterior as any).respuestas || [];
 
     for (const preguntaNueva of preguntasFormularioNuevo) {
