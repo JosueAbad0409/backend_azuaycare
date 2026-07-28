@@ -54,6 +54,7 @@ import { Throttle, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MailModule } from './mail/mail.module';
+import { IaModule } from './ia/ia.module';
 
 @Module({
   imports: [
@@ -100,7 +101,8 @@ import { MailModule } from './mail/mail.module';
     HistorialRespuestasModule,
     RespuestasMatrizModule,
     PerfilCoordinadorModule,
-    MailModule, 
+    MailModule,
+    IaModule, 
   ],
   providers:[
     {
