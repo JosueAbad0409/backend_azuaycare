@@ -51,6 +51,11 @@ export class AuthService implements OnModuleInit {
   }
 
   async loginWithGoogle(loginGoogleDto: LoginGoogleDto) {
+
+    console.log('ALLOW_TEST_LOGIN =', process.env.ALLOW_TEST_LOGIN);
+    console.log('emailTest recibido =', loginGoogleDto.emailTest);
+    console.log('token recibido =', loginGoogleDto.token);
+
     try {
       let email = '';
       let googleId = '';
