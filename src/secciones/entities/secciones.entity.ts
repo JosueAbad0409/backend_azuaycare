@@ -17,6 +17,12 @@ export class Seccion {
   @Column({ type: 'integer', default: 1 })
   orden: number;
 
+  @Column({ name: 'tipo_seccion', type: 'varchar', length: 50, default: 'INFORMACION_GENERAL' })
+  tipo_seccion: string;
+
+  @Column({ name: 'subcategoria_financiera', type: 'varchar', length: 50, default: 'NINGUNO' })
+  subcategoria_financiera: string;
+
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;
 
@@ -32,9 +38,8 @@ export class Seccion {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  // Relación física con Formularios (Borrados en cascada automáticos)
-  
-  @ManyToOne (() => Formulario, (formulario) => formulario.secciones, { onDelete: 'CASCADE' })
+  // Relación física con Formularios
+  @ManyToOne(() => Formulario, (formulario) => formulario.secciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'formulario_id' })
   formulario: Formulario;
 
@@ -48,5 +53,4 @@ export class Seccion {
 
   @OneToMany(() => Pregunta, (pregunta) => pregunta.seccion)
   preguntas: Pregunta[];
-
 }

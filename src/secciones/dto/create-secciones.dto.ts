@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min, IsIn } from 'class-validator';
 
 export class CreateSeccionDto {
   @IsUUID('4', { message: 'El formulario_id debe ser un UUID válido.' })
@@ -17,4 +17,14 @@ export class CreateSeccionDto {
   @Min(1, { message: 'El orden de la sección debe ser mínimo 1.' })
   @IsOptional()
   orden?: number;
+
+  @IsString({ message: 'El tipo de sección debe ser un texto.' })
+  @IsIn(['INFORMACION_GENERAL', 'FINANCIERA'], { message: 'El tipo_seccion debe ser INFORMACION_GENERAL o FINANCIERA.' })
+  @IsOptional()
+  tipo_seccion?: string;
+
+  @IsString({ message: 'La subcategoría financiera debe ser un texto.' })
+  @IsIn(['INGRESOS', 'GASTOS', 'NINGUNO'], { message: 'La subcategoria_financiera debe ser INGRESOS, GASTOS o NINGUNO.' })
+  @IsOptional()
+  subcategoria_financiera?: string;
 }
