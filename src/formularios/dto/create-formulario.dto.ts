@@ -22,4 +22,14 @@ export class CreateFormularioDto {
   @Min(1, { message: 'El plazo debe ser de al menos 1 día.' })
   @IsOptional()
   dias_plazo_modificacion?: number | null;
+
+  // --- NUEVOS CAMPOS AGREGADOS PARA EVITAR EL ERROR 400 ---
+
+  @IsString({ message: 'El tipo de sección debe ser un texto.' })
+  @IsOptional()
+  tipo_seccion?: string;
+
+  @IsString({ message: 'La subcategoría financiera debe ser un texto.' })
+  @IsOptional()
+  subcategoria_financiera?: string;
 }
