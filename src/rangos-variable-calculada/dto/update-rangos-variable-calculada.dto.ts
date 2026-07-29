@@ -1,4 +1,4 @@
 import { PartialType } from '@nestjs/mapped-types';
-import { CreateRangosVariableCalculadaDto } from './create-rangos-variable-calculada.dto';
+import { CreateRangoVariableCalculadaDto } from './create-rangos-variable-calculada.dto';
 
-export class UpdateRangosVariableCalculadaDto extends PartialType(CreateRangosVariableCalculadaDto) {}
+export class UpdateRangosVariableCalculadaDto extends PartialType(CreateRangoVariableCalculadaDto) {}

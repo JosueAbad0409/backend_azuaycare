@@ -1,7 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { PeriodoMatricula } from '../../periodos-matricula/entities/periodos-matricula.entity';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
-import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 
 @Entity({ name: 'niveles_economicos' })
 export class NivelesEconomico {
@@ -62,7 +61,7 @@ export class NivelesEconomico {
   @JoinColumn({ name: 'creado_por' })
   creador: Usuario;
 
-  @OneToMany (() => FichaRespondida, (ficha) => ficha.nivel_economico_id)
-  fichas_respondidas: FichaRespondida[];
+  //@OneToMany (() => FichaRespondida, (ficha) => ficha.nivel_economico_id)
+  //fichas_respondidas: FichaRespondida[];
 
 }
