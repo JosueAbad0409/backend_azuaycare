@@ -1,5 +1,17 @@
-// src/preguntas/dto/create-pregunta.dto.ts
-import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { 
+  IsBoolean, 
+  IsInt, 
+  IsNotEmpty, 
+  IsOptional, 
+  IsString, 
+  IsUUID, 
+  MaxLength, 
+  Min, 
+  IsArray, 
+  ValidateNested 
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateOpcionPreguntaDto } from '../../opciones-pregunta/dto/create-opciones-pregunta.dto';
 
 export class CreatePreguntaDto {
   @IsUUID('4', { message: 'El seccion_id debe ser un UUID válido.' })
@@ -24,7 +36,7 @@ export class CreatePreguntaDto {
   @MaxLength(50, { message: 'La variable de cálculo no puede superar los 50 caracteres.' })
   variable_calculo?: string;
 
-  @IsBoolean({ message: 'El campo es_obligatorio debe ser un booleano (true o false).' })
+  @IsBoolean({ message: 'El campo es_obligatorio debe ser un booleano.' })
   @IsOptional()
   es_obligatorio?: boolean;
 
@@ -38,7 +50,13 @@ export class CreatePreguntaDto {
   @MaxLength(50, { message: 'El código del sistema no puede superar los 50 caracteres.' })
   codigo_sistema?: string;
 
-  @IsBoolean({ message: 'requiere_evidencia debe ser un booleano (true o false).' })
+  @IsBoolean({ message: 'requiere_evidencia debe ser un booleano.' })
   @IsOptional()
   requiere_evidencia?: boolean;
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateOpcionPreguntaDto)
+  opciones?: CreateOpcionPreguntaDto[];
 }
