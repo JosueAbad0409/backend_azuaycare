@@ -12,6 +12,11 @@ export class PreguntasDependenciasService {
   ) {}
 
   async create(createDto: CreatePreguntaDependenciaDto) {
+    // 🔥 NUEVA REGLA: Anti-bucles infinitos
+    if (createDto.pregunta_id === createDto.pregunta_disparadora_id) {
+      throw new BadRequestException('Bucle detectado: Una pregunta no puede configurarse para depender de sí misma.');
+    }
+
     if (!createDto.opcion_disparadora_id && !createDto.valor_disparador) {
       throw new BadRequestException('Debe proporcionar al menos una opción disparadora o un valor disparador.');
     }

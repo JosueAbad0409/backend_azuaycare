@@ -1,12 +1,12 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, IsNull } from 'typeorm';
+import { Repository, DataSource, IsNull, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter'; 
 import { RespuestasFormulario } from './entities/respuestas-formulario.entity';
-import { CreateRespuestasFormularioDto } from './dto/create-respuestas-formulario.dto';
 import { DocumentosRespaldoService } from '../documentos-respaldo/documentos-respaldo.service';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 import { Formulario } from 'src/formularios/entities/formulario.entity';
+import { Pregunta } from 'src/preguntas/entities/pregunta.entity'; // 🔥 Importación necesaria
 
 export interface RespuestaPrecargadaItem {
   pregunta_id: string;
@@ -43,6 +43,24 @@ export class RespuestasFormularioService {
 
       if (!ficha || (ficha as any).usuario_id !== usuarioId) {
         throw new ForbiddenException(`No tienes permiso para insertar respuestas en la ficha seleccionada.`);
+      }
+    }
+
+    // 🔥 NUEVA REGLA: Validar la integridad de las opciones por Tipo de Campo
+    const preguntasIds = [...new Set(dtos.map(dto => dto.pregunta_id))];
+    const preguntasData = await this.dataSource.getRepository(Pregunta).find({
+      where: { id: In(preguntasIds) },
+      relations: { tipoCampo: true }
+    });
+
+    for (const dto of dtos) {
+      const preguntaBD = preguntasData.find(p => p.id === dto.pregunta_id);
+      if (preguntaBD && preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
+        if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 1) {
+          throw new BadRequestException(
+            `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es de SELECCION_UNICA pero se recibieron ${dto.opciones_seleccionadas.length} opciones.`
+          );
+        }
       }
     }
 
@@ -87,7 +105,7 @@ export class RespuestasFormularioService {
             .execute();
         }
 
-        // 2.2 Inserción de Respuestas de Matriz (Añadido para el Bloque B)
+        // 2.2 Inserción de Respuestas de Matriz 
         if (dto.respuestas_matriz && dto.respuestas_matriz.length > 0) {
           const registrosMatriz = dto.respuestas_matriz.map((matriz: any) => ({
             respuesta_id: respuestaSalvada.id,
@@ -107,7 +125,7 @@ export class RespuestasFormularioService {
         respuestasGuardadas.push(respuestaSalvada);
       }
 
-      // 3. GESTIÓN DE ESTADO Y PLAZOS (El cálculo financiero lo hará el Listener)
+      // 3. GESTIÓN DE ESTADO Y PLAZOS
       if (fichaId) {
         const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
           where: { id: fichaId },
@@ -151,7 +169,7 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
-      // 5. Dispara el Evento (Aquí ocurre el cálculo de balances y niveles socioeconómicos)
+      // 5. Dispara el Evento (Cálculo de balances y niveles socioeconómicos)
       if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }
@@ -168,6 +186,7 @@ export class RespuestasFormularioService {
     }
   }
 
+  // Los métodos obtenerPrecarga, findByFicha, findAll y findOne permanecen sin cambios...
   async obtenerPrecarga(periodoNuevoId: string, usuarioId: string) {
     const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
       where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
