@@ -1,18 +1,21 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
 import { CreateFichaRespondidaDto } from './dto/create-ficha-respondida.dto';
 import { UpdateFichaRespondidaDto } from './dto/update-ficha-respondida.dto';
 import { ReabrirFichaDto } from './dto/reabrir-ficha.dto';
-import { NivelesEconomicosService } from '../niveles-economicos/niveles-economicos.service'; 
+
+import { Formulario } from '../formularios/entities/formulario.entity';
+import { RespuestasFormulario } from '../respuestas-formulario/entities/respuestas-formulario.entity';
+import puppeteer from 'puppeteer';
 
 @Injectable()
 export class FichasRespondidasService {
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
-    private readonly nivelesService: NivelesEconomicosService, 
+    private readonly dataSource: DataSource, 
   ) {}
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
@@ -35,8 +38,6 @@ export class FichasRespondidasService {
     const egresos = createDto.total_egresos ?? 0;
     const balanceCalculado = ingresos - egresos;
 
-    const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, createDto.periodo_id);
-
     const nuevaFicha = this.fichasRepository.create({
       ...createDto,
       usuario_id: usuarioId,
@@ -44,7 +45,7 @@ export class FichasRespondidasService {
       total_ingresos: ingresos,
       total_egresos: egresos,
       balance_final: balanceCalculado,
-      nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
+      rango_resultado_id: null,
     });
 
     return this.fichasRepository.save(nuevaFicha);
@@ -63,7 +64,7 @@ export class FichasRespondidasService {
   async findOne(id: string, user?: any) {
     const ficha = await this.fichasRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { usuario: true, periodo: true, formulario: true, cerradoPorUsuario: true },
+      relations: { usuario: true, periodo: true, formulario: true, cerradoPorUsuario: true, rangoResultado: true },
     });
 
     if (!ficha) {
@@ -80,117 +81,253 @@ export class FichasRespondidasService {
   async findByUsuario(usuarioId: string) {
     return this.fichasRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
-      relations: { periodo: true, formulario: true },
+      relations: { periodo: true, formulario: true, rangoResultado: true },
       order: { created_at: 'DESC' },
     });
+  }
+
+  async getResumenFicha(id: string, user: any) {
+    const ficha = await this.findOne(id, user);
+
+    const formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
+      where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
+      relations: {
+        secciones: {
+          preguntas: {
+            tipoCampo: true,
+            opciones: true,
+          }
+        }
+      },
+      order: {
+        secciones: { orden: 'ASC', preguntas: { orden: 'ASC', opciones: { orden: 'ASC' } } }
+      }
+    });
+
+    const respuestas = await this.dataSource.manager.find(RespuestasFormulario, {
+      where: { ficha_id: id, fecha_desactivacion: IsNull() },
+      relations: { 
+        opcionesSeleccionadas: { opcion: true }, 
+        documentos: true,
+        respuestasMatriz: { fila: true, columna: true } 
+      }
+    });
+
+    if (formularioCompleto && formularioCompleto.secciones) {
+      formularioCompleto.secciones.forEach((seccion: any) => {
+        if (seccion.preguntas) {
+          seccion.preguntas.forEach((pregunta: any) => {
+            pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
+          });
+        }
+      });
+    }
+
+    return {
+      ficha,
+      formulario_estructurado: formularioCompleto
+    };
   }
 
   async update(id: string, updateDto: UpdateFichaRespondidaDto, user: any) {
     const fichaExistente = await this.findOne(id, user);
     const esCoordinador = user.rol.includes('COORDINADOR');
 
-    // Validación de Bloqueo / Plazo Vencido
     if (!esCoordinador) {
-      if (fichaExistente.estado_ficha === 'CERRADA_MANUAL') {
-        throw new BadRequestException('Esta ficha fue cerrada manualmente por Bienestar Estudiantil y no admite modificaciones.');
-      }
-
-      if (fichaExistente.estado_ficha === 'CERRADA_POR_PLAZO') {
-        throw new BadRequestException('El plazo máximo de modificación de esta ficha ha expirado.');
-      }
-
+      if (fichaExistente.estado_ficha === 'CERRADA_MANUAL') throw new BadRequestException('Esta ficha fue cerrada manualmente.');
+      if (fichaExistente.estado_ficha === 'CERRADA_POR_PLAZO') throw new BadRequestException('El plazo máximo ha expirado.');
       if (fichaExistente.fecha_limite_edicion && new Date() > new Date(fichaExistente.fecha_limite_edicion)) {
         await this.fichasRepository.update(id, { estado_ficha: 'CERRADA_POR_PLAZO' });
-        throw new BadRequestException('El plazo de edición de la ficha ha vencido.');
+        throw new BadRequestException('El plazo de edición ha vencido.');
       }
-
-      if (fichaExistente.estado_ficha !== 'BORRADOR') {
-        throw new BadRequestException('No puedes editar una ficha que ya fue enviada o validada.');
-      }
+      if (fichaExistente.estado_ficha !== 'BORRADOR') throw new BadRequestException('No puedes editar una ficha enviada.');
     }
 
-    if (updateDto.estado_ficha && !esCoordinador) {
-      delete updateDto.estado_ficha;
+    const datosUpdate: any = { ...updateDto };
+    const estado_ficha = datosUpdate.estado_ficha;
+    const comentario = datosUpdate.comentario;
+    
+    delete datosUpdate.estado_ficha;
+    delete datosUpdate.comentario;
+    
+    if (estado_ficha && estado_ficha !== fichaExistente.estado_ficha) {
+      await this.dataSource.manager.insert('historial_estados_ficha', {
+        ficha_id: id,
+        estado_anterior: fichaExistente.estado_ficha,
+        estado_nuevo: estado_ficha,
+        comentario: comentario || null,
+        cambiado_por: user.id
+      });
+      datosUpdate.estado_ficha = estado_ficha;
     }
 
-    const datosActualizar: Partial<FichaRespondida> = { ...updateDto };
-
-    if (updateDto.total_ingresos !== undefined || updateDto.total_egresos !== undefined) {
-      const ingresos = updateDto.total_ingresos ?? fichaExistente.total_ingresos;
-      const egresos = updateDto.total_egresos ?? fichaExistente.total_egresos;
-      const balanceCalculado = ingresos - egresos;
-
-      const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, fichaExistente.periodo_id);
-      datosActualizar.nivel_economico_id = nivelAsignado ? nivelAsignado.id : null;
+    if (datosUpdate.total_ingresos !== undefined || datosUpdate.total_egresos !== undefined) {
+      const ingresos = datosUpdate.total_ingresos ?? fichaExistente.total_ingresos;
+      const egresos = datosUpdate.total_egresos ?? fichaExistente.total_egresos;
+      datosUpdate.balance_final = ingresos - egresos;
     }
 
-    await this.fichasRepository.update(id, datosActualizar);
+    if (Object.keys(datosUpdate).length > 0) {
+      await this.fichasRepository.update(id, datosUpdate);
+    }
+    
     return this.findOne(id, user);
+  }
+
+  async cambiarEstado(id: string, estadoNuevo: string, usuarioId: string, comentario?: string) {
+    const fichaExistente = await this.findOne(id);
+    
+    if (fichaExistente.estado_ficha !== estadoNuevo) {
+      await this.dataSource.manager.insert('historial_estados_ficha', {
+        ficha_id: id,
+        estado_anterior: fichaExistente.estado_ficha,
+        estado_nuevo: estadoNuevo,
+        comentario: comentario || null,
+        cambiado_por: usuarioId
+      });
+      await this.fichasRepository.update(id, { estado_ficha: estadoNuevo });
+    }
+
+    return this.findOne(id);
   }
 
   async cerrarManual(id: string, coordinadorId: string) {
     const ficha = await this.findOne(id);
+    if (ficha.estado_ficha === 'CERRADA_MANUAL') throw new BadRequestException('La ficha ya se encuentra cerrada.');
 
-    if (ficha.estado_ficha === 'CERRADA_MANUAL') {
-      throw new BadRequestException('La ficha ya se encuentra cerrada manualmente.');
-    }
-
-    await this.fichasRepository.update(id, {
-      estado_ficha: 'CERRADA_MANUAL',
-      cerrado_manual_por: coordinadorId,
-    });
-
+    await this.cambiarEstado(id, 'CERRADA_MANUAL', coordinadorId, 'Cierre manual por Bienestar Estudiantil');
+    await this.fichasRepository.update(id, { cerrado_manual_por: coordinadorId });
+    
     return this.findOne(id);
   }
 
   async reabrir(id: string, coordinadorId: string, reabrirDto?: ReabrirFichaDto) {
     const ficha = await this.findOne(id);
-
-    const datosReapertura: Partial<FichaRespondida> = {
-      estado_ficha: 'ENVIADA',
-      cerrado_manual_por: coordinadorId,
-    };
-
-    if (reabrirDto?.dias_extension) {
-      const nuevaFechaLimite = new Date();
+    
+    const nuevaFechaLimite = (reabrirDto && reabrirDto.dias_extension) ? new Date() : null;
+    if (nuevaFechaLimite && reabrirDto && reabrirDto.dias_extension) {
       nuevaFechaLimite.setDate(nuevaFechaLimite.getDate() + reabrirDto.dias_extension);
-      datosReapertura.fecha_limite_edicion = nuevaFechaLimite;
     }
 
-    await this.fichasRepository.update(id, datosReapertura);
+    await this.cambiarEstado(id, 'ENVIADA', coordinadorId, 'Reapertura autorizada por Bienestar Estudiantil');
+    
+    await this.fichasRepository.update(id, {
+      cerrado_manual_por: coordinadorId,
+      fecha_limite_edicion: nuevaFechaLimite
+    });
+
     return this.findOne(id);
   }
 
   async remove(id: string, user: any) {
     const ficha = await this.findOne(id, user);
-    
     if (ficha.estado_ficha === 'VALIDADO' || ficha.estado_ficha === 'ENVIADO' || ficha.estado_ficha === 'ENVIADA') {
       throw new BadRequestException('No se pueden eliminar fichas que ya han sido enviadas o validadas.');
     }
-
     await this.fichasRepository.update(id, { fecha_desactivacion: new Date() });
     return { message: 'Ficha de respuestas dada de baja con éxito.' };
   }
 
-  async cambiarEstado(id: string, estado: string) {
-    await this.findOne(id);
-    await this.fichasRepository.update(id, { estado_ficha: estado });
-    return this.findOne(id);
-  }
-
-  async recalcularNivelSocioeconomico(id: string, totalIngresos: number, totalEgresos: number) {
-    const ficha = await this.findOne(id); 
-    const balanceCalculado = totalIngresos - totalEgresos;
-
-    const nivelAsignado = await this.nivelesService.determinarNivel(balanceCalculado, ficha.periodo_id);
-
-    await this.fichasRepository.update(id, {
-      total_ingresos: totalIngresos,
-      total_egresos: totalEgresos,
-      balance_final: balanceCalculado,
-      nivel_economico_id: nivelAsignado ? nivelAsignado.id : null,
+  async generarPdfFicha(id: string, user: any): Promise<Buffer> {
+    const data = await this.getResumenFicha(id, user);
+    
+    let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', { 
+      where: { formulario_id: data.ficha.formulario_id } 
     });
 
-    return this.findOne(id);
+    if (!plantilla) {
+      plantilla = {
+        color_primario: '#003366', color_secundario: '#666666',
+        encabezado: 'Sistema de Bienestar Estudiantil', pie_pagina: 'Ficha generada automáticamente',
+        mostrar_tabla_rango: true, logo_url: ''
+      };
+    }
+
+    let html = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: 'Helvetica', sans-serif; color: #333; margin: 0; padding: 20px; }
+            .header { text-align: center; border-bottom: 3px solid ${plantilla.color_primario}; padding-bottom: 10px; margin-bottom: 20px; }
+            .header img { max-height: 60px; }
+            h1 { color: ${plantilla.color_primario}; font-size: 20px; }
+            h2 { color: ${plantilla.color_secundario}; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
+            .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid ${plantilla.color_primario}; }
+            .pregunta { margin-bottom: 10px; font-size: 12px; }
+            .pregunta b { display: block; color: #444; }
+            .respuesta { margin-top: 3px; color: #111; background: #eee; padding: 5px; border-radius: 3px; }
+            .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            ${plantilla.logo_url ? `<img src="${plantilla.logo_url}" alt="Logo">` : ''}
+            <h1>${plantilla.encabezado}</h1>
+        </div>
+
+        <div class="info-box">
+            <strong>Estudiante:</strong> ${data.ficha.usuario.primer_nombre} ${data.ficha.usuario.primer_apellido} <br>
+            <strong>Cédula:</strong> ${data.ficha.usuario.cedula} <br>
+            <strong>Fecha de envío:</strong> ${new Date(data.ficha.created_at).toLocaleDateString('es-ES')} <br>
+            <strong>Estado:</strong> ${data.ficha.estado_ficha}
+        </div>`;
+
+    if (plantilla.mostrar_tabla_rango) {
+      html += `
+        <div class="info-box" style="border-left-color: ${plantilla.color_secundario};">
+            <strong>Total Ingresos:</strong> $${data.ficha.total_ingresos} | 
+            <strong>Total Egresos:</strong> $${data.ficha.total_egresos} <br>
+            <strong>Balance Calculado:</strong> $${data.ficha.balance_final} <br>
+            <strong>Clasificación Asignada:</strong> ${data.ficha.rangoResultado ? data.ficha.rangoResultado.nombre : 'No clasificado'}
+        </div>`;
+    }
+
+    if (data.formulario_estructurado?.secciones) {
+      data.formulario_estructurado.secciones.forEach((sec: any) => {
+        html += `<h2>${sec.titulo}</h2>`;
+        
+        if (sec.preguntas) {
+          sec.preguntas.forEach((preg: any) => {
+            const resp = preg.respuesta_estudiante;
+            let respuestaTexto = '<i>Sin responder</i>';
+
+            if (resp) {
+              if (resp.valor_texto) respuestaTexto = resp.valor_texto;
+              else if (resp.valor_numerico !== null) respuestaTexto = resp.valor_numerico.toString();
+              else if (resp.opcionesSeleccionadas && resp.opcionesSeleccionadas.length > 0) {
+                respuestaTexto = resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', ');
+              }
+            }
+
+            html += `
+            <div class="pregunta">
+                <b>${preg.enunciado}</b>
+                <div class="respuesta">${respuestaTexto}</div>
+            </div>`;
+          });
+        }
+      });
+    }
+
+    html += `
+        <div class="footer">${plantilla.pie_pagina}</div>
+    </body>
+    </html>`;
+
+    const browser = await puppeteer.launch({ 
+      headless: true, 
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+    // 🔥 FIX: Cambiado a 'load' para evitar errores de tipado con TypeScript
+    await page.setContent(html, { waitUntil: 'load' });
+    
+    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true }) as any;
+    
+    await browser.close();
+
+    return pdfBuffer;
   }
 }

@@ -33,6 +33,12 @@ export class PreguntasController {
     return this.preguntasService.findBySeccion(seccionId);
   }
 
+  @Patch('reordenar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reordenar(@Body() body: { seccion_id: string, ordenes: { id: string, orden: number }[] }) {
+    return this.preguntasService.reordenar(body.seccion_id, body.ordenes);
+  }
+
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string) {

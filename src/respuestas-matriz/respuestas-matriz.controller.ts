@@ -1,5 +1,6 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { RespuestasMatrizService } from './respuestas-matriz.service';
+import { CreateRespuestasMatrizDto } from './dto/create-respuestas-matriz.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -8,6 +9,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RespuestasMatrizController {
   constructor(private readonly respuestasMatrizService: RespuestasMatrizService) {}
+
+  @Post()
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR')
+  create(@Body() createDto: CreateRespuestasMatrizDto) {
+    return this.respuestasMatrizService.create(createDto);
+  }
 
   @Get('respuesta/:respuestaId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')

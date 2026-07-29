@@ -24,21 +24,38 @@ export class PreguntasService {
       where: { id: seccionId, fecha_desactivacion: IsNull() } 
     });
     
-    if (!seccion) {
-      throw new NotFoundException('La sección indicada no existe.');
-    }
+    if (!seccion) throw new NotFoundException('La sección indicada no existe.');
 
     const formulario = await this.formulariosRepository.findOne({ 
       where: { id: seccion.formulario_id, fecha_desactivacion: IsNull() } 
     });
 
     if (formulario && formulario.publicado) {
-      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales en las preguntas.');
+      throw new BadRequestException('El formulario está publicado. No se permiten modificaciones estructurales.');
+    }
+  }
+
+  private async validarCategoriaFinanciera(seccionId: string, categoriaFinanciera?: string) {
+    const seccion = await this.seccionesRepository.findOne({ 
+      where: { id: seccionId, fecha_desactivacion: IsNull() } 
+    });
+    
+    if (!seccion) return;
+
+    const categoria = categoriaFinanciera || 'NINGUNO';
+
+    if (seccion.tipo_seccion === 'FINANCIERA' && categoria === 'NINGUNO') {
+      throw new BadRequestException('En una sección FINANCIERA, la categoría financiera debe ser INGRESO o EGRESO.');
+    }
+
+    if (seccion.tipo_seccion === 'INFORMACION_GENERAL' && (categoria === 'INGRESO' || categoria === 'EGRESO')) {
+      throw new BadRequestException('En una sección INFORMACION_GENERAL, la categoría financiera no puede ser INGRESO ni EGRESO.');
     }
   }
 
   async create(createPreguntaDto: CreatePreguntaDto, usuarioId: string) {
     await this.validarFormularioNoPublicadoPorSeccion(createPreguntaDto.seccion_id);
+    await this.validarCategoriaFinanciera(createPreguntaDto.seccion_id, createPreguntaDto.categoria_financiera);
 
     const nuevaPregunta = this.preguntasRepository.create({
       ...createPreguntaDto,
@@ -79,12 +96,37 @@ export class PreguntasService {
   async update(id: string, updatePreguntaDto: UpdatePreguntaDto, usuarioId: string) {
     const pregunta = await this.findOne(id);
     await this.validarFormularioNoPublicadoPorSeccion(pregunta.seccion_id);
+    
+    if (updatePreguntaDto.categoria_financiera) {
+      await this.validarCategoriaFinanciera(pregunta.seccion_id, updatePreguntaDto.categoria_financiera);
+    }
 
     await this.preguntasRepository.update(id, {
       ...updatePreguntaDto,
       actualizado_por: usuarioId,
     });
     return this.findOne(id);
+  }
+
+  async reordenar(seccion_id: string, ordenes: { id: string; orden: number }[]) {
+    await this.validarFormularioNoPublicadoPorSeccion(seccion_id);
+    
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const item of ordenes) {
+        await queryRunner.manager.update(Pregunta, { id: item.id, seccion_id }, { orden: item.orden });
+      }
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+    return { message: 'Preguntas reordenadas con éxito.' };
   }
 
   async remove(id: string) {
@@ -97,10 +139,8 @@ export class PreguntasService {
 
     try {
       const now = new Date();
-      // 1. Desactivar pregunta principal
       await queryRunner.manager.update(Pregunta, id, { fecha_desactivacion: now });
       
-      // 2. Desactivar elementos hijos (opciones, filas, columnas, dependencias) usando QueryBuilder
       await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
       await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
       await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();

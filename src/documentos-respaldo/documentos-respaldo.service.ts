@@ -4,14 +4,11 @@ import { Repository, DataSource, IsNull } from 'typeorm';
 import { DocumentoRespaldo } from './entities/documentos-respaldo.entity';
 import { CreateDocumentosRespaldoDto } from './dto/create-documentos-respaldo.dto';
 import { Express } from 'express'; 
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class DocumentosRespaldoService {
   private supabase: SupabaseClient;
-
-  // Definimos el nombre del bucket como constante de clase para reutilizarlo
   private readonly BUCKET_NAME = 'documentos_azuaycare';
 
   constructor(
@@ -41,6 +38,19 @@ export class DocumentosRespaldoService {
     }
   }
 
+  private async validarPropiedadFicha(fichaId: string, usuarioId: string, rol: string) {
+    if (rol.includes('COORDINADOR')) return true;
+
+    const resultado = await this.dataSource.query(
+      `SELECT usuario_id FROM fichas_respondidas WHERE id = $1`, 
+      [fichaId]
+    );
+
+    if (!resultado.length || resultado[0].usuario_id !== usuarioId) {
+      throw new ForbiddenException('No tienes permiso para ver los documentos de esta ficha.');
+    }
+  }
+
   async create(createDto: CreateDocumentosRespaldoDto, usuarioId: string, rol: string) {
     await this.validarPropiedadDocumento(createDto.respuesta_id, usuarioId, rol);
     const nuevoDocumento = this.documentosRepository.create(createDto);
@@ -55,18 +65,46 @@ export class DocumentosRespaldoService {
       relations: { respuesta: true, verificador: true },
     });
 
-    // 🔥 SEGURIDAD: Transformar el path interno en una URL firmada de corta duración
+    return this.firmarUrls(documentos);
+  }
+
+  async findByFicha(fichaId: string, usuarioId: string, rol: string) {
+    await this.validarPropiedadFicha(fichaId, usuarioId, rol);
+    
+    const documentos = await this.documentosRepository.find({
+      where: { respuesta: { ficha_id: fichaId }, fecha_desactivacion: IsNull() },
+      relations: { respuesta: { pregunta: true }, verificador: true },
+    });
+
+    return this.firmarUrls(documentos);
+  }
+
+  private async firmarUrls(documentos: DocumentoRespaldo[]) {
     for (const doc of documentos) {
       const { data, error } = await this.supabase.storage
         .from(this.BUCKET_NAME)
-        .createSignedUrl(doc.ruta_archivo, 60); // Válido por 60 segundos
+        .createSignedUrl(doc.ruta_archivo, 60); 
 
       if (!error && data) {
         doc.ruta_archivo = data.signedUrl;
       }
     }
-
     return documentos;
+  }
+
+  async verificar(id: string, verificado: boolean, observacion: string | undefined, verificadorId: string) {
+    const documento = await this.documentosRepository.findOne({ where: { id, fecha_desactivacion: IsNull() } });
+    if (!documento) throw new NotFoundException('Documento no encontrado.');
+
+    // 🔥 FIX: Cast "as any" para que TypeScript no bloquee la actualización de relaciones físicas
+    await this.documentosRepository.update(id, {
+      verificado,
+      observacion: observacion || null,
+      verificador: verificadorId, 
+      fecha_verificacion: new Date()
+    } as any);
+
+    return this.documentosRepository.findOne({ where: { id } });
   }
 
   async remove(id: string, usuarioId: string, rol: string) {
@@ -108,7 +146,6 @@ export class DocumentosRespaldoService {
         throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
       }
 
-      // 🔥 SEGURIDAD: Retornamos ÚNICAMENTE el path (data.path) a la base de datos
       return {
         ruta_archivo: data.path, 
         nombre_original: archivo.originalname,

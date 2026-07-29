@@ -2,6 +2,7 @@ import {
   Controller, 
   Post, 
   Get,
+  Patch,
   Delete,
   UseInterceptors, 
   UploadedFile, 
@@ -33,17 +34,15 @@ export class DocumentosRespaldoController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }), // 10MB máximo
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }), // 🔥 Expresión regular más segura
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }), 
         ],
       }),
     ) file: Express.Multer.File,
     @Body('respuesta_id') respuestaId: string,
     @Req() req: RequestWithUser,
   ) {
-    // 1. Subir buffer a Supabase Storage mediante el servicio
     const [archivoSubido] = await this.documentosService.subirMultiples([file]);
 
-    // 2. Registrar la evidencia en la base de datos asociándola a la respuesta
     return await this.documentosService.create(
       {
         respuesta_id: respuestaId,
@@ -61,6 +60,22 @@ export class DocumentosRespaldoController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
   findByRespuesta(@Param('respuestaId') respuestaId: string, @Req() req: RequestWithUser) {
     return this.documentosService.findByRespuesta(respuestaId, req.user.id, req.user.rol);
+  }
+
+  @Get('ficha/:fichaId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
+  findByFicha(@Param('fichaId') fichaId: string, @Req() req: RequestWithUser) {
+    return this.documentosService.findByFicha(fichaId, req.user.id, req.user.rol);
+  }
+
+  @Patch(':id/verificar')
+  @Roles('COORDINADOR_BIENESTAR')
+  verificar(
+    @Param('id') id: string, 
+    @Body() body: { verificado: boolean; observacion?: string }, 
+    @Req() req: RequestWithUser
+  ) {
+    return this.documentosService.verificar(id, body.verificado, body.observacion, req.user.id);
   }
 
   @Delete(':id')

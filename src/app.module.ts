@@ -55,6 +55,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MailModule } from './mail/mail.module';
 import { IaModule } from './ia/ia.module';
+import { RangosVariableCalculadaModule } from './rangos-variable-calculada/rangos-variable-calculada.module';
+import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
 
 @Module({
   imports: [
@@ -102,7 +104,9 @@ import { IaModule } from './ia/ia.module';
     RespuestasMatrizModule,
     PerfilCoordinadorModule,
     MailModule,
-    IaModule, 
+    IaModule,
+    RangosVariableCalculadaModule,
+    PlantillasPdfModule, 
   ],
   providers:[
     {

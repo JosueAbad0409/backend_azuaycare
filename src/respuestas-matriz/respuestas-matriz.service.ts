@@ -35,7 +35,6 @@ export class RespuestasMatrizService {
     return respuestaMatriz;
   }
 
-  // Añadido para permitir al estudiante corregir su respuesta antes de enviar la ficha
   async update(id: string, updateDto: Partial<CreateRespuestasMatrizDto>) {
     await this.findOne(id);
     await this.respuestasMatrizRepository.update(id, updateDto);

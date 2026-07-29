@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
 import { SeccionesService } from './secciones.service';
-
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -32,6 +31,12 @@ export class SeccionesController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findByFormulario(@Param('formularioId') formularioId: string) {
     return this.seccionesService.findByFormulario(formularioId);
+  }
+
+  @Patch('reordenar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reordenar(@Body() body: { formulario_id: string, ordenes: { id: string, orden: number }[] }) {
+    return this.seccionesService.reordenar(body.formulario_id, body.ordenes);
   }
 
   @Get(':id')

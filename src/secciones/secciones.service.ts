@@ -21,7 +21,7 @@ export class SeccionesService {
       where: { id: formularioId, fecha_desactivacion: IsNull() } 
     });
     if (formulario && formulario.publicado) {
-      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales en las secciones.');
+      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones.');
     }
   }
 
@@ -73,6 +73,27 @@ export class SeccionesService {
     return this.findOne(id);
   }
 
+  async reordenar(formulario_id: string, ordenes: { id: string; orden: number }[]) {
+    await this.validarFormularioNoPublicado(formulario_id);
+    
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const item of ordenes) {
+        await queryRunner.manager.update(Seccion, { id: item.id, formulario_id }, { orden: item.orden });
+      }
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+    return { message: 'Secciones reordenadas con éxito.' };
+  }
+
   async remove(id: string) {
     const seccion = await this.findOne(id);
     await this.validarFormularioNoPublicado(seccion.formulario_id);
@@ -83,10 +104,8 @@ export class SeccionesService {
 
     try {
       const now = new Date();
-      // 1. Desactivación de la sección principal
       await queryRunner.manager.update(Seccion, id, { fecha_desactivacion: now });
 
-      // 2. Localizar preguntas hijas usando QueryBuilder para evitar errores de tipado
       const preguntas = await queryRunner.manager
         .createQueryBuilder()
         .select('id')
@@ -97,8 +116,6 @@ export class SeccionesService {
 
       if (preguntas.length > 0) {
         const preguntaIds = preguntas.map(p => p.id);
-
-        // 3. Ejecución de cascada lógica a todas las dependencias usando QueryBuilder
         await queryRunner.manager.createQueryBuilder().update('preguntas').set({ fecha_desactivacion: now }).where('seccion_id = :seccionId', { seccionId: id }).execute();
         await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
         await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
@@ -115,6 +132,6 @@ export class SeccionesService {
       await queryRunner.release();
     }
 
-    return { message: 'Sección y sus dependencias dadas de baja con éxito.' };
+    return { message: 'Sección y dependencias dadas de baja con éxito.' };
   }
 }

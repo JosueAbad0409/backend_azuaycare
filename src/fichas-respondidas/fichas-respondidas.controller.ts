@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Req, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { FichasRespondidasService } from './fichas-respondidas.service';
 import { CreateFichaRespondidaDto } from './dto/create-ficha-respondida.dto';
 import { UpdateFichaRespondidaDto } from './dto/update-ficha-respondida.dto';
@@ -15,7 +16,6 @@ export class FichasRespondidasController {
   constructor(
     private readonly fichasService: FichasRespondidasService,
     private readonly mailService: MailService
-
   ) {}
 
   @Post()
@@ -47,6 +47,26 @@ export class FichasRespondidasController {
     return this.fichasService.findByUsuario(req.user.id);
   }
 
+  @Get(':id/resumen')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
+  getResumenFicha(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.fichasService.getResumenFicha(id, req.user);
+  }
+
+  @Get(':id/pdf')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
+  async descargarPdf(@Param('id') id: string, @Req() req: RequestWithUser, @Res() res: Response) {
+    const buffer = await this.fichasService.generarPdfFicha(id, req.user);
+    
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="ficha_${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    
+    res.end(buffer);
+  }
+
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
@@ -75,15 +95,19 @@ export class FichasRespondidasController {
     return this.fichasService.update(id, updateDto, req.user);
   }
 
+  @Patch(':id/estado')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  cambiarEstado(
+    @Param('id') id: string, 
+    @Body() body: { estado_ficha: string; comentario?: string },
+    @Req() req: RequestWithUser
+  ) {
+    return this.fichasService.cambiarEstado(id, body.estado_ficha, req.user.id, body.comentario);
+  }
+
   @Delete(':id')
   @Roles('COORDINADOR_BIENESTAR', 'ESTUDIANTE', 'INVITADO')
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.fichasService.remove(id, req.user);
-  }
-
-  @Patch(':id/estado')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  cambiarEstado(@Param('id') id: string, @Body('estado_ficha') estado: string) {
-    return this.fichasService.cambiarEstado(id, estado);
   }
 }

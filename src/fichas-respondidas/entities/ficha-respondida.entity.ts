@@ -2,8 +2,8 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { Usuario } from '../../usuarios/entities/usuario.entity';
 import { PeriodoMatricula } from '../../periodos-matricula/entities/periodos-matricula.entity';
 import { Formulario } from '../../formularios/entities/formulario.entity';
-import { NivelesEconomico } from 'src/niveles-economicos/entities/niveles-economico.entity';
 import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
+import { RangoVariableCalculada } from 'src/rangos-variable-calculada/entities/rangos-variable-calculada.entity';
 
 @Entity({ name: 'fichas_respondidas' })
 export class FichaRespondida {
@@ -51,13 +51,12 @@ export class FichaRespondida {
   })
   balance_final: number;
 
-  @Column({ name: 'nivel_economico_id', type: 'uuid', nullable: true })
-  nivel_economico_id: string | null;
+  @Column({ name: 'rango_resultado_id', type: 'uuid', nullable: true })
+  rango_resultado_id: string | null;
 
   @Column({ name: 'estado_ficha', type: 'character varying', length: 30, default: 'BORRADOR' })
   estado_ficha: string;
 
-  // NUEVAS COLUMNAS DE CONTROL DE BIENESTAR Y TRAZABILIDAD
   @Column({ name: 'fecha_limite_edicion', type: 'timestamp with time zone', nullable: true })
   fecha_limite_edicion: Date | null;
 
@@ -76,7 +75,6 @@ export class FichaRespondida {
   @Column({ type: 'timestamp', nullable: true })
   fecha_desactivacion: Date | null;
 
-  // Relaciones Físicas
   @ManyToOne(() => Usuario, (usuario) => usuario.fichasRespondidas, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'usuario_id' })
   usuario: Usuario;
@@ -89,9 +87,9 @@ export class FichaRespondida {
   @JoinColumn({ name: 'formulario_id' })
   formulario: Formulario;
 
-  @ManyToOne(() => NivelesEconomico, (nivel) => nivel.fichas_respondidas, { onDelete: 'NO ACTION' })
-  @JoinColumn({ name: 'nivel_economico_id' })
-  nivelEconomico: NivelesEconomico;
+  @ManyToOne(() => RangoVariableCalculada, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'rango_resultado_id' })
+  rangoResultado: RangoVariableCalculada;
 
   @ManyToOne(() => FichaRespondida, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'precargada_de_ficha_id' })

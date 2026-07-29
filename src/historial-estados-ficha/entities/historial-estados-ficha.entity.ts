@@ -25,13 +25,11 @@ export class HistorialEstadosFicha {
   @CreateDateColumn({ type: 'timestamp with time zone', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 
-  // Relaciones
-
   @ManyToOne(() => FichaRespondida, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ficha_id' })
   ficha: FichaRespondida;
 
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
-  @JoinColumn({ name: 'usuario_id' })
+  @JoinColumn({ name: 'cambiado_por' }) // 🔥 CORREGIDO: Debe coincidir con la columna física
   usuario: Usuario;
 }
