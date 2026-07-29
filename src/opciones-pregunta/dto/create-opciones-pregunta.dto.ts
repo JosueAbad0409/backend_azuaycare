@@ -1,9 +1,9 @@
 import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateOpcionPreguntaDto {
-  @IsUUID('4', { message: 'El pregunta_id debe un UUID válido.' })
-  @IsNotEmpty({ message: 'La pregunta asociada es obligatoria.' })
-  pregunta_id: string;
+  @IsUUID('4', { message: 'El pregunta_id debe ser un UUID válido.' })
+  @IsOptional() 
+  pregunta_id?: string;
 
   @IsString({ message: 'El texto de la opción debe ser una cadena válida.' })
   @IsNotEmpty({ message: 'El texto de la opción es obligatorio.' })
@@ -18,7 +18,7 @@ export class CreateOpcionPreguntaDto {
   @IsOptional()
   permite_texto_libre?: boolean;
 
-  // 🔥 NUEVOS CAMPOS:
+
   @IsNumber({}, { message: 'El valor ponderado debe ser un número.' })
   @IsOptional()
   valor_ponderado?: number;

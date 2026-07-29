@@ -25,18 +25,18 @@ export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) {}
 
   @Post()
-  @Roles('COORDINADOR_BIENESTAR') // Solo el administrador crea usuarios directamente
+  @Roles('COORDINADOR_BIENESTAR') 
   create(@Body() createUsuarioDto: CreateUsuarioDto) {
     return this.usuariosService.create(createUsuarioDto);
   }
 
   @Get()
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA') // Restringido a coordinadores
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA') 
   findAll(
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.usuariosService.findAll();
+    return this.usuariosService.findAll(+skip, +take); // CORRECCIÓN
   }
 
   @Get(':id')
@@ -45,7 +45,6 @@ export class UsuariosController {
     const usuarioActual = req.user;
     const esCoordinador = usuarioActual.rol.includes('COORDINADOR');
     
-    // Si no es coordinador, solo puede consultarse a sí mismo
     if (!esCoordinador && usuarioActual.id !== id) {
       throw new ForbiddenException('No tienes autorización para ver los datos de otros usuarios.');
     }

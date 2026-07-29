@@ -24,7 +24,7 @@ export class PreguntasController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.preguntasService.findAll();
+    return this.preguntasService.findAll(+skip, +take); // CORRECCIÓN
   }
 
   @Get('seccion/:seccionId')

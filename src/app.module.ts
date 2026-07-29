@@ -74,7 +74,7 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
         type: 'postgres' as const,
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: true,
+        synchronize: configService.get<string>('NODE_ENV') !== 'production', // CORRECCIÓN
         logging: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
@@ -116,5 +116,3 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
   ],
 })
 export class AppModule {}
-
-

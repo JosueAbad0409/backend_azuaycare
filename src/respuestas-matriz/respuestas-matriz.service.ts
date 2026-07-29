@@ -11,7 +11,12 @@ export class RespuestasMatrizService {
     private readonly respuestasMatrizRepository: Repository<RespuestasMatriz>,
   ) {}
 
-  async create(createDto: CreateRespuestasMatrizDto) {
+  async create(createDto: CreateRespuestasMatrizDto | CreateRespuestasMatrizDto[]) {
+    if (Array.isArray(createDto)) {
+      const nuevasRespuestas = this.respuestasMatrizRepository.create(createDto);
+      return this.respuestasMatrizRepository.save(nuevasRespuestas);
+    }
+
     const nuevaRespuestaMatriz = this.respuestasMatrizRepository.create(createDto);
     return this.respuestasMatrizRepository.save(nuevaRespuestaMatriz);
   }

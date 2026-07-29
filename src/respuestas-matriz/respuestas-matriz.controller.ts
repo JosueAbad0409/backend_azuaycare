@@ -12,8 +12,9 @@ export class RespuestasMatrizController {
 
   @Post()
   @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR')
-  create(@Body() createDto: CreateRespuestasMatrizDto) {
-    return this.respuestasMatrizService.create(createDto);
+  create(@Body() createDto: CreateRespuestasMatrizDto | CreateRespuestasMatrizDto[]) {
+    // El servicio deberá iterar si recibe un arreglo o procesar individualmente
+    return this.respuestasMatrizService.create(createDto as any);
   }
 
   @Get('respuesta/:respuestaId')

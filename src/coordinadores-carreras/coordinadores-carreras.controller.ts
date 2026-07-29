@@ -23,7 +23,7 @@ export class CoordinadoresCarrerasController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.coordinadoresService.findAll();
+    return this.coordinadoresService.findAll(+skip, +take);
   }
 
   @Get(':usuario_id/:carrera_id')
@@ -48,4 +48,3 @@ export class CoordinadoresCarrerasController {
     return this.coordinadoresService.remove(usuario_id, carrera_id);
   }
 }
-

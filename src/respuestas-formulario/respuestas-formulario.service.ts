@@ -2,11 +2,14 @@ import { ForbiddenException, Injectable, NotFoundException, BadRequestException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter'; 
+import { Express } from 'express';
+import 'multer';
+
 import { RespuestasFormulario } from './entities/respuestas-formulario.entity';
 import { DocumentosRespaldoService } from '../documentos-respaldo/documentos-respaldo.service';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 import { Formulario } from 'src/formularios/entities/formulario.entity';
-import { Pregunta } from 'src/preguntas/entities/pregunta.entity'; // 🔥 Importación necesaria
+import { Pregunta } from 'src/preguntas/entities/pregunta.entity';
 
 export interface RespuestaPrecargadaItem {
   pregunta_id: string;
@@ -26,7 +29,7 @@ export class RespuestasFormularioService {
   ) {}
 
   async guardarMuchas(
-    dtos: any[], // Tipado ajustado para aceptar respuestas_matriz
+    dtos: any[],
     usuarioId: string, 
     archivos?: Express.Multer.File[],
     esEnvioFinal: boolean = false,
@@ -46,7 +49,6 @@ export class RespuestasFormularioService {
       }
     }
 
-    // 🔥 NUEVA REGLA: Validar la integridad de las opciones por Tipo de Campo
     const preguntasIds = [...new Set(dtos.map(dto => dto.pregunta_id))];
     const preguntasData = await this.dataSource.getRepository(Pregunta).find({
       where: { id: In(preguntasIds) },
@@ -55,11 +57,20 @@ export class RespuestasFormularioService {
 
     for (const dto of dtos) {
       const preguntaBD = preguntasData.find(p => p.id === dto.pregunta_id);
-      if (preguntaBD && preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
-        if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 1) {
-          throw new BadRequestException(
-            `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es de SELECCION_UNICA pero se recibieron ${dto.opciones_seleccionadas.length} opciones.`
-          );
+      if (preguntaBD) {
+        if (preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
+          if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 1) {
+            throw new BadRequestException(
+              `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es de SELECCION_UNICA pero se recibieron ${dto.opciones_seleccionadas.length} opciones.`
+            );
+          }
+        }
+        if (preguntaBD.tipoCampo?.nombre === 'NUMERICO') {
+          if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
+            throw new BadRequestException(
+              `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es NUMERICA y no debe recibir opciones seleccionadas.`
+            );
+          }
         }
       }
     }
@@ -69,9 +80,13 @@ export class RespuestasFormularioService {
     await queryRunner.startTransaction();
 
     try {
-      // 1. Limpieza de respuestas anteriores (Borradores)
+      // 1. Limpieza de respuestas anteriores (Borrado lógico en lugar de físico)
       for (const fId of fichasIdsUnicas) {
-        await queryRunner.manager.delete(RespuestasFormulario, { ficha_id: fId });
+        await queryRunner.manager.update(
+          RespuestasFormulario, 
+          { ficha_id: fId, fecha_desactivacion: IsNull() }, 
+          { fecha_desactivacion: new Date() } as any
+        );
       }
 
       const respuestasGuardadas: RespuestasFormulario[] = [];
@@ -145,7 +160,6 @@ export class RespuestasFormularioService {
             datosUpdateFicha.fecha_limite_edicion = null;
           }
 
-          // Cierre atómico del estado del expediente
           await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha as any);
         }
       }
@@ -169,7 +183,7 @@ export class RespuestasFormularioService {
 
       await queryRunner.commitTransaction();
 
-      // 5. Dispara el Evento (Cálculo de balances y niveles socioeconómicos)
+      // 5. Dispara el Evento
       if (fichaId) {
         this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
       }
@@ -186,7 +200,6 @@ export class RespuestasFormularioService {
     }
   }
 
-  // Los métodos obtenerPrecarga, findByFicha, findAll y findOne permanecen sin cambios...
   async obtenerPrecarga(periodoNuevoId: string, usuarioId: string) {
     const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
       where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },

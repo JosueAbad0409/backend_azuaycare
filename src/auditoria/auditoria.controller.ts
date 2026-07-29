@@ -9,14 +9,13 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class AuditoriaController {
   constructor(private readonly auditoriaService: AuditoriaService) {}
 
-  // La auditoría suele ser de solo lectura mediante la API, la creación ocurre internamente
   @Get()
   @Roles('COORDINADOR_BIENESTAR')
   findAll(
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.auditoriaService.findAll();
+    return this.auditoriaService.findAll(+skip, +take);
   }
 
   @Get(':id')

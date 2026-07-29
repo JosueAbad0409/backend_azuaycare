@@ -17,7 +17,7 @@ export class RespuestasFormularioController {
   @UseInterceptors(FilesInterceptor('archivos')) 
   createBulk(
     @Body('respuestas') respuestasData: string | CreateRespuestasFormularioDto[], 
-    @Query('es_envio_final') esEnvioFinal = 'false',
+    @Body('es_envio_final') esEnvioFinal = 'false',
     @Req() req: RequestWithUser,
     @UploadedFiles() archivos: Express.Multer.File[]
   ) {
@@ -25,7 +25,7 @@ export class RespuestasFormularioController {
       ? JSON.parse(respuestasData) 
       : respuestasData;
 
-    const esFinal = esEnvioFinal === 'true';
+    const esFinal = esEnvioFinal === 'true' || esEnvioFinal === (true as any);
 
     return this.respuestasService.guardarMuchas(createDtos, req.user.id, archivos, esFinal);
   }

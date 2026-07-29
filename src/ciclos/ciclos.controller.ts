@@ -23,7 +23,7 @@ export class CiclosController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.ciclosService.findAll();
+    return this.ciclosService.findAll(+skip, +take); // CORRECCIÓN
   }
 
   @Get(':id')
@@ -44,4 +44,3 @@ export class CiclosController {
     return this.ciclosService.remove(id);
   }
 }
-

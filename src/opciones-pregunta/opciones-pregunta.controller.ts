@@ -24,7 +24,7 @@ export class OpcionesPreguntaController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.opcionesPreguntaService.findAll();
+    return this.opcionesPreguntaService.findAll(+skip, +take); // CORRECCIÓN
   }
 
   @Get('pregunta/:preguntaId')

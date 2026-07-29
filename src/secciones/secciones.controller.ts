@@ -24,7 +24,7 @@ export class SeccionesController {
     @Query('skip') skip = 0,
     @Query('take') take = 10,
   ) {
-    return this.seccionesService.findAll();
+    return this.seccionesService.findAll(+skip, +take); // CORRECCIÓN
   }
 
   @Get('formulario/:formularioId')
