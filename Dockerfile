@@ -1,6 +1,19 @@
 # Usamos una versión ligera de Node (coincide con la versión que usa Render)
 FROM node:24-alpine
 
+# 🔥 1. INSTALAMOS CHROMIUM Y SUS DEPENDENCIAS PARA ALPINE
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# 🔥 2. EVITAMOS QUE PUPPETEER DESCARGUE SU PROPIO CHROME PESADO
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Creamos el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
