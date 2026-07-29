@@ -50,7 +50,29 @@ export class FormulariosService {
   async findOne(id: string) {
     const formulario = await this.formulariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { periodo: true },
+      relations: {
+        periodo: true,
+        secciones: {
+          preguntas: {
+            tipoCampo: true,
+            opciones: true,
+            filas: true,
+            columnas: true,
+            dependencias: true,
+          },
+        },
+      },
+      order: {
+        secciones: {
+          orden: 'ASC',
+          preguntas: {
+            orden: 'ASC',
+            opciones: {
+              orden: 'ASC',
+            },
+          },
+        },
+      },
     });
 
     if (!formulario) {
