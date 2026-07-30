@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
@@ -8,15 +8,37 @@ import { ReabrirFichaDto } from './dto/reabrir-ficha.dto';
 
 import { Formulario } from '../formularios/entities/formulario.entity';
 import { RespuestasFormulario } from '../respuestas-formulario/entities/respuestas-formulario.entity';
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser } from 'puppeteer';
 
 @Injectable()
-export class FichasRespondidasService {
+export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
+  private browser: Browser;
+
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
     private readonly dataSource: DataSource, 
   ) {}
+
+  async onModuleInit() {
+    this.browser = await puppeteer.launch({ 
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, 
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions' // Apagamos extensiones para que arranque más rápido
+      ]
+    });
+  }
+
+  async onModuleDestroy() {
+    if (this.browser) {
+      await this.browser.close();
+    }
+  }
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
     const existeFicha = await this.fichasRepository.findOne({
@@ -337,27 +359,19 @@ export class FichasRespondidasService {
     </body>
     </html>`;
 
-    const browser = await puppeteer.launch({ 
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, 
-      args: ['--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ]
-    });
-    const page = await browser.newPage();
-
+    // 🚀 EXTREMADAMENTE RÁPIDO: Usamos el navegador que ya está abierto
+    const page = await this.browser.newPage();
+    
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
     
-    // Agregamos márgenes explícitos para que el contenido respire y no se corte
     const pdfBuffer = await page.pdf({ 
       format: 'A4', 
       printBackground: true,
       margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
     }) as any;
     
-    await browser.close();
+    // ⚠️ MUY IMPORTANTE: Solo cerramos la pestaña, NO el navegador
+    await page.close();
 
     return pdfBuffer;
   }
