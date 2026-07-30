@@ -259,9 +259,11 @@ export class FichasRespondidasService {
             body { font-family: 'Helvetica', sans-serif; color: #333; margin: 0; padding: 20px; }
             .header { text-align: center; border-bottom: 3px solid ${plantilla.color_primario}; padding-bottom: 10px; margin-bottom: 20px; }
             .header img { max-height: 60px; }
-            h1 { color: ${plantilla.color_primario}; font-size: 20px; }
+            h1 { color: ${plantilla.color_primario}; font-size: 20px; margin-bottom: 5px; }
+            .form-titulo { font-size: 16px; color: #555; margin-top: 0; }
+            .form-descripcion { font-size: 12px; color: #777; margin-bottom: 15px; }
             h2 { color: ${plantilla.color_secundario}; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
-            .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid ${plantilla.color_primario}; }
+            .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid ${plantilla.color_primario}; font-size: 13px; }
             .pregunta { margin-bottom: 10px; font-size: 12px; }
             .pregunta b { display: block; color: #444; }
             .respuesta { margin-top: 3px; color: #111; background: #eee; padding: 5px; border-radius: 3px; }
@@ -272,16 +274,22 @@ export class FichasRespondidasService {
         <div class="header">
             ${plantilla.logo_url ? `<img src="${plantilla.logo_url}" alt="Logo">` : ''}
             <h1>${plantilla.encabezado}</h1>
+            <!-- 🔥 Se agregó el Título y Descripción del Formulario -->
+            <div class="form-titulo">${data.formulario_estructurado?.titulo || 'Formulario'}</div>
+            ${data.formulario_estructurado?.descripcion ? `<div class="form-descripcion">${data.formulario_estructurado.descripcion}</div>` : ''}
         </div>
 
         <div class="info-box">
             <strong>Estudiante:</strong> ${data.ficha.usuario.primer_nombre} ${data.ficha.usuario.primer_apellido} <br>
-            <strong>Cédula:</strong> ${data.ficha.usuario.cedula} <br>
+            <strong>Cédula:</strong> ${data.ficha.usuario.cedula || 'N/A'} <br>
+            <!-- 🔥 Se agregó el Nombre del Periodo -->
+            <strong>Periodo:</strong> ${data.ficha.periodo?.nombre || 'N/A'} <br>
             <strong>Fecha de envío:</strong> ${new Date(data.ficha.created_at).toLocaleDateString('es-ES')} <br>
             <strong>Estado:</strong> ${data.ficha.estado_ficha}
         </div>`;
 
-    if (plantilla.mostrar_tabla_rango) {
+    // 🔥 FIX: Ahora el bloque financiero SOLO aparece si el formulario es explícitamente SOCIOECONOMICO
+    if (plantilla.mostrar_tabla_rango && data.formulario_estructurado?.tipo === 'SOCIOECONOMICO') {
       html += `
         <div class="info-box" style="border-left-color: ${plantilla.color_secundario};">
             <strong>Total Ingresos:</strong> $${data.ficha.total_ingresos} | 
@@ -293,7 +301,9 @@ export class FichasRespondidasService {
 
     if (data.formulario_estructurado?.secciones) {
       data.formulario_estructurado.secciones.forEach((sec: any) => {
-        html += `<h2>${sec.titulo}</h2>`;
+        // 🔥 FIX: Usamos sec.nombre. Si por alguna razón tu BD sí usa titulo, el operador || lo cubre como respaldo.
+        const nombreSeccion = sec.nombre || sec.titulo || 'Sección sin nombre';
+        html += `<h2>${nombreSeccion}</h2>`;
         
         if (sec.preguntas) {
           sec.preguntas.forEach((preg: any) => {
@@ -333,7 +343,6 @@ export class FichasRespondidasService {
       ]
     });
     const page = await browser.newPage();
-    // 🔥 FIX: Cambiado a 'load' para evitar errores de tipado con TypeScript
     await page.setContent(html, { waitUntil: 'load' });
     
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true }) as any;
@@ -342,4 +351,5 @@ export class FichasRespondidasService {
 
     return pdfBuffer;
   }
+  
 }
