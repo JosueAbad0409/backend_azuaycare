@@ -19,33 +19,41 @@ export class FichaRespuestasListener {
     try {
       const ficha = await this.dataSource.manager.findOne(FichaRespondida, { 
         where: { id: payload.fichaId },
-        select: {id: true, 
-          formulario_id: true}
+        select: { id: true, formulario_id: true }
       });
 
       if (!ficha) return;
 
-      // 1. Sumatoria de Ingresos (Filtrando por categoria_financiera)
-      const valIngresos = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
-        .select('SUM(r.valor_numerico)', 'total')
+      // 1. Extraer Ingresos (Manejando textos y números, e ignorando borradores)
+      const ingresosDb = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
+        .select('r.valor_numerico', 'num')
+        .addSelect('r.valor_texto', 'txt')
         .innerJoin('r.pregunta', 'p')
         .where('r.ficha_id = :fichaId', { fichaId: payload.fichaId })
         .andWhere("p.categoria_financiera = 'INGRESO'")
-        .getRawOne();
+        .andWhere('r.fecha_desactivacion IS NULL') // 🔥 FIX: Fundamental para no sumar historiales
+        .getRawMany();
         
-      // 2. Sumatoria de Egresos
-      const valEgresos = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
-        .select('SUM(r.valor_numerico)', 'total')
+      let totalIngresos = 0;
+      // Convertimos a número de forma segura, ya sea que Angular lo envió como int o como string
+      ingresosDb.forEach(r => totalIngresos += Number(r.num) || Number(r.txt) || 0);
+
+      // 2. Extraer Egresos
+      const egresosDb = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
+        .select('r.valor_numerico', 'num')
+        .addSelect('r.valor_texto', 'txt')
         .innerJoin('r.pregunta', 'p')
         .where('r.ficha_id = :fichaId', { fichaId: payload.fichaId })
         .andWhere("p.categoria_financiera = 'EGRESO'")
-        .getRawOne();
+        .andWhere('r.fecha_desactivacion IS NULL')
+        .getRawMany();
 
-      const totalIngresos = valIngresos?.total ? parseFloat(valIngresos.total) : 0;
-      const totalEgresos = valEgresos?.total ? parseFloat(valEgresos.total) : 0;
+      let totalEgresos = 0;
+      egresosDb.forEach(r => totalEgresos += Number(r.num) || Number(r.txt) || 0);
+
       const balance = totalIngresos - totalEgresos;
 
-      // 3. Buscar en el nuevo motor de variables calculadas para la variable 'BALANCE'
+      // 3. Buscar en el motor de variables calculadas para 'BALANCE'
       let rangoAsignadoId = null;
       const rango = await this.dataSource.manager.createQueryBuilder('rangos_variable_calculada', 'rvc')
         .where('rvc.formulario_id = :formId', { formId: ficha.formulario_id })
@@ -64,10 +72,10 @@ export class FichaRespuestasListener {
         total_ingresos: totalIngresos,
         total_egresos: totalEgresos,
         balance_final: balance,
-        rango_resultado_id: rangoAsignadoId // Si no encuentra, queda en null, sin lanzar error
+        rango_resultado_id: rangoAsignadoId 
       });
 
-      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance} | Rango Asignado ID: ${rangoAsignadoId || 'Ninguno'}`);
+      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance}`);
 
       // 5. Notificación
       const datosUsuario = await this.dataSource.manager.createQueryBuilder('fichas_respondidas', 'f')
@@ -85,4 +93,5 @@ export class FichaRespuestasListener {
       this.logger.error(`[Event Error] No se pudo clasificar la ficha ${payload.fichaId}:`, msg);
     }
   }
+  
 }

@@ -257,6 +257,7 @@ export class FichasRespondidasService {
     <head>
         <meta charset="UTF-8">
         <style>
+            .pregunta, .info-box, h2 { page-break-inside: avoid; }
             body { font-family: 'Helvetica', sans-serif; color: #333; margin: 0; padding: 20px; }
             .header { text-align: center; border-bottom: 3px solid ${plantilla.color_primario}; padding-bottom: 10px; margin-bottom: 20px; }
             .header img { max-height: 60px; }
@@ -346,9 +347,15 @@ export class FichasRespondidasService {
       ]
     });
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'load' });
+
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
     
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true }) as any;
+    // Agregamos márgenes explícitos para que el contenido respire y no se corte
+    const pdfBuffer = await page.pdf({ 
+      format: 'A4', 
+      printBackground: true,
+      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+    }) as any;
     
     await browser.close();
 
