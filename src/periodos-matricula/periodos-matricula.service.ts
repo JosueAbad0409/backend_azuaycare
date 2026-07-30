@@ -89,11 +89,6 @@ export class PeriodosMatriculaService {
 
   async update(id: string, updateDto: UpdatePeriodoMatriculaDto) {
     const periodo = await this.findOne(id);
-
-    if (periodo.bloqueado) {
-      throw new BadRequestException('No se puede modificar un periodo de matrícula que ha sido bloqueado.');
-    }
-
     const datosActualizados: Partial<PeriodoMatricula> = { ...updateDto };
 
     if (updateDto.nombre) {
