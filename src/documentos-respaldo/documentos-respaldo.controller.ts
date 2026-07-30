@@ -38,22 +38,10 @@ export class DocumentosRespaldoController {
         ],
       }),
     ) file: Express.Multer.File,
-    @Body('respuesta_id') respuestaId: string,
-    @Req() req: RequestWithUser,
   ) {
-    const [archivoSubido] = await this.documentosService.subirMultiples([file]);
-
-    return await this.documentosService.create(
-      {
-        respuesta_id: respuestaId,
-        ruta_archivo: archivoSubido.ruta_archivo!,
-        nombre_original: archivoSubido.nombre_original!,
-        mime_type: archivoSubido.mime_type!,
-        tamanio_bytes: archivoSubido.tamanio_bytes!,
-      },
-      req.user.id,
-      req.user.rol,
-    );
+    // 🚀 ELIMINAMOS la validación del respuesta_id. 
+    // Ahora solo recibimos el archivo y lo enviamos al nuevo método del servicio.
+    return await this.documentosService.subirUnArchivoTemporal(file);
   }
 
   @Get('respuesta/:respuestaId')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { DocumentoRespaldo } from './entities/documentos-respaldo.entity';
@@ -22,6 +22,42 @@ export class DocumentosRespaldoService {
       process.env.SUPABASE_URL as string,
       process.env.SUPABASE_KEY as string
     );
+  }
+
+  async subirUnArchivoTemporal(archivo: Express.Multer.File) {
+    if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
+
+    const partesNombre = archivo.originalname.split('.');
+    const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
+    const nombreSinExtension = partesNombre.join('');
+    
+    // Limpiamos el nombre para evitar errores en las URLs
+    const nombreLimpio = nombreSinExtension.replace(/[^a-zA-Z0-9]/g, '_');
+    const nombreUnico = extension 
+      ? `${Date.now()}-${nombreLimpio}.${extension}` 
+      : `${Date.now()}-${nombreLimpio}`;
+    
+    const { data, error } = await this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(nombreUnico, archivo.buffer, {
+        contentType: archivo.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
+    }
+
+    // Generamos la URL pública para devolverla a Angular
+    const { data: urlData } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(data.path);
+
+    return {
+      url: urlData.publicUrl, // Angular necesita exactamente esta propiedad "url"
+      path: data.path,
+      nombre_original: archivo.originalname
+    };
   }
 
   private async validarPropiedadDocumento(respuestaId: string, usuarioId: string, rol: string) {
