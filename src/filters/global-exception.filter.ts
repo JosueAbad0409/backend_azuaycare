@@ -1,37 +1,62 @@
-import {ExceptionFilter,Catch,ArgumentsHost,HttpException,HttpStatus,Logger,} from '@nestjs/common';
+// src/filters/global-exception.filter.ts
+
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-    private readonly logger = new Logger(GlobalExceptionFilter.name);
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
 
-    catch(exception: unknown, host: ArgumentsHost) {
-        const ctx = host.switchToHttp();
-        const response = ctx.getResponse<Response>();
-        const request = ctx.getRequest<Request>();
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
-        const status =
-        exception instanceof HttpException
-            ? exception.getStatus()
-            : HttpStatus.INTERNAL_SERVER_ERROR;
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
-        const message =
-        exception instanceof HttpException
-            ? exception.getResponse()
-            : 'Error interno del servidor';
+    // Extraemos el mensaje real, sin volver a anidarlo dentro de otro objeto.
+    let message: string | string[] = 'Error interno del servidor';
 
-        // Registramos el error real en la consola del servidor para depuración
-        this.logger.error(
-        `HTTP Status: ${status} Error Message: ${JSON.stringify(message)}`,
-        exception instanceof Error ? exception.stack : '',
-        );
+    if (exception instanceof HttpException) {
+      const exceptionResponse = exception.getResponse();
 
-        // Devolvemos una respuesta limpia al cliente
-        response.status(status).json({
-        statusCode: status,
-        timestamp: new Date().toISOString(),
-        path: request.url,
-        message: status === HttpStatus.INTERNAL_SERVER_ERROR ? 'Error interno del servidor' : message,
-        });
+      if (typeof exceptionResponse === 'string') {
+        // Caso: throw new BadRequestException('texto plano')
+        message = exceptionResponse;
+      } else if (exceptionResponse && typeof exceptionResponse === 'object') {
+        // Caso: ValidationPipe (class-validator) o
+        // throw new BadRequestException('texto') internamente devuelve
+        // { statusCode, message, error }. Tomamos solo el "message" real.
+        const inner = (exceptionResponse as any).message;
+        message = inner ?? exception.message ?? message;
+      }
     }
+
+    // Registramos el error real en la consola del servidor para depuración
+    this.logger.error(
+      `HTTP Status: ${status} Error Message: ${JSON.stringify(message)}`,
+      exception instanceof Error ? exception.stack : '',
+    );
+
+    // Devolvemos una respuesta limpia y plana al cliente
+    response.status(status).json({
+      statusCode: status,
+      timestamp: new Date().toISOString(),
+      path: request.url,
+      message:
+        status === HttpStatus.INTERNAL_SERVER_ERROR
+          ? 'Error interno del servidor'
+          : message,
+    });
+  }
 }
