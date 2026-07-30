@@ -72,13 +72,19 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      // Intentamos guardar la ficha en la base de datos
-      return await this.fichasRepository.save(nuevaFicha);
+      // 1. Guardamos el borrador vacío en la base de datos
+      const fichaGuardada = await this.fichasRepository.save(nuevaFicha);
+      
+      // 2. 🔥 Ejecutamos la herencia de respuestas anteriores para autocompletar la ficha
+      await this.heredarRespuestasAnteriores(fichaGuardada.id, usuarioId, createDto.formulario_id);
+
+      return fichaGuardada;
     } catch (error: any) {
       // Forzamos a que el error real llegue al frontend (rompe el filtro 500 temporalmente)
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
   }
+  
 
   findAll(skip: number = 0, take: number = 10) {
     return this.fichasRepository.find({
@@ -374,6 +380,115 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     await page.close();
 
     return pdfBuffer;
+  }
+  
+  private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
+    // 1. Buscar la ficha anterior más reciente del usuario (que ya esté completada)
+    const fichaAnterior = await this.fichasRepository.findOne({
+      where: [
+        { usuario_id: usuarioId, estado_ficha: 'ENVIADA', fecha_desactivacion: IsNull() },
+        { usuario_id: usuarioId, estado_ficha: 'VALIDADO', fecha_desactivacion: IsNull() },
+      ],
+      order: { created_at: 'DESC' },
+    });
+
+    // Si el estudiante es nuevo o nunca ha enviado una ficha, no hay nada que heredar
+    if (!fichaAnterior) return; 
+
+    const formViejoId = fichaAnterior.formulario_id;
+
+    // 2. Traer las preguntas de ambos formularios para buscar coincidencias exactas por texto (enunciado)
+    const preguntasViejas = await this.dataSource.query(
+      `SELECT p.id, p.enunciado FROM preguntas p 
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [formViejoId]
+    );
+
+    const preguntasNuevas = await this.dataSource.query(
+      `SELECT p.id, p.enunciado FROM preguntas p 
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [nuevoFormularioId]
+    );
+
+    // Crear un diccionario que conecta el ID de la pregunta vieja con el ID de la nueva
+    const mapaPreguntas = new Map<string, string>();
+    for (const pv of preguntasViejas) {
+      const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
+      if (pn) mapaPreguntas.set(pv.id, pn.id);
+    }
+
+    // 3. Hacer lo mismo con las Opciones de Selección Múltiple (Radio / Checkbox)
+    const opcionesViejas = await this.dataSource.query(
+      `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
+       INNER JOIN preguntas p ON p.id = o.pregunta_id
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND o.fecha_desactivacion IS NULL`, [formViejoId]
+    );
+
+    const opcionesNuevas = await this.dataSource.query(
+      `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
+       INNER JOIN preguntas p ON p.id = o.pregunta_id
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND o.fecha_desactivacion IS NULL`, [nuevoFormularioId]
+    );
+
+    const mapaOpciones = new Map<string, string>();
+    for (const ov of opcionesViejas) {
+      const pNuevaId = mapaPreguntas.get(ov.pregunta_id);
+      if (pNuevaId) {
+        const on = opcionesNuevas.find((n: any) => n.pregunta_id === pNuevaId && n.texto_opcion.trim().toLowerCase() === ov.texto_opcion.trim().toLowerCase());
+        if (on) mapaOpciones.set(ov.id, on.id);
+      }
+    }
+
+    // 4. Extraer todas las respuestas guardadas en la ficha anterior
+    const respuestasAnteriores = await this.dataSource.query(
+      `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas_formulario 
+       WHERE ficha_id = $1 AND fecha_desactivacion IS NULL`, [fichaAnterior.id]
+    );
+
+    // 5. Insertar los datos en el nuevo borrador (Textos, Números, Selecciones y PDFs)
+    for (const respVieja of respuestasAnteriores) {
+      const nuevaPreguntaId = mapaPreguntas.get(respVieja.pregunta_id);
+      
+      // Si la pregunta fue eliminada por el administrador en esta nueva versión, simplemente la ignoramos
+      if (!nuevaPreguntaId) continue;
+
+      // A) Copiar respuesta base (Texto / Número)
+      const insertRespuesta = await this.dataSource.query(
+        `INSERT INTO respuestas_formulario (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [nuevaFichaId, nuevaPreguntaId, respVieja.valor_texto, respVieja.valor_numerico, usuarioId]
+      );
+      const nuevaRespuestaId = insertRespuesta[0].id;
+
+      // B) Copiar las opciones marcadas (Combos, Checkboxes)
+      const seleccionadas = await this.dataSource.query(
+        `SELECT opcion_id FROM opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
+      );
+      for (const sel of seleccionadas) {
+        const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
+        if (nuevaOpcionId) {
+          await this.dataSource.query(
+            `INSERT INTO opciones_seleccionadas (respuesta_id, opcion_id) VALUES ($1, $2)`,
+            [nuevaRespuestaId, nuevaOpcionId]
+          );
+        }
+      }
+
+      // C) Copiar enlaces de los Documentos Adjuntos (Para no tener que volver a subir el PDF)
+      const documentos = await this.dataSource.query(
+        `SELECT ruta_archivo, nombre_original, mime_type, tamanio_bytes FROM documentos_respaldo WHERE respuesta_id = $1 AND fecha_desactivacion IS NULL`, 
+        [respVieja.id]
+      );
+      for (const doc of documentos) {
+        await this.dataSource.query(
+          `INSERT INTO documentos_respaldo (respuesta_id, ruta_archivo, nombre_original, mime_type, tamanio_bytes, creado_por) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [nuevaRespuestaId, doc.ruta_archivo, doc.nombre_original, doc.mime_type, doc.tamanio_bytes, usuarioId]
+        );
+      }
+    }
   }
   
 }
