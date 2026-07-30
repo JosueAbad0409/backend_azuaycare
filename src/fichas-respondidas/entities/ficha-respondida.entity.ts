@@ -83,7 +83,8 @@ export class FichaRespondida {
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
 
-  @ManyToOne(() => Formulario, { onDelete: 'NO ACTION' })
+  // 🔥 AQUÍ ESTÁ LA MAGIA: ON DELETE CASCADE
+  @ManyToOne(() => Formulario, (formulario) => formulario.fichas_respondidas, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'formulario_id' })
   formulario: Formulario;
 

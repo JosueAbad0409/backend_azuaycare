@@ -19,15 +19,23 @@ export class FormulariosController {
     return this.formulariosService.create(createFormularioDto, usuarioId);
   }
 
-  @Post(':id/clonar-a-periodo/:periodoNuevoId')
+  // Endpoint modificado para ajustarse a las necesidades de Angular
+  @Post(':id/clonar')
   @Roles('COORDINADOR_CARRERA', 'COORDINADOR_BIENESTAR')
-  clonarAPeriodo(
+  clonar(
     @Param('id') id: string,
-    @Param('periodoNuevoId') periodoNuevoId: string,
+    @Body('periodo_destino_id') periodoDestinoId: string,
     @Req() req: RequestWithUser,
   ) {
     const usuarioId = req.user.id;
-    return this.formulariosService.clonarHaciaNuevoPeriodo(id, periodoNuevoId, usuarioId);
+    return this.formulariosService.clonarAFormularioBorrador(id, periodoDestinoId, usuarioId);
+  }
+
+  // Nuevo Endpoint: Despublicar
+  @Patch(':id/despublicar')
+  @Roles('COORDINADOR_BIENESTAR')
+  despublicar(@Param('id') id: string) {
+    return this.formulariosService.despublicarFormulario(id);
   }
 
   @Post(':id/publicar')

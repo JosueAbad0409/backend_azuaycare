@@ -83,26 +83,19 @@ export class FormulariosService {
   }
 
   async publicarFormulario(id: string) {
-    // 1. Cargamos el formulario con sus relaciones usando la sintaxis de objeto
     const formulario = await this.formulariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: {
-        secciones: {
-          preguntas: true,
-        },
-      }, 
+      relations: { secciones: { preguntas: true } }, 
     });
 
     if (!formulario) {
       throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
     }
 
-    // 2. Control de estado
     if (formulario.publicado) {
       throw new BadRequestException('Este formulario ya se encuentra publicado.');
     }
 
-    // 3. Validación de integridad (No publicar si está vacío)
     if (!formulario.secciones || formulario.secciones.length === 0) {
       throw new BadRequestException('No se puede publicar un formulario sin secciones estructuradas.');
     }
@@ -123,10 +116,27 @@ export class FormulariosService {
     return this.findOne(id);
   }
 
+  // 1. NUEVO MÉTODO: Despublicar Formulario
+  async despublicarFormulario(id: string): Promise<Formulario> {
+    const formulario = await this.formulariosRepository.findOne({
+      where: { id, fecha_desactivacion: IsNull() },
+    });
+
+    if (!formulario) {
+      throw new NotFoundException('El formulario no existe o está inactivo.');
+    }
+
+    if (!formulario.publicado) {
+      throw new BadRequestException('El formulario ya se encuentra en borrador.');
+    }
+
+    await this.formulariosRepository.update(id, { publicado: false });
+    return this.findOne(id);
+  }
+
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
     const formulario = await this.findOne(id);
 
-    // 🔥 BLOQUEO ESTRATÉGICO: Congelamiento del diseño si está publicado
     if (formulario.publicado) {
       throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
     }
@@ -150,8 +160,8 @@ export class FormulariosService {
     return { message: 'Formulario dado de baja con éxito.' };
   }
 
-  async clonarHaciaNuevoPeriodo(formularioOrigenId: string, nuevoPeriodoId: string, usuarioId: string) {
-    // 1. Sintaxis de objeto en `relations` para evitar error TS2559
+  // 2. ACTUALIZADO: Método de Clonación con Purga
+  async clonarAFormularioBorrador(formularioOrigenId: string, nuevoPeriodoId: string, usuarioId: string): Promise<Formulario> {
     const formularioOrigen = await this.formulariosRepository.findOne({
       where: { id: formularioOrigenId, fecha_desactivacion: IsNull() },
       relations: {
@@ -171,12 +181,28 @@ export class FormulariosService {
       throw new NotFoundException('El formulario origen no existe o está inactivo.');
     }
 
+    // A. Consultar cuántas versiones activas existen registradas
+    const versionesExistentes = await this.formulariosRepository.find({
+      where: { tipo: formularioOrigen.tipo, fecha_desactivacion: IsNull() },
+      order: { version: 'ASC' },
+    });
+
+    // B. Verificación y purga de límite (Máximo 2 versiones existentes)
+    if (versionesExistentes.length >= 2) {
+      const versionMasAntigua = versionesExistentes[0];
+      // La eliminación física de v1 dispara la eliminación en CASCADA en la BD
+      await this.formulariosRepository.remove(versionMasAntigua);
+    }
+
+    // C. Determinar la nueva versión
+    const ultimaVersionObj = versionesExistentes[versionesExistentes.length - 1];
+    const nuevaVersionNumero = ultimaVersionObj ? ultimaVersionObj.version + 1 : 1;
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 2. Casteo seguro para el bloqueo de periodo hasta actualizar la entidad PeriodoMatricula
       if (formularioOrigen.periodo) {
         await queryRunner.manager.update(PeriodoMatricula, formularioOrigen.periodo.id, {
           bloqueado: true,
@@ -185,16 +211,15 @@ export class FormulariosService {
         } as any);
       }
 
-      // 3. Crear nuevo formulario
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
-        titulo: formularioOrigen.titulo,
+        titulo: `${formularioOrigen.titulo} (v${nuevaVersionNumero})`,
         descripcion: formularioOrigen.descripcion,
         tipo: formularioOrigen.tipo,
         periodo_id: nuevoPeriodoId,
         periodo_origen_id: formularioOrigen.id,
         dias_plazo_modificacion: formularioOrigen.dias_plazo_modificacion,
-        version: 1,
-        publicado: false,
+        version: nuevaVersionNumero,
+        publicado: false, // Inicia congelado en BORRADOR
         creado_por: usuarioId,
       });
 
@@ -203,7 +228,6 @@ export class FormulariosService {
       const mapaIdsViejosANuevos = new Map<string, string>();
       const dependenciasAClonar: { original: PreguntaDependencia; nuevaPreguntaId: string }[] = [];
 
-      // 4. Clonar Secciones en Cascada
       for (const seccionOrigen of formularioOrigen.secciones || []) {
         if (seccionOrigen.fecha_desactivacion) continue;
 
@@ -211,11 +235,12 @@ export class FormulariosService {
           formulario_id: formularioClonado.id,
           nombre: seccionOrigen.nombre,
           orden: seccionOrigen.orden,
+          tipo_seccion: seccionOrigen.tipo_seccion,
+          subcategoria_financiera: seccionOrigen.subcategoria_financiera,
           creado_por: usuarioId,
         });
         const seccionClonada = await queryRunner.manager.save(Seccion, nuevaSeccion);
 
-        // 5. Clonar Preguntas
         for (const preguntaOrigen of seccionOrigen.preguntas || []) {
           if (preguntaOrigen.fecha_desactivacion) continue;
 
@@ -234,7 +259,6 @@ export class FormulariosService {
           const preguntaClonada = await queryRunner.manager.save(Pregunta, nuevaPregunta);
           mapaIdsViejosANuevos.set(preguntaOrigen.id, preguntaClonada.id);
 
-          // Clonar Opciones con respaldo contra propiedades inexistentes
           for (const opcionOrigen of preguntaOrigen.opciones || []) {
             if ((opcionOrigen as any).fecha_desactivacion) continue;
             const nuevaOpcion = queryRunner.manager.create(OpcionPregunta, {
@@ -250,7 +274,6 @@ export class FormulariosService {
             mapaIdsViejosANuevos.set(opcionOrigen.id, opcionClonada.id);
           }
 
-          // Clonar Filas de Matriz
           for (const filaOrigen of preguntaOrigen.filas || []) {
             if ((filaOrigen as any).fecha_desactivacion) continue;
             const nuevaFila = queryRunner.manager.create(FilaMatriz, {
@@ -262,7 +285,6 @@ export class FormulariosService {
             await queryRunner.manager.save(FilaMatriz, nuevaFila);
           }
 
-          // Clonar Columnas de Matriz
           for (const colOrigen of preguntaOrigen.columnas || []) {
             if ((colOrigen as any).fecha_desactivacion) continue;
             const nuevaColumna = queryRunner.manager.create(ColumnaMatriz, {
@@ -277,7 +299,6 @@ export class FormulariosService {
             await queryRunner.manager.save(ColumnaMatriz, nuevaColumna);
           }
 
-          // Guardar dependencias
           for (const depOrigen of preguntaOrigen.dependencias || []) {
             if (depOrigen.fecha_desactivacion) continue;
             dependenciasAClonar.push({
@@ -288,7 +309,6 @@ export class FormulariosService {
         }
       }
 
-      // 6. Remapear y Guardar PreguntasDependencias
       for (const itemDep of dependenciasAClonar) {
         const dep = itemDep.original;
         const nuevaPreguntaDisparadoraId = mapaIdsViejosANuevos.get(dep.pregunta_disparadora_id);

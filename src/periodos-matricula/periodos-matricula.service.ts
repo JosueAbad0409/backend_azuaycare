@@ -33,9 +33,9 @@ export class PeriodosMatriculaService {
 
     const periodoGuardado = await this.periodosRepository.save(nuevoPeriodo);
 
-    // Si se especificó clonar un formulario origen en la misma solicitud
+    // Actualizamos el nombre de la función aquí
     if (createDto.clonar_formulario_origen_id && usuarioId) {
-      await this.formulariosService.clonarHaciaNuevoPeriodo(
+      await this.formulariosService.clonarAFormularioBorrador(
         createDto.clonar_formulario_origen_id,
         periodoGuardado.id,
         usuarioId,
