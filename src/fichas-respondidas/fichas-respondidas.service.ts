@@ -23,6 +23,7 @@ export class FichasRespondidasService {
       where: {
         usuario_id: usuarioId,
         periodo_id: createDto.periodo_id,
+        formulario_id: createDto.formulario_id, // <-- NUEVA REGLA: Permite 1 borrador por tipo de formulario
         fecha_desactivacion: IsNull(),
       },
       select: { id: true, estado_ficha: true },
@@ -30,7 +31,7 @@ export class FichasRespondidasService {
 
     if (existeFicha) {
       throw new BadRequestException(
-        `Ya tienes una ficha registrada en este periodo de matrícula en estado: ${existeFicha.estado_ficha}.`,
+        `Ya tienes una ficha registrada para este formulario en este periodo en estado: ${existeFicha.estado_ficha}.`,
       );
     }
 
