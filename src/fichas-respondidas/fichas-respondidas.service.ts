@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
@@ -13,6 +13,7 @@ import puppeteer, { Browser } from 'puppeteer';
 @Injectable()
 export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser;
+  private readonly logger = new Logger(FichasRespondidasService.name);
 
   constructor(
     @InjectRepository(FichaRespondida)
@@ -84,7 +85,7 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
   }
-  
+
 
   findAll(skip: number = 0, take: number = 10) {
     return this.fichasRepository.find({
@@ -383,7 +384,8 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
   }
   
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
-    // 1. Buscar la ficha anterior más reciente del usuario (que ya esté completada)
+    this.logger.log('🔄 --- INICIANDO AUTOCOMPLETADO DE FICHA ---');
+    
     const fichaAnterior = await this.fichasRepository.findOne({
       where: [
         { usuario_id: usuarioId, estado_ficha: 'ENVIADA', fecha_desactivacion: IsNull() },
@@ -392,12 +394,15 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       order: { created_at: 'DESC' },
     });
 
-    // Si el estudiante es nuevo o nunca ha enviado una ficha, no hay nada que heredar
-    if (!fichaAnterior) return; 
+    if (!fichaAnterior) {
+      this.logger.warn('❌ El estudiante es nuevo o no tiene fichas enviadas. Se cancela autocompletado.');
+      return; 
+    }
+    
+    this.logger.log(`✅ Ficha anterior encontrada: ${fichaAnterior.id}`);
 
     const formViejoId = fichaAnterior.formulario_id;
 
-    // 2. Traer las preguntas de ambos formularios para buscar coincidencias exactas por texto (enunciado)
     const preguntasViejas = await this.dataSource.query(
       `SELECT p.id, p.enunciado FROM preguntas p 
        INNER JOIN secciones s ON s.id = p.seccion_id 
@@ -410,14 +415,14 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
        WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [nuevoFormularioId]
     );
 
-    // Crear un diccionario que conecta el ID de la pregunta vieja con el ID de la nueva
     const mapaPreguntas = new Map<string, string>();
     for (const pv of preguntasViejas) {
       const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
       if (pn) mapaPreguntas.set(pv.id, pn.id);
     }
+    
+    this.logger.log(`🔗 Preguntas emparejadas con éxito: ${mapaPreguntas.size}`);
 
-    // 3. Hacer lo mismo con las Opciones de Selección Múltiple (Radio / Checkbox)
     const opcionesViejas = await this.dataSource.query(
       `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
        INNER JOIN preguntas p ON p.id = o.pregunta_id
@@ -441,28 +446,25 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // 4. Extraer todas las respuestas guardadas en la ficha anterior
     const respuestasAnteriores = await this.dataSource.query(
       `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas_formulario 
        WHERE ficha_id = $1 AND fecha_desactivacion IS NULL`, [fichaAnterior.id]
     );
 
-    // 5. Insertar los datos en el nuevo borrador (Textos, Números, Selecciones y PDFs)
+    let respuestasInsertadas = 0;
+
     for (const respVieja of respuestasAnteriores) {
       const nuevaPreguntaId = mapaPreguntas.get(respVieja.pregunta_id);
-      
-      // Si la pregunta fue eliminada por el administrador en esta nueva versión, simplemente la ignoramos
       if (!nuevaPreguntaId) continue;
 
-      // A) Copiar respuesta base (Texto / Número)
       const insertRespuesta = await this.dataSource.query(
         `INSERT INTO respuestas_formulario (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [nuevaFichaId, nuevaPreguntaId, respVieja.valor_texto, respVieja.valor_numerico, usuarioId]
       );
       const nuevaRespuestaId = insertRespuesta[0].id;
+      respuestasInsertadas++;
 
-      // B) Copiar las opciones marcadas (Combos, Checkboxes)
       const seleccionadas = await this.dataSource.query(
         `SELECT opcion_id FROM opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
       );
@@ -476,7 +478,6 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      // C) Copiar enlaces de los Documentos Adjuntos (Para no tener que volver a subir el PDF)
       const documentos = await this.dataSource.query(
         `SELECT ruta_archivo, nombre_original, mime_type, tamanio_bytes FROM documentos_respaldo WHERE respuesta_id = $1 AND fecha_desactivacion IS NULL`, 
         [respVieja.id]
@@ -489,6 +490,9 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
         );
       }
     }
+
+    this.logger.log(`💾 Respuestas insertadas: ${respuestasInsertadas}`);
+    this.logger.log('✅ --- AUTOCOMPLETADO FINALIZADO ---');
   }
   
 }
