@@ -187,12 +187,6 @@ export class FormulariosService {
       order: { version: 'ASC' },
     });
 
-    // B. Verificación y purga de límite (Máximo 2 versiones existentes)
-    if (versionesExistentes.length >= 2) {
-      const versionMasAntigua = versionesExistentes[0];
-      // La eliminación física de v1 dispara la eliminación en CASCADA en la BD
-      await this.formulariosRepository.remove(versionMasAntigua);
-    }
 
     // C. Determinar la nueva versión
     const ultimaVersionObj = versionesExistentes[versionesExistentes.length - 1];

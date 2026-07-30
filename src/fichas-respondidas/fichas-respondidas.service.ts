@@ -246,7 +246,8 @@ export class FichasRespondidasService {
       plantilla = {
         color_primario: '#003366', color_secundario: '#666666',
         encabezado: 'Sistema de Bienestar Estudiantil', pie_pagina: 'Ficha generada automáticamente',
-        mostrar_tabla_rango: true, logo_url: ''
+        mostrar_tabla_rango: false, 
+        logo_url: ''
       };
     }
 
@@ -289,13 +290,15 @@ export class FichasRespondidasService {
         </div>`;
 
     // 🔥 FIX: Ahora el bloque financiero SOLO aparece si el formulario es explícitamente SOCIOECONOMICO
-    if (plantilla.mostrar_tabla_rango && data.formulario_estructurado?.tipo === 'SOCIOECONOMICO') {
+    const esFichaFinanciera = plantilla.mostrar_tabla_rango === true || data.ficha.rangoResultado !== null;
+
+    if (esFichaFinanciera) {
       html += `
         <div class="info-box" style="border-left-color: ${plantilla.color_secundario};">
             <strong>Total Ingresos:</strong> $${data.ficha.total_ingresos} | 
             <strong>Total Egresos:</strong> $${data.ficha.total_egresos} <br>
             <strong>Balance Calculado:</strong> $${data.ficha.balance_final} <br>
-            <strong>Clasificación Asignada:</strong> ${data.ficha.rangoResultado ? data.ficha.rangoResultado.nombre : 'No clasificado'}
+            <strong>Clasificación Asignada:</strong> ${data.ficha.rangoResultado ? data.ficha.rangoResultado.nombre : 'En evaluación'}
         </div>`;
     }
 
