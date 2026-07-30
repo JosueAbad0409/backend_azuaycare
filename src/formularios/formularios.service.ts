@@ -141,10 +141,6 @@ export class FormulariosService {
       throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
     }
 
-    if (formulario.periodo && (formulario.periodo as any).bloqueado) {
-      throw new BadRequestException('No se puede modificar un formulario de un periodo que se encuentra bloqueado.');
-    }
-
     await this.formulariosRepository.update(id, updateFormularioDto);
     return this.findOne(id);
   }
@@ -197,13 +193,6 @@ export class FormulariosService {
     await queryRunner.startTransaction();
 
     try {
-      if (formularioOrigen.periodo) {
-        await queryRunner.manager.update(PeriodoMatricula, formularioOrigen.periodo.id, {
-          bloqueado: true,
-          fecha_bloqueo: new Date(),
-          activo: false,
-        } as any);
-      }
 
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
         titulo: `${formularioOrigen.titulo} (v${nuevaVersionNumero})`,
