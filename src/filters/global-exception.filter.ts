@@ -55,7 +55,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       path: request.url,
       message:
         status === HttpStatus.INTERNAL_SERVER_ERROR
-          ? 'Error interno del servidor'
+          ? (exception as any).message || 'Error interno del servidor'
           : message,
     });
   }

@@ -89,6 +89,8 @@ export class PeriodosMatriculaService {
 
   async update(id: string, updateDto: UpdatePeriodoMatriculaDto) {
     const periodo = await this.findOne(id);
+
+
     const datosActualizados: Partial<PeriodoMatricula> = { ...updateDto };
 
     if (updateDto.nombre) {
