@@ -5,6 +5,8 @@ import { DocumentoRespaldo } from './entities/documentos-respaldo.entity';
 import { CreateDocumentosRespaldoDto } from './dto/create-documentos-respaldo.dto';
 import { Express } from 'express'; 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
+import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 
 @Injectable()
 export class DocumentosRespaldoService {
@@ -25,28 +27,28 @@ export class DocumentosRespaldoService {
   private async validarPropiedadDocumento(respuestaId: string, usuarioId: string, rol: string) {
     if (rol.includes('COORDINADOR')) return true;
 
-    const resultado = await this.dataSource.query(
-      `SELECT f.usuario_id 
-       FROM respuestas_formulario r 
-       INNER JOIN fichas_respondidas f ON r.ficha_id = f.id 
-       WHERE r.id = $1`, 
-      [respuestaId]
-    );
+    // TypeORM averigua el nombre real de la tabla en Postgres automáticamente
+    const respuesta = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
+      .innerJoin('r.ficha', 'f')
+      .where('r.id = :respuestaId', { respuestaId })
+      .select(['f.usuario_id AS usuario_id'])
+      .getRawOne();
 
-    if (!resultado.length || resultado[0].usuario_id !== usuarioId) {
+    if (!respuesta || respuesta.usuario_id !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para gestionar los documentos de esta respuesta.');
     }
   }
 
+
   private async validarPropiedadFicha(fichaId: string, usuarioId: string, rol: string) {
     if (rol.includes('COORDINADOR')) return true;
 
-    const resultado = await this.dataSource.query(
-      `SELECT usuario_id FROM fichas_respondidas WHERE id = $1`, 
-      [fichaId]
-    );
+    const ficha = await this.dataSource.manager.createQueryBuilder(FichaRespondida, 'f')
+      .where('f.id = :fichaId', { fichaId })
+      .select(['f.usuario_id AS usuario_id'])
+      .getRawOne();
 
-    if (!resultado.length || resultado[0].usuario_id !== usuarioId) {
+    if (!ficha || ficha.usuario_id !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para ver los documentos de esta ficha.');
     }
   }
