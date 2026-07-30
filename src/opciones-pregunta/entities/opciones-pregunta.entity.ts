@@ -23,7 +23,6 @@ export class OpcionPregunta {
   @Column ({name: 'activo', type: 'boolean', default: true })
   activo: boolean;
 
-  // 🔥 NUEVOS CAMPOS:
   @Column({ name: 'valor_ponderado', type: 'numeric', default: 0 })
   valor_ponderado: number;
 
@@ -32,6 +31,10 @@ export class OpcionPregunta {
 
   @Column({ name: 'pregunta_hija_id', type: 'uuid', nullable: true })
   pregunta_hija_id: string | null;
+
+  // 🔥 NUEVO CAMPO AÑADIDO:
+  @Column({ name: 'es_correcta', type: 'boolean', default: false })
+  es_correcta: boolean;
 
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;

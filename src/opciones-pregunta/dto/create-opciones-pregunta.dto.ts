@@ -18,7 +18,6 @@ export class CreateOpcionPreguntaDto {
   @IsOptional()
   permite_texto_libre?: boolean;
 
-
   @IsNumber({}, { message: 'El valor ponderado debe ser un número.' })
   @IsOptional()
   valor_ponderado?: number;
@@ -30,4 +29,9 @@ export class CreateOpcionPreguntaDto {
   @IsUUID('4', { message: 'El pregunta_hija_id debe ser un UUID válido.' })
   @IsOptional()
   pregunta_hija_id?: string;
+
+  // 🔥 NUEVO CAMPO AÑADIDO:
+  @IsBoolean({ message: 'es_correcta debe ser un valor booleano.' })
+  @IsOptional()
+  es_correcta?: boolean;
 }

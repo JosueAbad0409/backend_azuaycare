@@ -14,7 +14,7 @@ export class OpcionesPreguntaService {
 
   async create(createOpcionPreguntaDto: CreateOpcionPreguntaDto, usuarioId: string) {
     const nuevaOpcion = this.opcionesRepository.create({
-      ...createOpcionPreguntaDto,
+      ...createOpcionPreguntaDto, // ✔️ Esto guarda automáticamente 'es_correcta'
       creado_por: usuarioId,
     });
     return this.opcionesRepository.save(nuevaOpcion);
@@ -49,7 +49,7 @@ export class OpcionesPreguntaService {
   async update(id: string, updateOpcionPreguntaDto: UpdateOpcionPreguntaDto, usuarioId: string) {
     await this.findOne(id);
     await this.opcionesRepository.update(id, {
-      ...updateOpcionPreguntaDto,
+      ...updateOpcionPreguntaDto, // ✔️ Esto actualiza automáticamente 'es_correcta'
       actualizado_por: usuarioId,
     });
     return this.findOne(id);
