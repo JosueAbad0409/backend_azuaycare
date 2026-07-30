@@ -41,7 +41,12 @@ export class RespuestasFormularioService {
     for (const fId of fichasIdsUnicas) {
       const ficha = await this.dataSource.getRepository(FichaRespondida).findOne({ 
         where: { id: fId }, 
-        select: ['id', 'usuario_id', 'estado_ficha', 'formulario_id'] as any
+        select: {
+          id: true,
+          usuario_id: true,
+          estado_ficha: true,
+          formulario_id: true
+        }
       });
 
       if (!ficha || (ficha as any).usuario_id !== usuarioId) {
