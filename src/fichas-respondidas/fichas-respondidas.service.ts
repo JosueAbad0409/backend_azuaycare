@@ -350,6 +350,28 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
               else if (resp.opcionesSeleccionadas && resp.opcionesSeleccionadas.length > 0) {
                 respuestaTexto = resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', ');
               }
+              // 👇 NUEVO: Soporte para renderizar la matriz dentro del PDF
+              else if (resp.respuestasMatriz && resp.respuestasMatriz.length > 0) {
+                const filasAgrupadas = new Map<string, string[]>();
+                
+                // Agrupamos las opciones seleccionadas por fila
+                resp.respuestasMatriz.forEach((rm: any) => {
+                  const textoFila = rm.fila?.texto_fila || 'Criterio';
+                  const textoColumna = rm.columna?.texto_columna || 'Opción';
+                  
+                  if (!filasAgrupadas.has(textoFila)) {
+                    filasAgrupadas.set(textoFila, []);
+                  }
+                  filasAgrupadas.get(textoFila)!.push(textoColumna);
+                });
+
+                // Construimos una lista HTML limpia para inyectar en el PDF
+                respuestaTexto = '<ul style="margin: 5px 0 0 20px; padding: 0; font-size: 11px;">';
+                filasAgrupadas.forEach((columnas, fila) => {
+                  respuestaTexto += `<li style="margin-bottom: 4px;"><b>${fila}:</b> ${columnas.join(', ')}</li>`;
+                });
+                respuestaTexto += '</ul>';
+              }
             }
 
             html += `
