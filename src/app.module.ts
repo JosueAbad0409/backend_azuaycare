@@ -14,6 +14,7 @@ import { Ciclo } from './ciclos/entities/ciclo.entity';
 import { PeriodosMatriculaModule } from './periodos-matricula/periodos-matricula.module';
 import { PeriodoMatricula } from './periodos-matricula/entities/periodos-matricula.entity';
 import { FormulariosModule } from './formularios/formularios.module';
+import { TiposFormularioModule } from './tipos-formulario/tipos-formulario.module'; // NUEVO IMPORT
 import { Formulario } from './formularios/entities/formulario.entity'; 
 import { SeccionesModule } from './secciones/secciones.module';
 import { Seccion } from './secciones/entities/secciones.entity';
@@ -86,6 +87,7 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
     CiclosModule,
     PeriodosMatriculaModule,
     FormulariosModule,
+    TiposFormularioModule, // NUEVO — registrado justo después de FormulariosModule
     SeccionesModule,
     TiposCampoFormModule,
     PreguntasModule,

@@ -19,7 +19,7 @@ export class PreguntasService {
     private readonly dataSource: DataSource,
   ) { }
 
-  private async validarFormularioNoPublicadoPorSeccion(seccionId: string) {
+  private async validarFormularioModificablePorSeccion(seccionId: string) {
     const seccion = await this.seccionesRepository.findOne({
       where: { id: seccionId, fecha_desactivacion: IsNull() }
     });
@@ -30,8 +30,8 @@ export class PreguntasService {
       where: { id: seccion.formulario_id, fecha_desactivacion: IsNull() }
     });
 
-    if (formulario && formulario.publicado) {
-      throw new BadRequestException('El formulario está publicado. No se permiten modificaciones estructurales.');
+    if (formulario && (formulario.publicado || formulario.bloqueado)) {
+      throw new BadRequestException('El formulario está congelado (publicado o bloqueado). No se permiten modificaciones estructurales.');
     }
   }
 
@@ -54,7 +54,7 @@ export class PreguntasService {
   }
 
   async create(createPreguntaDto: CreatePreguntaDto, usuarioId: string) {
-    await this.validarFormularioNoPublicadoPorSeccion(createPreguntaDto.seccion_id);
+    await this.validarFormularioModificablePorSeccion(createPreguntaDto.seccion_id);
     await this.validarCategoriaFinanciera(createPreguntaDto.seccion_id, createPreguntaDto.categoria_financiera);
 
     const nuevaPregunta = this.preguntasRepository.create({
@@ -80,13 +80,12 @@ export class PreguntasService {
         seccion_id: seccionId,
         fecha_desactivacion: IsNull()
       },
-      // 👇 ESTA ES LA LÍNEA CLAVE QUE DEBES AGREGAR 👇
       relations: {
         tipoCampo: true,
         opciones: true,
       },
       order: {
-        orden: 'ASC' // Opcional, para mantener el orden que definiste en el admin
+        orden: 'ASC' 
       }
     });
   }
@@ -104,7 +103,7 @@ export class PreguntasService {
 
   async update(id: string, updatePreguntaDto: UpdatePreguntaDto, usuarioId: string) {
     const pregunta = await this.findOne(id);
-    await this.validarFormularioNoPublicadoPorSeccion(pregunta.seccion_id);
+    await this.validarFormularioModificablePorSeccion(pregunta.seccion_id);
 
     if (updatePreguntaDto.categoria_financiera) {
       await this.validarCategoriaFinanciera(pregunta.seccion_id, updatePreguntaDto.categoria_financiera);
@@ -118,7 +117,7 @@ export class PreguntasService {
   }
 
   async reordenar(seccion_id: string, ordenes: { id: string; orden: number }[]) {
-    await this.validarFormularioNoPublicadoPorSeccion(seccion_id);
+    await this.validarFormularioModificablePorSeccion(seccion_id);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -140,7 +139,7 @@ export class PreguntasService {
 
   async remove(id: string) {
     const pregunta = await this.findOne(id);
-    await this.validarFormularioNoPublicadoPorSeccion(pregunta.seccion_id);
+    await this.validarFormularioModificablePorSeccion(pregunta.seccion_id);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

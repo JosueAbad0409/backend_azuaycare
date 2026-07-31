@@ -92,7 +92,7 @@ export class FichaRespondida {
   @JoinColumn({ name: 'rango_resultado_id' })
   rangoResultado: RangoVariableCalculada;
 
-  @ManyToOne(() => FichaRespondida, { onDelete: 'NO ACTION' })
+  @ManyToOne(() => FichaRespondida, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'precargada_de_ficha_id' })
   fichaOrigenPrecarga: FichaRespondida;
 

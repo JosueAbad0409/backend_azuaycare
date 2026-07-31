@@ -16,17 +16,17 @@ export class SeccionesService {
     private readonly dataSource: DataSource, 
   ) {}
 
-  private async validarFormularioNoPublicado(formularioId: string) {
+  private async validarFormularioModificable(formularioId: string) {
     const formulario = await this.formulariosRepository.findOne({ 
       where: { id: formularioId, fecha_desactivacion: IsNull() } 
     });
-    if (formulario && formulario.publicado) {
-      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones.');
+    if (formulario && (formulario.publicado || formulario.bloqueado)) {
+      throw new BadRequestException('El diseño del formulario está congelado (ya fue publicado o es una versión bloqueada). No se permiten modificaciones.');
     }
   }
 
   async create(createSeccionDto: CreateSeccionDto, usuarioId: string) {
-    await this.validarFormularioNoPublicado(createSeccionDto.formulario_id);
+    await this.validarFormularioModificable(createSeccionDto.formulario_id);
 
     const nuevaSeccion = this.seccionesRepository.create({
       ...createSeccionDto,
@@ -35,7 +35,7 @@ export class SeccionesService {
     return this.seccionesRepository.save(nuevaSeccion);
   }
 
-  findAll(skip: number=0, take: number=10) {
+  findAll(skip: number = 0, take: number = 10) {
     return this.seccionesRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip,
@@ -64,7 +64,7 @@ export class SeccionesService {
 
   async update(id: string, updateSeccionDto: UpdateSeccionDto, usuarioId: string) {
     const seccion = await this.findOne(id);
-    await this.validarFormularioNoPublicado(seccion.formulario_id);
+    await this.validarFormularioModificable(seccion.formulario_id);
 
     await this.seccionesRepository.update(id, {
       ...updateSeccionDto,
@@ -74,7 +74,7 @@ export class SeccionesService {
   }
 
   async reordenar(formulario_id: string, ordenes: { id: string; orden: number }[]) {
-    await this.validarFormularioNoPublicado(formulario_id);
+    await this.validarFormularioModificable(formulario_id);
     
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -96,7 +96,7 @@ export class SeccionesService {
 
   async remove(id: string) {
     const seccion = await this.findOne(id);
-    await this.validarFormularioNoPublicado(seccion.formulario_id);
+    await this.validarFormularioModificable(seccion.formulario_id);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();

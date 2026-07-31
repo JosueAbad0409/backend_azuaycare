@@ -4,29 +4,55 @@ import { Repository, IsNull, DataSource } from 'typeorm';
 import { Formulario } from './entities/formulario.entity';
 import { CreateFormularioDto } from './dto/create-formulario.dto';
 import { UpdateFormularioDto } from './dto/update-formulario.dto';
-import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
 import { Seccion } from 'src/secciones/entities/secciones.entity';
 import { Pregunta } from 'src/preguntas/entities/pregunta.entity';
 import { OpcionPregunta } from 'src/opciones-pregunta/entities/opciones-pregunta.entity';
 import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
 import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
 import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
+import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity';
 
 @Injectable()
 export class FormulariosService {
   constructor(
     @InjectRepository(Formulario)
     private readonly formulariosRepository: Repository<Formulario>,
+    @InjectRepository(TipoFormulario)
+    private readonly tiposFormularioRepository: Repository<TipoFormulario>,
     private readonly dataSource: DataSource,
   ) {}
 
   async create(createFormularioDto: CreateFormularioDto, usuarioId: string) {
+    // 1. Validar que el tipo de formulario exista y esté activo.
+    const tipoFormulario = await this.tiposFormularioRepository.findOne({
+      where: { id: createFormularioDto.tipo_formulario_id, fecha_desactivacion: IsNull() },
+    });
+    if (!tipoFormulario) {
+      throw new NotFoundException('El tipo de formulario indicado no existe o está inactivo.');
+    }
+
+    // 2. REGLA CLAVE: un solo formulario vivo por (tipo_formulario_id + periodo_id).
+    const yaExiste = await this.formulariosRepository.findOne({
+      where: {
+        tipo_formulario_id: createFormularioDto.tipo_formulario_id,
+        periodo_id: createFormularioDto.periodo_id,
+        fecha_desactivacion: IsNull(),
+      },
+    });
+    if (yaExiste) {
+      throw new BadRequestException(
+        `Ya existe un formulario de tipo "${tipoFormulario.nombre}" registrado para este periodo. ` +
+        `Solo se permite un formulario por tipo y periodo; usa "Clonar / Nueva versión" si quieres pasarlo a otro periodo.`,
+      );
+    }
+
     const ultimaVersion = await this.formulariosRepository.findOne({
-      where: { periodo_id: createFormularioDto.periodo_id, fecha_desactivacion: IsNull() },
+      where: { tipo_formulario_id: createFormularioDto.tipo_formulario_id, fecha_desactivacion: IsNull() },
       order: { version: 'DESC' },
       select: { version: true },
     });
     const nuevaVersion = ultimaVersion ? ultimaVersion.version + 1 : 1;
+
     const nuevoFormulario = this.formulariosRepository.create({
       ...createFormularioDto,
       version: nuevaVersion,
@@ -42,7 +68,7 @@ export class FormulariosService {
       where: { fecha_desactivacion: IsNull() },
       skip,
       take,
-      relations: { periodo: true },
+      relations: { periodo: true, tipoFormulario: true }, // se agrega tipoFormulario
       order: { created_at: 'DESC' },
     });
   }
@@ -52,6 +78,7 @@ export class FormulariosService {
       where: { id, fecha_desactivacion: IsNull() },
       relations: {
         periodo: true,
+        tipoFormulario: true, // se agrega tipoFormulario
         secciones: {
           preguntas: {
             tipoCampo: true,
@@ -65,12 +92,7 @@ export class FormulariosService {
       order: {
         secciones: {
           orden: 'ASC',
-          preguntas: {
-            orden: 'ASC',
-            opciones: {
-              orden: 'ASC',
-            },
-          },
+          preguntas: { orden: 'ASC', opciones: { orden: 'ASC' } },
         },
       },
     });
@@ -85,11 +107,15 @@ export class FormulariosService {
   async publicarFormulario(id: string) {
     const formulario = await this.formulariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { secciones: { preguntas: true } }, 
+      relations: { secciones: { preguntas: true } },
     });
 
     if (!formulario) {
       throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
+    }
+
+    if (formulario.bloqueado) {
+      throw new BadRequestException('Este formulario es una versión anterior bloqueada; no puede publicarse.');
     }
 
     if (formulario.publicado) {
@@ -100,23 +126,15 @@ export class FormulariosService {
       throw new BadRequestException('No se puede publicar un formulario sin secciones estructuradas.');
     }
 
-    const tienePreguntas = formulario.secciones.some(
-      (seccion) => seccion.preguntas && seccion.preguntas.length > 0
-    );
-
+    const tienePreguntas = formulario.secciones.some((s) => s.preguntas && s.preguntas.length > 0);
     if (!tienePreguntas) {
       throw new BadRequestException('No se puede publicar un formulario sin al menos una pregunta dentro de sus secciones.');
     }
 
-    await this.formulariosRepository.update(id, {
-      publicado: true,
-      fecha_publicacion: new Date(),
-    });
-
+    await this.formulariosRepository.update(id, { publicado: true, fecha_publicacion: new Date() });
     return this.findOne(id);
   }
 
-  // 1. NUEVO MÉTODO: Despublicar Formulario
   async despublicarFormulario(id: string): Promise<Formulario> {
     const formulario = await this.formulariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
@@ -124,6 +142,10 @@ export class FormulariosService {
 
     if (!formulario) {
       throw new NotFoundException('El formulario no existe o está inactivo.');
+    }
+
+    if (formulario.bloqueado) {
+      throw new BadRequestException('Este formulario es una versión anterior bloqueada; no puede despublicarse.');
     }
 
     if (!formulario.publicado) {
@@ -137,8 +159,21 @@ export class FormulariosService {
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
     const formulario = await this.findOne(id);
 
+    // ✅ NUEVO: una versión "anterior" bloqueada es de solo lectura, punto.
+    if (formulario.bloqueado) {
+      throw new BadRequestException(
+        'Este formulario pertenece a un periodo anterior y quedó bloqueado al clonarse. Solo puede visualizarse, no editarse.',
+      );
+    }
+
     if (formulario.publicado) {
       throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
+    }
+
+    // ✅ NUEVO: no se permite reasignar el tipo de formulario después de creado
+    // (evita romper la regla de "un formulario por tipo y periodo" por la puerta trasera).
+    if (updateFormularioDto.tipo_formulario_id && updateFormularioDto.tipo_formulario_id !== formulario.tipo_formulario_id) {
+      throw new BadRequestException('No se puede cambiar el tipo de un formulario después de haberlo creado.');
     }
 
     await this.formulariosRepository.update(id, updateFormularioDto);
@@ -148,6 +183,10 @@ export class FormulariosService {
   async remove(id: string) {
     const formulario = await this.findOne(id);
 
+    if (formulario.bloqueado) {
+      throw new BadRequestException('No se puede eliminar un formulario bloqueado (versión anterior de solo lectura).');
+    }
+
     if (formulario.publicado) {
       throw new BadRequestException('No se puede eliminar un formulario que ya ha sido publicado formalmente.');
     }
@@ -156,19 +195,19 @@ export class FormulariosService {
     return { message: 'Formulario dado de baja con éxito.' };
   }
 
-  // 2. ACTUALIZADO: Método de Clonación con Purga
+  // ============================================================
+  // CLONAR FORMULARIO / CREAR NUEVA VERSIÓN
+  // Reglas: solo se clona la versión actual; la versión clonada
+  // (la que era "actual") queda bloqueada; si ya existían 2 versiones
+  // vivas, la más antigua se purga físicamente de la base de datos.
+  // ============================================================
   async clonarAFormularioBorrador(formularioOrigenId: string, nuevoPeriodoId: string, usuarioId: string): Promise<Formulario> {
     const formularioOrigen = await this.formulariosRepository.findOne({
       where: { id: formularioOrigenId, fecha_desactivacion: IsNull() },
       relations: {
         periodo: true,
         secciones: {
-          preguntas: {
-            opciones: true,
-            filas: true,
-            columnas: true,
-            dependencias: true,
-          },
+          preguntas: { opciones: true, filas: true, columnas: true, dependencias: true },
         },
       },
     });
@@ -177,37 +216,73 @@ export class FormulariosService {
       throw new NotFoundException('El formulario origen no existe o está inactivo.');
     }
 
-    // A. Consultar cuántas versiones activas existen registradas
+    if (formularioOrigen.bloqueado) {
+      throw new BadRequestException(
+        'Este formulario es una versión anterior bloqueada. Solo se puede clonar la versión actual (activa) de cada tipo de formulario.',
+      );
+    }
+
+    // No puede existir ya un formulario de este tipo en el periodo destino.
+    const colisionDestino = await this.formulariosRepository.findOne({
+      where: {
+        tipo_formulario_id: formularioOrigen.tipo_formulario_id,
+        periodo_id: nuevoPeriodoId,
+        fecha_desactivacion: IsNull(),
+      },
+    });
+    if (colisionDestino) {
+      throw new BadRequestException('El periodo destino ya cuenta con un formulario de este mismo tipo.');
+    }
+
+    // Todas las versiones vivas de este tipo de formulario (en teoría, máximo 2: anterior + actual).
     const versionesExistentes = await this.formulariosRepository.find({
-      where: { tipo: formularioOrigen.tipo, fecha_desactivacion: IsNull() },
+      where: { tipo_formulario_id: formularioOrigen.tipo_formulario_id, fecha_desactivacion: IsNull() },
       order: { version: 'ASC' },
     });
 
-
-    // C. Determinar la nueva versión
-    const ultimaVersionObj = versionesExistentes[versionesExistentes.length - 1];
-    const nuevaVersionNumero = ultimaVersionObj ? ultimaVersionObj.version + 1 : 1;
+    const nuevaVersionNumero = versionesExistentes.length > 0
+      ? versionesExistentes[versionesExistentes.length - 1].version + 1
+      : 1;
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      // A. PURGA: si ya había 2 (o más) versiones vivas, se elimina físicamente
+      // todo lo que sobre de la ventana [anterior, actual]. Gracias al fix de
+      // ON DELETE CASCADE en toda la cadena (secciones -> preguntas -> opciones,
+      // fichas_respondidas -> respuestas -> historial/documentos/matriz), un solo
+      // DELETE sobre "formularios" arrastra absolutamente todo lo asociado a esa versión.
+      if (versionesExistentes.length >= 2) {
+        const aEliminar = versionesExistentes.slice(0, versionesExistentes.length - 1);
+        for (const formularioViejo of aEliminar) {
+          await queryRunner.manager.delete(Formulario, formularioViejo.id);
+        }
+      }
 
+      // B. Bloquear la versión actual: pasa a ser la nueva "versión anterior" de solo lectura.
+      await queryRunner.manager.update(Formulario, formularioOrigen.id, {
+        bloqueado: true,
+        fecha_bloqueo: new Date(),
+      });
+
+      // C. Crear la nueva versión ("actual") en BORRADOR, dentro del periodo destino.
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
         titulo: `${formularioOrigen.titulo} (v${nuevaVersionNumero})`,
         descripcion: formularioOrigen.descripcion,
-        tipo: formularioOrigen.tipo,
+        tipo_formulario_id: formularioOrigen.tipo_formulario_id,
         periodo_id: nuevoPeriodoId,
         periodo_origen_id: formularioOrigen.id,
         dias_plazo_modificacion: formularioOrigen.dias_plazo_modificacion,
         version: nuevaVersionNumero,
-        publicado: false, // Inicia congelado en BORRADOR
+        publicado: false,
+        bloqueado: false,
         creado_por: usuarioId,
       });
-
       const formularioClonado = await queryRunner.manager.save(Formulario, nuevoFormulario);
 
+      // D. Clonar estructura completa (idéntico al comportamiento que ya tenías).
       const mapaIdsViejosANuevos = new Map<string, string>();
       const dependenciasAClonar: { original: PreguntaDependencia; nuevaPreguntaId: string }[] = [];
 
@@ -275,19 +350,14 @@ export class FormulariosService {
               texto_columna: (colOrigen as any).texto_columna,
               orden: (colOrigen as any).orden,
               creado_por: usuarioId,
-              ...((colOrigen as any).tipo_campo_id && {
-                tipo_campo_id: (colOrigen as any).tipo_campo_id,
-              }),
+              ...((colOrigen as any).tipo_campo_id && { tipo_campo_id: (colOrigen as any).tipo_campo_id }),
             } as any);
             await queryRunner.manager.save(ColumnaMatriz, nuevaColumna);
           }
 
           for (const depOrigen of preguntaOrigen.dependencias || []) {
             if (depOrigen.fecha_desactivacion) continue;
-            dependenciasAClonar.push({
-              original: depOrigen,
-              nuevaPreguntaId: preguntaClonada.id,
-            });
+            dependenciasAClonar.push({ original: depOrigen, nuevaPreguntaId: preguntaClonada.id });
           }
         }
       }
