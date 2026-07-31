@@ -167,7 +167,7 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
   async update(id: string, updateDto: UpdateFichaRespondidaDto, user: any) {
     const fichaExistente = await this.findOne(id, user);
-    const esCoordinador = user.rol.includes('COORDINADOR');
+    const esCoordinador = user.rol.includes('COORDINADOR_BIENESTAR');
 
     if (!esCoordinador) {
       if (fichaExistente.estado_ficha === 'CERRADA_MANUAL') throw new BadRequestException('Esta ficha fue cerrada manualmente.');
