@@ -16,9 +16,9 @@ export class Formulario {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  // 🔒 OBLIGATORIO: Garantiza la regla de negocio (tipo_formulario_id no puede ser null)
-  @Column({ name: 'tipo_formulario_id', type: 'uuid', nullable: false })
-  tipo_formulario_id: string;
+  // ✅ CORREGIDO: Se cambia nullable: true para evitar el error con registros existentes
+  @Column({ name: 'tipo_formulario_id', type: 'uuid', nullable: true })
+  tipo_formulario_id: string | null;
 
   @Column({ name: 'periodo_id', type: 'uuid', nullable: false })
   periodo_id: string;
@@ -61,8 +61,8 @@ export class Formulario {
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
 
-  // 🔒 OBLIGATORIO: Relación estricta Not-Null
-  @ManyToOne(() => TipoFormulario, (tipo) => tipo.formularios, { nullable: false, onDelete: 'NO ACTION' })
+  // ✅ CORREGIDO: Se agrega nullable: true en la relación
+  @ManyToOne(() => TipoFormulario, (tipo) => tipo.formularios, { nullable: true, onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'tipo_formulario_id' })
   tipoFormulario: TipoFormulario;
 
