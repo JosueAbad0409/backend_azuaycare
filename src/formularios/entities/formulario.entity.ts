@@ -3,7 +3,7 @@ import { PeriodoMatricula } from '../../periodos-matricula/entities/periodos-mat
 import { Usuario } from '../../usuarios/entities/usuario.entity';
 import { Seccion } from 'src/secciones/entities/secciones.entity';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
-import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity'; // NUEVO IMPORT
+import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity';
 
 @Entity({ name: 'formularios' })
 export class Formulario {
@@ -16,9 +16,7 @@ export class Formulario {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  // ❌ ELIMINADO: @Column({ type: 'varchar', length: 50, default: 'GENERAL' }) tipo: string;
-
-  // ✅ NUEVO: reemplaza al campo "tipo" quemado por una relación real.
+  // 🔒 OBLIGATORIO: Garantiza la regla de negocio (tipo_formulario_id no puede ser null)
   @Column({ name: 'tipo_formulario_id', type: 'uuid', nullable: false })
   tipo_formulario_id: string;
 
@@ -37,8 +35,6 @@ export class Formulario {
   @Column({ type: 'boolean', default: false })
   publicado: boolean;
 
-  // ✅ NUEVO: marca esta versión como versión "anterior" de solo lectura,
-  // producto de haber sido clonada hacia un nuevo periodo.
   @Column({ type: 'boolean', default: false })
   bloqueado: boolean;
 
@@ -65,16 +61,11 @@ export class Formulario {
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
 
-  // ✅ NUEVO
-  @ManyToOne(() => TipoFormulario, (tipo) => tipo.formularios, { onDelete: 'NO ACTION' })
+  // 🔒 OBLIGATORIO: Relación estricta Not-Null
+  @ManyToOne(() => TipoFormulario, (tipo) => tipo.formularios, { nullable: false, onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'tipo_formulario_id' })
   tipoFormulario: TipoFormulario;
 
-  // ⚠️ CAMBIO CRÍTICO: de 'NO ACTION' a 'SET NULL'.
-  // Cuando se purgue (DELETE físico) la versión más antigua de un tipo de formulario,
-  // la versión que la sucede (que sigue viva) todavía apunta a ella vía periodo_origen_id.
-  // Con 'NO ACTION' el DELETE fallaría por violación de llave foránea.
-  // Con 'SET NULL' Postgres limpia automáticamente esa referencia y el DELETE se completa.
   @ManyToOne(() => Formulario, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'periodo_origen_id' })
   formularioOrigen: Formulario;
