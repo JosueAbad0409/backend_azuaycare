@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+
 import { OpcionPregunta } from './entities/opciones-pregunta.entity'; 
 import { CreateOpcionPreguntaDto } from './dto/create-opciones-pregunta.dto'; 
 import { UpdateOpcionPreguntaDto } from './dto/update-opciones-pregunta.dto'; 
@@ -22,13 +23,19 @@ export class OpcionesPreguntaService {
   ) {}
 
   private async validarFormularioModificablePorPregunta(preguntaId: string) {
-    const pregunta = await this.preguntasRepository.findOne({ where: { id: preguntaId, fecha_desactivacion: IsNull() } });
+    const pregunta = await this.preguntasRepository.findOne({ 
+      where: { id: preguntaId, fecha_desactivacion: IsNull() } 
+    });
     if (!pregunta) throw new NotFoundException('Pregunta no encontrada.');
 
-    const seccion = await this.seccionesRepository.findOne({ where: { id: pregunta.seccion_id, fecha_desactivacion: IsNull() } });
+    const seccion = await this.seccionesRepository.findOne({ 
+      where: { id: pregunta.seccion_id, fecha_desactivacion: IsNull() } 
+    });
     if (!seccion) throw new NotFoundException('Sección no encontrada.');
 
-    const formulario = await this.formulariosRepository.findOne({ where: { id: seccion.formulario_id, fecha_desactivacion: IsNull() } });
+    const formulario = await this.formulariosRepository.findOne({ 
+      where: { id: seccion.formulario_id, fecha_desactivacion: IsNull() } 
+    });
     if (formulario && (formulario.publicado || formulario.bloqueado)) {
       throw new BadRequestException('El formulario está congelado (publicado o bloqueado). No se permiten modificaciones en las opciones.');
     }
