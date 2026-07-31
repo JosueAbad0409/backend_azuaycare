@@ -18,15 +18,15 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
-    private readonly dataSource: DataSource, 
-  ) {}
+    private readonly dataSource: DataSource,
+  ) { }
 
   async onModuleInit() {
-    this.browser = await puppeteer.launch({ 
+    this.browser = await puppeteer.launch({
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, 
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
-        '--no-sandbox', 
+        '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
@@ -75,7 +75,7 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     try {
       // 1. Guardamos el borrador vacío en la base de datos
       const fichaGuardada = await this.fichasRepository.save(nuevaFicha);
-      
+
       // 2. 🔥 Ejecutamos la herencia de respuestas anteriores para autocompletar la ficha
       await this.heredarRespuestasAnteriores(fichaGuardada.id, usuarioId, createDto.formulario_id);
 
@@ -142,10 +142,10 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
     const respuestas = await this.dataSource.manager.find(RespuestasFormulario, {
       where: { ficha_id: id, fecha_desactivacion: IsNull() },
-      relations: { 
-        opcionesSeleccionadas: { opcion: true }, 
+      relations: {
+        opcionesSeleccionadas: { opcion: true },
         documentos: true,
-        respuestasMatriz: { fila: true, columna: true } 
+        respuestasMatriz: { fila: true, columna: true }
       }
     });
 
@@ -182,10 +182,10 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     const datosUpdate: any = { ...updateDto };
     const estado_ficha = datosUpdate.estado_ficha;
     const comentario = datosUpdate.comentario;
-    
+
     delete datosUpdate.estado_ficha;
     delete datosUpdate.comentario;
-    
+
     if (estado_ficha && estado_ficha !== fichaExistente.estado_ficha) {
       await this.dataSource.manager.insert('historial_estados_ficha', {
         ficha_id: id,
@@ -206,13 +206,13 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     if (Object.keys(datosUpdate).length > 0) {
       await this.fichasRepository.update(id, datosUpdate);
     }
-    
+
     return this.findOne(id, user);
   }
 
   async cambiarEstado(id: string, estadoNuevo: string, usuarioId: string, comentario?: string) {
     const fichaExistente = await this.findOne(id);
-    
+
     if (fichaExistente.estado_ficha !== estadoNuevo) {
       await this.dataSource.manager.insert('historial_estados_ficha', {
         ficha_id: id,
@@ -233,20 +233,20 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
     await this.cambiarEstado(id, 'CERRADA_MANUAL', coordinadorId, 'Cierre manual por Bienestar Estudiantil');
     await this.fichasRepository.update(id, { cerrado_manual_por: coordinadorId });
-    
+
     return this.findOne(id);
   }
 
   async reabrir(id: string, coordinadorId: string, reabrirDto?: ReabrirFichaDto) {
     const ficha = await this.findOne(id);
-    
+
     const nuevaFechaLimite = (reabrirDto && reabrirDto.dias_extension) ? new Date() : null;
     if (nuevaFechaLimite && reabrirDto && reabrirDto.dias_extension) {
       nuevaFechaLimite.setDate(nuevaFechaLimite.getDate() + reabrirDto.dias_extension);
     }
 
     await this.cambiarEstado(id, 'ENVIADA', coordinadorId, 'Reapertura autorizada por Bienestar Estudiantil');
-    
+
     await this.fichasRepository.update(id, {
       cerrado_manual_por: coordinadorId,
       fecha_limite_edicion: nuevaFechaLimite
@@ -266,16 +266,16 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
   async generarPdfFicha(id: string, user: any): Promise<Buffer> {
     const data = await this.getResumenFicha(id, user);
-    
-    let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', { 
-      where: { formulario_id: data.ficha.formulario_id } 
+
+    let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
+      where: { formulario_id: data.ficha.formulario_id }
     });
 
     if (!plantilla) {
       plantilla = {
         color_primario: '#003366', color_secundario: '#666666',
         encabezado: 'Sistema de Bienestar Estudiantil', pie_pagina: 'Ficha generada automáticamente',
-        mostrar_tabla_rango: false, 
+        mostrar_tabla_rango: false,
         logo_url: ''
       };
     }
@@ -337,7 +337,7 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
         // 🔥 FIX: Usamos sec.nombre. Si por alguna razón tu BD sí usa titulo, el operador || lo cubre como respaldo.
         const nombreSeccion = sec.nombre || sec.titulo || 'Sección sin nombre';
         html += `<h2>${nombreSeccion}</h2>`;
-        
+
         if (sec.preguntas) {
           sec.preguntas.forEach((preg: any) => {
             const resp = preg.respuesta_estudiante;
@@ -368,24 +368,24 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
     // 🚀 EXTREMADAMENTE RÁPIDO: Usamos el navegador que ya está abierto
     const page = await this.browser.newPage();
-    
+
     await page.setContent(html, { waitUntil: 'domcontentloaded' });
-    
-    const pdfBuffer = await page.pdf({ 
-      format: 'A4', 
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
       printBackground: true,
       margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
     }) as any;
-    
+
     // ⚠️ MUY IMPORTANTE: Solo cerramos la pestaña, NO el navegador
     await page.close();
 
     return pdfBuffer;
   }
-  
+
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
     this.logger.log('🔄 --- INICIANDO AUTOCOMPLETADO DE FICHA ---');
-    
+
     const fichaAnterior = await this.fichasRepository.findOne({
       where: [
         { usuario_id: usuarioId, estado_ficha: 'ENVIADA', fecha_desactivacion: IsNull() },
@@ -396,9 +396,9 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
 
     if (!fichaAnterior) {
       this.logger.warn('❌ El estudiante es nuevo o no tiene fichas enviadas. Se cancela autocompletado.');
-      return; 
+      return;
     }
-    
+
     this.logger.log(`✅ Ficha anterior encontrada: ${fichaAnterior.id}`);
 
     const formViejoId = fichaAnterior.formulario_id;
@@ -415,12 +415,21 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
        WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [nuevoFormularioId]
     );
 
+    this.logger.log(`📎 Formulario viejo ID: ${formViejoId} | Formulario nuevo ID: ${nuevoFormularioId}`);
+    this.logger.log(`📋 Preguntas viejas encontradas: ${preguntasViejas.length}`);
+    this.logger.log(`📋 Preguntas nuevas encontradas: ${preguntasNuevas.length}`);
+
+    if (preguntasNuevas.length === 0) {
+      this.logger.error('🚨 El formulario nuevo no tiene preguntas asociadas. Revisa el proceso de clonado.');
+    }
+
     const mapaPreguntas = new Map<string, string>();
     for (const pv of preguntasViejas) {
       const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
       if (pn) mapaPreguntas.set(pv.id, pn.id);
     }
-    
+
+
     this.logger.log(`🔗 Preguntas emparejadas con éxito: ${mapaPreguntas.size}`);
 
     const opcionesViejas = await this.dataSource.query(
@@ -479,7 +488,7 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       }
 
       const documentos = await this.dataSource.query(
-        `SELECT ruta_archivo, nombre_original, mime_type, tamanio_bytes FROM documentos_respaldo WHERE respuesta_id = $1 AND fecha_desactivacion IS NULL`, 
+        `SELECT ruta_archivo, nombre_original, mime_type, tamanio_bytes FROM documentos_respaldo WHERE respuesta_id = $1 AND fecha_desactivacion IS NULL`,
         [respVieja.id]
       );
       for (const doc of documentos) {
@@ -494,5 +503,5 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`💾 Respuestas insertadas: ${respuestasInsertadas}`);
     this.logger.log('✅ --- AUTOCOMPLETADO FINALIZADO ---');
   }
-  
+
 }
