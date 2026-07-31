@@ -10,6 +10,7 @@ import { OpcionPregunta } from 'src/opciones-pregunta/entities/opciones-pregunta
 import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
 import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
 import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
+import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity'; // NUEVO
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunt
       FilaMatriz,
       ColumnaMatriz,
       PreguntaDependencia,
+      TipoFormulario, // NUEVO
     ]),
   ],
   controllers: [FormulariosController],
