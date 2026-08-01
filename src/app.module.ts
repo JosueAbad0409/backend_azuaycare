@@ -14,7 +14,7 @@ import { Ciclo } from './ciclos/entities/ciclo.entity';
 import { PeriodosMatriculaModule } from './periodos-matricula/periodos-matricula.module';
 import { PeriodoMatricula } from './periodos-matricula/entities/periodos-matricula.entity';
 import { FormulariosModule } from './formularios/formularios.module';
-import { TiposFormularioModule } from './tipos-formulario/tipos-formulario.module'; // NUEVO IMPORT
+import { TiposFormularioModule } from './tipos-formulario/tipos-formulario.module'; 
 import { Formulario } from './formularios/entities/formulario.entity'; 
 import { SeccionesModule } from './secciones/secciones.module';
 import { Seccion } from './secciones/entities/secciones.entity';
@@ -58,6 +58,7 @@ import { MailModule } from './mail/mail.module';
 import { IaModule } from './ia/ia.module';
 import { RangosVariableCalculadaModule } from './rangos-variable-calculada/rangos-variable-calculada.module';
 import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
+import { PdfModule } from './common/pdf/pdf.module'; // 👈 Importación agregada
 
 @Module({
   imports: [
@@ -75,7 +76,7 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
         type: 'postgres' as const,
         url: configService.get<string>('DATABASE_URL'),
         autoLoadEntities: true,
-        synchronize: configService.get<string>('NODE_ENV') !== 'production', // CORRECCIÓN
+        synchronize: configService.get<string>('NODE_ENV') !== 'production', 
         logging: configService.get<string>('NODE_ENV') !== 'production',
       }),
     }),
@@ -87,7 +88,7 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
     CiclosModule,
     PeriodosMatriculaModule,
     FormulariosModule,
-    TiposFormularioModule, // NUEVO — registrado justo después de FormulariosModule
+    TiposFormularioModule, 
     SeccionesModule,
     TiposCampoFormModule,
     PreguntasModule,
@@ -108,7 +109,8 @@ import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
     MailModule,
     IaModule,
     RangosVariableCalculadaModule,
-    PlantillasPdfModule, 
+    PlantillasPdfModule,
+    PdfModule, // 👈 Módulo agregado
   ],
   providers:[
     {

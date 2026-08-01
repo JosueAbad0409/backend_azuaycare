@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class ReportesService {
@@ -223,5 +224,103 @@ export class ReportesService {
       `,
       [periodoId],
     );
+  }
+
+  /**
+   * Genera el archivo Excel profesional de la matriz socioeconómica del periodo.
+   */
+  async generarMatrizSocioeconomicaExcel(periodoId: string): Promise<{ buffer: Buffer; nombrePeriodo: string }> {
+    const dataset = await this.obtenerDatasetPlano(periodoId); // reutiliza el método que ya existe
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'AzuayCare';
+    workbook.created = new Date();
+
+    const hoja = workbook.addWorksheet('Matriz Socioeconómica', {
+      views: [{ state: 'frozen', ySplit: 1 }], // congela encabezado
+    });    
+
+    // Columnas dinámicas de "respuestas_dinamicas" (todas las preguntas del formulario)
+    const clavesDinamicas = new Set<string>();
+    dataset.datos.forEach((fila: any) => {
+      if (fila.respuestas_dinamicas) Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
+    });
+
+    hoja.columns = [
+      { header: 'Cédula', key: 'cedula', width: 15 },
+      { header: 'Apellidos', key: 'apellidos', width: 25 },
+      { header: 'Nombres', key: 'nombres', width: 25 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Carrera', key: 'carrera', width: 28 },
+      { header: 'Estado', key: 'estado', width: 16 },
+      { header: 'Ingresos', key: 'ingresos', width: 14, style: { numFmt: '$#,##0.00' } },
+      { header: 'Egresos', key: 'egresos', width: 14, style: { numFmt: '$#,##0.00' } },
+      { header: 'Balance', key: 'balance', width: 14, style: { numFmt: '$#,##0.00' } },
+      { header: 'Nivel Económico', key: 'nivel_economico', width: 20 },
+      ...Array.from(clavesDinamicas).map((clave) => ({ header: clave, key: clave, width: 22 })),
+    ];    
+
+    // Encabezado con estilo profesional
+    hoja.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003366' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    dataset.datos.forEach((fila: any) => {
+      hoja.addRow({
+        cedula: fila.cedula,
+        apellidos: fila.apellidos?.trim(),
+        nombres: fila.nombres?.trim(),
+        email: fila.email,
+        carrera: fila.carrera,
+        estado: fila.estado,
+        ingresos: Number(fila.ingresos) || 0,
+        egresos: Number(fila.egresos) || 0,
+        balance: Number(fila.balance) || 0,
+        nivel_economico: fila.nivel_economico || 'N/A',
+        ...(fila.respuestas_dinamicas || {}),
+      });
+    });    
+
+    // Bordes ligeros a toda la tabla de datos
+    hoja.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
+      });
+    });
+
+    hoja.autoFilter = { from: 'A1', to: `${String.fromCharCode(65 + hoja.columns.length - 1)}1` };
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    return { buffer: Buffer.from(arrayBuffer), nombrePeriodo: dataset.periodo };
+  }
+
+  /**
+   * Estadísticas agregadas del periodo para el dashboard de reportes.
+   */
+  async obtenerEstadisticasPeriodo(periodoId: string) {
+    const periodo = await this.dataSource.query(
+      `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [periodoId],
+    );
+    if (!periodo || periodo.length === 0) {
+      throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
+    }
+
+    const totales = await this.dataSource.query(
+      `      SELECT        COUNT(*)::int AS total_fichas,        COUNT(*) FILTER (WHERE estado_ficha = 'BORRADOR')::int AS fichas_borrador,        COUNT(*) FILTER (WHERE estado_ficha IN ('ENVIADA','ENVIADO'))::int AS fichas_enviadas,        COUNT(*) FILTER (WHERE estado_ficha = 'VALIDADO')::int AS fichas_validadas,        COUNT(*) FILTER (WHERE estado_ficha = 'RECHAZADA')::int AS fichas_rechazadas      FROM fichas_respondidas      WHERE periodo_id = $1 AND fecha_desactivacion IS NULL      `,
+      [periodoId],
+    );
+
+    const distribucion = await this.dataSource.query(
+      `      SELECT n.nombre AS rango_nombre, COUNT(f.id)::int AS total      FROM fichas_respondidas f      INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id      WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL      GROUP BY n.nombre      ORDER BY total DESC      `,
+      [periodoId],
+    );
+
+    return {
+      ...totales[0],
+      distribucion_rangos: distribucion,
+    };
   }
 }

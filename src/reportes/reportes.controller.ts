@@ -1,4 +1,5 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,5 +26,27 @@ export class ReportesController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   obtenerFormulariosDisponibles(@Param('periodoId') periodoId: string) {
     return this.reportesService.obtenerFormulariosDisponibles(periodoId);
+  }
+
+  // 🆕 Endpoint que el frontend ya está esperando
+  @Get('estadisticas/periodo/:periodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerEstadisticasPeriodo(@Param('periodoId') periodoId: string) {
+    return this.reportesService.obtenerEstadisticasPeriodo(periodoId);
+  }
+
+  // 🆕 Descarga real del Excel
+  @Get('socioeconomico/periodo/:periodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  async descargarMatrizExcel(@Param('periodoId') periodoId: string, @Res() res: Response) {
+    const { buffer, nombrePeriodo } = await this.reportesService.generarMatrizSocioeconomicaExcel(periodoId);
+    const nombreArchivo = `Matriz_Socioeconomica_${nombrePeriodo.replace(/\s+/g, '_')}.xlsx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
   }
 }

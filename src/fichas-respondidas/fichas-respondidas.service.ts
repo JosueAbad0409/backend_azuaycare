@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
@@ -8,39 +8,22 @@ import { ReabrirFichaDto } from './dto/reabrir-ficha.dto';
 
 import { Formulario } from '../formularios/entities/formulario.entity';
 import { RespuestasFormulario } from '../respuestas-formulario/entities/respuestas-formulario.entity';
-import puppeteer, { Browser } from 'puppeteer';
-import { use } from 'passport';
+
+// Nuevas importaciones para PDF
+import { PdfRendererService } from '../common/pdf/pdf-renderer.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
-export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
-  private browser: Browser;
+export class FichasRespondidasService {
   private readonly logger = new Logger(FichasRespondidasService.name);
 
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
     private readonly dataSource: DataSource,
+    private readonly pdfRenderer: PdfRendererService,
   ) { }
-
-  async onModuleInit() {
-    this.browser = await puppeteer.launch({
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-extensions' // Apagamos extensiones para que arranque más rápido
-      ]
-    });
-  }
-
-  async onModuleDestroy() {
-    if (this.browser) {
-      await this.browser.close();
-    }
-  }
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
     const existeFicha = await this.fichasRepository.findOne({
@@ -86,7 +69,6 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
   }
-
 
   findAll(skip: number = 0, take: number = 10) {
     return this.fichasRepository.find({
@@ -264,143 +246,94 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
     return { message: 'Ficha de respuestas dada de baja con éxito.' };
   }
 
+  private templateFichaCache: string | null = null;
+
+  private cargarTemplateFicha(): string {
+    if (!this.templateFichaCache) {
+      const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
+      // Si compilas con assets copiados, o usa 'src/...' en desarrollo:
+      const ruta = fs.existsSync(rutaTemplate)
+        ? rutaTemplate
+        : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
+      this.templateFichaCache = fs.readFileSync(ruta, 'utf-8');
+    }
+    return this.templateFichaCache;
+  }
+
   async generarPdfFicha(id: string, user: any): Promise<Buffer> {
     const data = await this.getResumenFicha(id, user);
 
     let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
-      where: { formulario_id: data.ficha.formulario_id }
+      where: { formulario_id: data.ficha.formulario_id },
     });
 
     if (!plantilla) {
       plantilla = {
         color_primario: '#003366', color_secundario: '#666666',
         encabezado: 'Sistema de Bienestar Estudiantil', pie_pagina: 'Ficha generada automáticamente',
-        mostrar_tabla_rango: false,
-        logo_url: ''
+        mostrar_tabla_rango: false, logo_url: '',
       };
     }
 
-    let html = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            .pregunta, .info-box, h2 { page-break-inside: avoid; }
-            body { font-family: 'Helvetica', sans-serif; color: #333; margin: 0; padding: 20px; }
-            .header { text-align: center; border-bottom: 3px solid ${plantilla.color_primario}; padding-bottom: 10px; margin-bottom: 20px; }
-            .header img { max-height: 60px; }
-            h1 { color: ${plantilla.color_primario}; font-size: 20px; margin-bottom: 5px; }
-            .form-titulo { font-size: 16px; color: #555; margin-top: 0; }
-            .form-descripcion { font-size: 12px; color: #777; margin-bottom: 15px; }
-            h2 { color: ${plantilla.color_secundario}; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
-            .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid ${plantilla.color_primario}; font-size: 13px; }
-            .pregunta { margin-bottom: 10px; font-size: 12px; }
-            .pregunta b { display: block; color: #444; }
-            .respuesta { margin-top: 3px; color: #111; background: #eee; padding: 5px; border-radius: 3px; }
-            .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            ${plantilla.logo_url ? `<img src="${plantilla.logo_url}" alt="Logo">` : ''}
-            <h1>${plantilla.encabezado}</h1>
-            <!-- 🔥 Se agregó el Título y Descripción del Formulario -->
-            <div class="form-titulo">${data.formulario_estructurado?.titulo || 'Formulario'}</div>
-            ${data.formulario_estructurado?.descripcion ? `<div class="form-descripcion">${data.formulario_estructurado.descripcion}</div>` : ''}
-        </div>
-
-        <div class="info-box">
-            <strong>Estudiante:</strong> ${data.ficha.usuario.primer_nombre} ${data.ficha.usuario.primer_apellido} <br>
-            <strong>Cédula:</strong> ${data.ficha.usuario.cedula || 'N/A'} <br>
-            <!-- 🔥 Se agregó el Nombre del Periodo -->
-            <strong>Periodo:</strong> ${data.ficha.periodo?.nombre || 'N/A'} <br>
-            <strong>Fecha de envío:</strong> ${new Date(data.ficha.created_at).toLocaleDateString('es-ES')} <br>
-            <strong>Estado:</strong> ${data.ficha.estado_ficha}
-        </div>`;
-
-    // 🔥 FIX: Ahora el bloque financiero SOLO aparece si el formulario es explícitamente SOCIOECONOMICO
     const esFichaFinanciera = plantilla.mostrar_tabla_rango === true || data.ficha.rangoResultado !== null;
 
-    if (esFichaFinanciera) {
-      html += `
-        <div class="info-box" style="border-left-color: ${plantilla.color_secundario};">
-            <strong>Total Ingresos:</strong> $${data.ficha.total_ingresos} | 
-            <strong>Total Egresos:</strong> $${data.ficha.total_egresos} <br>
-            <strong>Balance Calculado:</strong> $${data.ficha.balance_final} <br>
-            <strong>Clasificación Asignada:</strong> ${data.ficha.rangoResultado ? data.ficha.rangoResultado.nombre : 'En evaluación'}
-        </div>`;
+    const secciones = (data.formulario_estructurado?.secciones || []).map((sec: any) => ({
+      nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
+      preguntas: (sec.preguntas || []).map((preg: any) => ({
+        enunciado: preg.enunciado,
+        respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante),
+      })),
+    }));
+
+    const templateFuente = this.cargarTemplateFicha();
+    const template = this.pdfRenderer.compilarTemplate('ficha-socioeconomica', templateFuente);
+
+    const html = template({
+      plantilla,
+      formulario: data.formulario_estructurado,
+      ficha: data.ficha,
+      esFichaFinanciera,
+      secciones,
+    });
+
+    return this.pdfRenderer.renderizarHtmlAPdf(html);
+  }
+
+  /** 
+   * Arma el HTML de la respuesta (texto/número/opciones/matriz). 
+   * Los textos libres SIEMPRE se escapan a mano aquí porque van con triple-llave en la plantilla (por la lista de matriz). 
+   */
+  private construirRespuestaHtml(resp: any): string {
+    if (!resp) return '<i>Sin responder</i>';
+
+    const escapar = (txt: string) =>
+      String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    if (resp.valor_texto) return escapar(resp.valor_texto);
+    if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) return escapar(resp.valor_numerico.toString());
+
+    if (resp.opcionesSeleccionadas?.length > 0) {
+      return escapar(resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '));
     }
 
-    if (data.formulario_estructurado?.secciones) {
-      data.formulario_estructurado.secciones.forEach((sec: any) => {
-        // 🔥 FIX: Usamos sec.nombre. Si por alguna razón tu BD sí usa titulo, el operador || lo cubre como respaldo.
-        const nombreSeccion = sec.nombre || sec.titulo || 'Sección sin nombre';
-        html += `<h2>${nombreSeccion}</h2>`;
-
-        if (sec.preguntas) {
-          sec.preguntas.forEach((preg: any) => {
-            const resp = preg.respuesta_estudiante;
-            let respuestaTexto = '<i>Sin responder</i>';
-
-            if (resp) {
-              if (resp.valor_texto) respuestaTexto = resp.valor_texto;
-              else if (resp.valor_numerico !== null) respuestaTexto = resp.valor_numerico.toString();
-              else if (resp.opcionesSeleccionadas && resp.opcionesSeleccionadas.length > 0) {
-                respuestaTexto = resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', ');
-              }
-              // 👇 NUEVO: Renderizamos la matriz leyéndola directamente desde "resp"
-              else if (resp.respuestasMatriz && resp.respuestasMatriz.length > 0) {
-                const filasAgrupadas = new Map<string, string[]>();
-                
-                resp.respuestasMatriz.forEach((rm: any) => {
-                  const textoFila = rm.fila?.texto_fila || 'Criterio';
-                  const textoColumna = rm.columna?.texto_columna || 'Opción';
-                  
-                  if (!filasAgrupadas.has(textoFila)) {
-                    filasAgrupadas.set(textoFila, []);
-                  }
-                  filasAgrupadas.get(textoFila)!.push(textoColumna);
-                });
-
-                respuestaTexto = '<ul style="margin: 5px 0 0 20px; padding: 0; font-size: 11px;">';
-                filasAgrupadas.forEach((columnas, fila) => {
-                  respuestaTexto += `<li style="margin-bottom: 4px;"><b>${fila}:</b> ${columnas.join(', ')}</li>`;
-                });
-                respuestaTexto += '</ul>';
-              }
-            }
-
-            html += `
-            <div class="pregunta">
-                <b>${preg.enunciado}</b>
-                <div class="respuesta">${respuestaTexto}</div>
-            </div>`;
-          });
-        }
+    if (resp.respuestasMatriz?.length > 0) {
+      const filasAgrupadas = new Map<string, string[]>();
+      resp.respuestasMatriz.forEach((rm: any) => {
+        const fila = rm.fila?.texto_fila || 'Criterio';
+        const columna = rm.columna?.texto_columna || 'Opción';
+        if (!filasAgrupadas.has(fila)) filasAgrupadas.set(fila, []);
+        filasAgrupadas.get(fila)!.push(columna);
       });
+
+      let html = '<ul style="margin: 5px 0 0 20px; padding: 0; font-size: 11px;">';
+      filasAgrupadas.forEach((columnas, fila) => {
+        html += `<li style="margin-bottom: 4px;"><b>${escapar(fila)}:</b> ${escapar(columnas.join(', '))}</li>`;
+      });
+      html += '</ul>';
+      return html;
     }
 
-    html += `
-        <div class="footer">${plantilla.pie_pagina}</div>
-    </body>
-    </html>`;
-
-    // 🚀 EXTREMADAMENTE RÁPIDO: Usamos el navegador que ya está abierto
-    const page = await this.browser.newPage();
-
-    await page.setContent(html, { waitUntil: 'domcontentloaded' });
-
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
-    }) as any;
-
-    // ⚠️ MUY IMPORTANTE: Solo cerramos la pestaña, NO el navegador
-    await page.close();
-
-    return pdfBuffer;
+    return '<i>Sin responder</i>';
   }
 
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
@@ -448,7 +381,6 @@ export class FichasRespondidasService implements OnModuleInit, OnModuleDestroy {
       const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
       if (pn) mapaPreguntas.set(pv.id, pn.id);
     }
-
 
     this.logger.log(`🔗 Preguntas emparejadas con éxito: ${mapaPreguntas.size}`);
 
