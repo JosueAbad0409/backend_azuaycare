@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager'; // 👈 CAMBIO AQUÍ (import type)
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
@@ -9,7 +11,7 @@ import { ReabrirFichaDto } from './dto/reabrir-ficha.dto';
 import { Formulario } from '../formularios/entities/formulario.entity';
 import { RespuestasFormulario } from '../respuestas-formulario/entities/respuestas-formulario.entity';
 
-// Nuevas importaciones para PDF
+// Importaciones para PDF
 import { PdfRendererService } from '../common/pdf/pdf-renderer.service';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -23,6 +25,7 @@ export class FichasRespondidasService {
     private readonly fichasRepository: Repository<FichaRespondida>,
     private readonly dataSource: DataSource,
     private readonly pdfRenderer: PdfRendererService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) { }
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
@@ -57,24 +60,21 @@ export class FichasRespondidasService {
     });
 
     try {
-      // 1. Guardamos el borrador vacío en la base de datos
       const fichaGuardada = await this.fichasRepository.save(nuevaFicha);
-
-      // 2. 🔥 Ejecutamos la herencia de respuestas anteriores para autocompletar la ficha
       await this.heredarRespuestasAnteriores(fichaGuardada.id, usuarioId, createDto.formulario_id);
-
       return fichaGuardada;
     } catch (error: any) {
-      // Forzamos a que el error real llegue al frontend (rompe el filtro 500 temporalmente)
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
   }
 
   findAll(skip: number = 0, take: number = 10) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const skipReal = Math.max(Number(skip) || 0, 0);
     return this.fichasRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      skip,
-      take,
+      skip: skipReal,
+      take: limiteReal,
       relations: { usuario: true, periodo: true, cerradoPorUsuario: true },
       order: { created_at: 'DESC' },
     });
@@ -108,31 +108,42 @@ export class FichasRespondidasService {
   async getResumenFicha(id: string, user: any) {
     const ficha = await this.findOne(id, user);
 
-    const formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
-      where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
-      relations: {
-        secciones: {
-          preguntas: {
-            tipoCampo: true,
-            opciones: true,
+    const cacheKey = `form_struct_${ficha.formulario_id}`;
+    let formularioCompleto: any = await this.cacheManager.get(cacheKey);
+
+    if (!formularioCompleto) {
+      this.logger.log(`Caché miss. Consultando DB para formulario ${ficha.formulario_id}`);
+      formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
+        where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
+        relations: {
+          secciones: {
+            preguntas: {
+              tipoCampo: true,
+              opciones: true,
+            }
           }
+        },
+        order: {
+          secciones: { orden: 'ASC', preguntas: { orden: 'ASC', opciones: { orden: 'ASC' } } }
         }
-      },
-      order: {
-        secciones: { orden: 'ASC', preguntas: { orden: 'ASC', opciones: { orden: 'ASC' } } }
-      }
-    });
+      });
+
+      await this.cacheManager.set(cacheKey, formularioCompleto, 43200000);
+    }
 
     const respuestas = await this.dataSource.manager.find(RespuestasFormulario, {
       where: { ficha_id: id, fecha_desactivacion: IsNull() },
       relations: {
         opcionesSeleccionadas: { opcion: true },
-        documentos: true
+        documentos: true,
+        respuestasMatriz: { fila: true, columna: true }
       }
     });
 
-    if (formularioCompleto && formularioCompleto.secciones) {
-      formularioCompleto.secciones.forEach((seccion: any) => {
+    const formularioParaRespuesta = JSON.parse(JSON.stringify(formularioCompleto));
+
+    if (formularioParaRespuesta && formularioParaRespuesta.secciones) {
+      formularioParaRespuesta.secciones.forEach((seccion: any) => {
         if (seccion.preguntas) {
           seccion.preguntas.forEach((pregunta: any) => {
             pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
@@ -143,7 +154,7 @@ export class FichasRespondidasService {
 
     return {
       ficha,
-      formulario_estructurado: formularioCompleto
+      formulario_estructurado: formularioParaRespuesta
     };
   }
 
@@ -251,7 +262,6 @@ export class FichasRespondidasService {
   private cargarTemplateFicha(): string {
     if (!this.templateFichaCache) {
       const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
-      // Si compilas con assets copiados, o usa 'src/...' en desarrollo:
       const ruta = fs.existsSync(rutaTemplate)
         ? rutaTemplate
         : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
@@ -299,10 +309,6 @@ export class FichasRespondidasService {
     return this.pdfRenderer.renderizarHtmlAPdf(html);
   }
 
-  /** 
-   * Arma el HTML de la respuesta (texto/número/opciones/matriz). 
-   * Los textos libres SIEMPRE se escapan a mano aquí porque van con triple-llave en la plantilla (por la lista de matriz). 
-   */
   private construirRespuestaHtml(resp: any): string {
     if (!resp) return '<i>Sin responder</i>';
 
@@ -455,5 +461,4 @@ export class FichasRespondidasService {
     this.logger.log(`💾 Respuestas insertadas: ${respuestasInsertadas}`);
     this.logger.log('✅ --- AUTOCOMPLETADO FINALIZADO ---');
   }
-
 }

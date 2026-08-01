@@ -27,10 +27,12 @@ export class NivelesEconomicosService {
   }
 
   findAll( skip: number=0, take: number=10) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const skipReal = Math.max(Number(skip) || 0, 0);
     return this.nivelesRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      skip,
-      take,
+      skip: skipReal,
+      take: limiteReal,
       relations: { periodo: true },
       order: { orden: 'ASC' },
     });

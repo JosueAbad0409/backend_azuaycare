@@ -15,6 +15,7 @@ import {
   Param
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { SkipThrottle } from '@nestjs/throttler'; // <-- NUEVO IMPORT
 import { DocumentosRespaldoService } from './documentos-respaldo.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -26,6 +27,7 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class DocumentosRespaldoController {
   constructor(private readonly documentosService: DocumentosRespaldoService) {}
 
+  @SkipThrottle() // <-- EXIME LA SUBIDA DE ARCHIVOS DEL LÍMITE GLOBAL
   @Post('upload')
   @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
   @UseInterceptors(FileInterceptor('file'))
@@ -39,8 +41,6 @@ export class DocumentosRespaldoController {
       }),
     ) file: Express.Multer.File,
   ) {
-    // 🚀 ELIMINAMOS la validación del respuesta_id. 
-    // Ahora solo recibimos el archivo y lo enviamos al nuevo método del servicio.
     return await this.documentosService.subirUnArchivoTemporal(file);
   }
 

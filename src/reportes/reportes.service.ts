@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import type { Response } from 'express';
 import * as ExcelJS from 'exceljs';
 
 @Injectable()
@@ -309,12 +310,28 @@ export class ReportesService {
     }
 
     const totales = await this.dataSource.query(
-      `      SELECT        COUNT(*)::int AS total_fichas,        COUNT(*) FILTER (WHERE estado_ficha = 'BORRADOR')::int AS fichas_borrador,        COUNT(*) FILTER (WHERE estado_ficha IN ('ENVIADA','ENVIADO'))::int AS fichas_enviadas,        COUNT(*) FILTER (WHERE estado_ficha = 'VALIDADO')::int AS fichas_validadas,        COUNT(*) FILTER (WHERE estado_ficha = 'RECHAZADA')::int AS fichas_rechazadas      FROM fichas_respondidas      WHERE periodo_id = $1 AND fecha_desactivacion IS NULL      `,
+      `
+      SELECT 
+        COUNT(*)::int AS total_fichas, 
+        COUNT(*) FILTER (WHERE estado_ficha = 'BORRADOR')::int AS fichas_borrador, 
+        COUNT(*) FILTER (WHERE estado_ficha IN ('ENVIADA','ENVIADO'))::int AS fichas_enviadas, 
+        COUNT(*) FILTER (WHERE estado_ficha = 'VALIDADO')::int AS fichas_validadas, 
+        COUNT(*) FILTER (WHERE estado_ficha = 'RECHAZADA')::int AS fichas_rechazadas 
+      FROM fichas_respondidas 
+      WHERE periodo_id = $1 AND fecha_desactivacion IS NULL
+      `,
       [periodoId],
     );
 
     const distribucion = await this.dataSource.query(
-      `      SELECT n.nombre AS rango_nombre, COUNT(f.id)::int AS total      FROM fichas_respondidas f      INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id      WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL      GROUP BY n.nombre      ORDER BY total DESC      `,
+      `
+      SELECT n.nombre AS rango_nombre, COUNT(f.id)::int AS total 
+      FROM fichas_respondidas f 
+      INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id 
+      WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL 
+      GROUP BY n.nombre 
+      ORDER BY total DESC
+      `,
       [periodoId],
     );
 
@@ -322,5 +339,86 @@ export class ReportesService {
       ...totales[0],
       distribucion_rangos: distribucion,
     };
+  }
+
+  // NUEVO MÉTODO EXTREMADAMENTE OPTIMIZADO CON STREAMING
+  async descargarExcelStream(periodoId: string, res: Response) {
+    const periodo = await this.dataSource.manager.query(
+      `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [periodoId],
+    );
+
+    if (!periodo || periodo.length === 0) {
+      throw new NotFoundException('El periodo de matrícula solicitado no existe.');
+    }
+
+    // 1. Crear el Excel Writer enlazado directamente a la respuesta HTTP
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: res,
+      useStyles: true,
+      useSharedStrings: true,
+    });
+
+    const worksheet = workbook.addWorksheet('Dataset Plano');
+
+    // 2. Definir las columnas (esto automatiza las cabeceras)
+    worksheet.columns = [
+      { header: 'Cédula', key: 'cedula', width: 15 },
+      { header: 'Apellidos', key: 'apellidos', width: 25 },
+      { header: 'Nombres', key: 'nombres', width: 25 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Carrera', key: 'carrera', width: 30 },
+      { header: 'Estado Ficha', key: 'estado', width: 15 },
+      { header: 'Total Ingresos', key: 'ingresos', width: 15 },
+      { header: 'Total Egresos', key: 'egresos', width: 15 },
+      { header: 'Balance', key: 'balance', width: 15 },
+      { header: 'Nivel Económico', key: 'nivel_economico', width: 25 },
+    ];
+
+    // 3. Iniciar el QueryRunner para abrir un Stream a la Base de Datos
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+
+    const query = `
+      SELECT
+        u.cedula AS "cedula",
+        CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, '')) AS "apellidos",
+        CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, '')) AS "nombres",
+        u.email_institucional AS "email",
+        c.nombre AS "carrera",
+        f.estado_ficha AS "estado",
+        f.total_ingresos AS "ingresos",
+        f.total_egresos AS "egresos",
+        f.balance_final AS "balance",
+        n.nombre AS "nivel_economico"
+      FROM fichas_respondidas f
+      INNER JOIN usuarios u ON u.id = f.usuario_id
+      LEFT JOIN carreras c ON c.id = u.carrera_id
+      LEFT JOIN niveles_economicos n ON n.id = f.nivel_economico_id
+      WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL
+      ORDER BY c.nombre ASC, u.primer_apellido ASC
+    `;
+
+    // 4. Iniciar el Stream: Toma una fila de la BD e inmediatamente la manda al Excel
+    const dbStream = await queryRunner.stream(query, [periodoId]);
+
+    dbStream.on('data', (row) => {
+      // Inyectar la fila en el Excel. ".commit()" libera la RAM de esa fila
+      worksheet.addRow(row).commit();
+    });
+
+    dbStream.on('end', async () => {
+      // Cuando la BD termina, cerramos el Excel y enviamos el EOF al cliente
+      await workbook.commit();
+      await queryRunner.release();
+    });
+
+    dbStream.on('error', async (error) => {
+      console.error('Error generando stream de Excel:', error);
+      await queryRunner.release();
+      if (!res.headersSent) {
+        res.status(500).send('Error interno generando el reporte Excel.');
+      }
+    });
   }
 }

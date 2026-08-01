@@ -84,6 +84,8 @@ export class RespuestasFormularioService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    let fichaId = '';
+
     try {
       // 1. Limpieza de respuestas anteriores (Borrado lógico en lugar de físico)
       for (const fId of fichasIdsUnicas) {
@@ -94,55 +96,66 @@ export class RespuestasFormularioService {
         );
       }
 
-      const respuestasGuardadas: RespuestasFormulario[] = [];
-      let fichaId = '';
-
-      // 2. Inserción de nuevas respuestas
-      for (const dto of dtos) {
-        fichaId = dto.ficha_id;
-
-        const nuevaRespuesta = this.respuestasRepository.create({
+      // 2. INSERCIÓN MASIVA OPTIMIZADA (Arreglos en lugar de bucles save())
+      const entidadesRespuestas = dtos.map(dto => {
+        fichaId = dto.ficha_id; // Capturamos el último ID para el final
+        return this.respuestasRepository.create({
           ficha_id: dto.ficha_id,
           pregunta_id: dto.pregunta_id,
           valor_texto: dto.valor_texto ?? null,
           valor_numerico: dto.valor_numerico ?? null,
         });
+      });
 
-        const respuestaSalvada = await queryRunner.manager.save(nuevaRespuesta);
+      // Guardamos todas las entidades base en un solo viaje a la BD
+      const respuestasSalvadas = await queryRunner.manager.save(entidadesRespuestas);
 
-        // 2.1 Inserción Opciones de Selección Múltiple/Única
+      const registrosIntermedios: any[] = [];
+      const registrosMatriz: any[] = [];
+
+      // Mapeamos los IDs generados con sus respectivas opciones
+      for (let i = 0; i < dtos.length; i++) {
+        const dto = dtos[i];
+        const respuestaSalvada = respuestasSalvadas[i];
+
         if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
-          const registrosIntermedios = dto.opciones_seleccionadas.map((opcionId: string) => ({
-            respuesta_id: respuestaSalvada.id,
-            opcion_id: opcionId,
-          }));
-
-          await queryRunner.manager
-            .createQueryBuilder()
-            .insert()
-            .into('respuestas_opciones_seleccionadas')
-            .values(registrosIntermedios)
-            .execute();
+          dto.opciones_seleccionadas.forEach((opcionId: string) => {
+            registrosIntermedios.push({
+              respuesta_id: respuestaSalvada.id,
+              opcion_id: opcionId,
+            });
+          });
         }
 
-        // 2.2 Inserción de Respuestas de Matriz 
         if (dto.respuestas_matriz && dto.respuestas_matriz.length > 0) {
-          const registrosMatriz = dto.respuestas_matriz.map((matriz: any) => ({
-            respuesta_id: respuestaSalvada.id,
-            fila_id: matriz.fila_id,
-            columna_id: matriz.columna_id,
-            valor_texto: matriz.valor_texto ?? null
-          }));
-
-          await queryRunner.manager
-            .createQueryBuilder()
-            .insert()
-            .into('respuestas_matriz') 
-            .values(registrosMatriz)
-            .execute();
+          dto.respuestas_matriz.forEach((matriz: any) => {
+            registrosMatriz.push({
+              respuesta_id: respuestaSalvada.id,
+              fila_id: matriz.fila_id,
+              columna_id: matriz.columna_id,
+              valor_texto: matriz.valor_texto ?? null
+            });
+          });
         }
+      }
 
-        respuestasGuardadas.push(respuestaSalvada);
+      // Ejecutamos las inserciones secundarias de forma masiva
+      if (registrosIntermedios.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .insert()
+          .into('respuestas_opciones_seleccionadas')
+          .values(registrosIntermedios)
+          .execute();
+      }
+
+      if (registrosMatriz.length > 0) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .insert()
+          .into('respuestas_matriz') 
+          .values(registrosMatriz)
+          .execute();
       }
 
       // 3. GESTIÓN DE ESTADO Y PLAZOS
@@ -195,7 +208,7 @@ export class RespuestasFormularioService {
 
       return {
         success: true,
-        message: `${respuestasGuardadas.length} respuestas almacenadas. Balances en cálculo.`,
+        message: `${respuestasSalvadas.length} respuestas almacenadas de forma optimizada. Balances en cálculo.`,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -285,11 +298,15 @@ export class RespuestasFormularioService {
     });
   }
 
-  findAll(skip: number = 0, take: number = 10) {
+// 👇 LÍMITE DE SEGURIDAD APLICADO AQUÍ
+  async findAll(skip: number = 0, take: number = 10) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const skipReal = Math.max(Number(skip) || 0, 0);
+
     return this.respuestasRepository.find({
       where: { fecha_desactivacion: IsNull() },
-      skip,
-      take,
+      skip: skipReal,
+      take: limiteReal,
       relations: { pregunta: true },
       order: { created_at: 'DESC' },
     });

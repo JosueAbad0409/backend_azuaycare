@@ -26,9 +26,11 @@ export class CoordinadoresCarrerasService {
   }
 
   findAll(skip: number=0, take: number=10) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const skipReal = Math.max(Number(skip) || 0, 0);
     return this.coordinadoresRepository.find({
-      skip,
-      take,
+      skip: skipReal,
+      take: limiteReal,
       order: { carrera: { nombre: 'ASC' } },
       relations: { usuario: true, carrera: true },
     });

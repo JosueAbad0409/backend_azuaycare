@@ -22,6 +22,18 @@ export class ReportesController {
     return this.reportesService.obtenerDatasetPlano(periodoId);
   }
 
+  // 🆕 ENDPOINT PARA STREAMING DE EXCEL
+  @Get('dataset-plano/:periodoId/excel')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  async descargarExcelStream(@Param('periodoId') periodoId: string, @Res() res: Response) {
+    // 1. Configuramos las cabeceras HTTP para forzar la descarga de un Excel
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Reporte_AzuayCare_${periodoId}.xlsx"`);
+    
+    // 2. Pasamos el objeto de respuesta al servicio para que escriba directamente ahí
+    await this.reportesService.descargarExcelStream(periodoId, res);
+  }
+
   @Get('formularios-disponibles/:periodoId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   obtenerFormulariosDisponibles(@Param('periodoId') periodoId: string) {
