@@ -65,7 +65,7 @@ export class FichasRespondidasController {
   }
 
   @Get(':id/pdf')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE','INVITADO')
   async descargarPdf(@Param('id') id: string, @Req() req: RequestWithUser, @Res() res: Response) {
     const buffer = await this.fichasService.generarPdfFicha(id, req.user);
     
