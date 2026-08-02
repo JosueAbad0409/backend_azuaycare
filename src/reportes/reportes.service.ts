@@ -8,6 +8,74 @@ export class ReportesService {
   constructor(private readonly dataSource: DataSource) {}
 
   /**
+   * Obtiene el resumen consolidado de métricas generales, periodo activo y datos preparativos
+   * para los gráficos del Dashboard sin caer en over-fetching.
+   */
+  async obtenerDashboardResumen() {
+    // 1. Obtener Periodo Activo
+    const periodoActivo = await this.dataSource.query(
+      `SELECT id, nombre, fecha_inicio, fecha_fin, activo 
+       FROM periodos_matricula 
+       WHERE activo = true AND fecha_desactivacion IS NULL 
+       LIMIT 1`
+    );
+
+    const periodo = periodoActivo.length > 0 ? periodoActivo[0] : null;
+
+    // 2. Totales Generales rápidos
+    const totalCarreras = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM carreras WHERE fecha_desactivacion IS NULL`
+    );
+    const totalFormularios = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM formularios WHERE fecha_desactivacion IS NULL`
+    );
+    const totalFichas = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM fichas_respondidas WHERE fecha_desactivacion IS NULL`
+    );
+
+    // 3. Gráfico de Pastel (Niveles Económicos)
+    const nivelesData = await this.dataSource.query(
+      `SELECT n.nombre as label, COUNT(f.id)::int as total
+       FROM fichas_respondidas f
+       INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id
+       WHERE f.fecha_desactivacion IS NULL
+       GROUP BY n.nombre`
+    );
+
+    // 4. Gráfico de Barras (Fichas por Carrera)
+    const carrerasData = await this.dataSource.query(
+      `SELECT 
+        c.nombre AS carrera,
+        COUNT(f.id) FILTER (WHERE f.estado_ficha IN ('ENVIADA', 'ENVIADO'))::int AS enviadas,
+        COUNT(f.id) FILTER (WHERE f.estado_ficha = 'VALIDADO')::int AS validadas
+       FROM carreras c
+       LEFT JOIN usuarios u ON u.carrera_id = c.id
+       LEFT JOIN fichas_respondidas f ON f.usuario_id = u.id AND f.fecha_desactivacion IS NULL
+       WHERE c.fecha_desactivacion IS NULL
+       GROUP BY c.nombre
+       ORDER BY c.nombre ASC`
+    );
+
+    return {
+      totalCarreras: totalCarreras[0]?.total || 0,
+      totalFormularios: totalFormularios[0]?.total || 0,
+      totalFichasEvaluadas: totalFichas[0]?.total || 0,
+      periodoActivo: periodo,
+      graficos: {
+        nivelesEconomicos: {
+          labels: nivelesData.map((n: any) => n.label),
+          data: nivelesData.map((n: any) => n.total)
+        },
+        fichasPorCarrera: {
+          labels: carrerasData.map((c: any) => c.carrera),
+          enviadas: carrerasData.map((c: any) => c.enviadas),
+          validadas: carrerasData.map((c: any) => c.validadas)
+        }
+      }
+    };
+  }
+
+  /**
    * Genera el JSON estructurado con métricas y agregaciones por cada pregunta
    * para dibujar gráficos automáticos en el dashboard sin hardcodear nada en el frontend.
    */
@@ -48,7 +116,6 @@ export class ReportesService {
     );
     const totalFichas = totalFichasQuery[0]?.total || 0;
 
-    // 🔥 SOLUCIÓN AL TS2345: Tipado explícito 'any[]' para evitar la inferencia 'never[]'
     const reporteEstructurado: any[] = [];
 
     // 3. Procesar cada pregunta según su tipo
@@ -57,7 +124,6 @@ export class ReportesService {
       let metricas: any = null;
 
       if (tipoCampo.includes('OPCION') || tipoCampo.includes('SELECT') || tipoCampo.includes('CHECKBOX') || tipoCampo.includes('RADIO')) {
-        // Conteo por cada opción
         const opcionesConteo = await this.dataSource.query(
           `
           SELECT 
@@ -84,7 +150,6 @@ export class ReportesService {
           })),
         };
       } else if (tipoCampo.includes('NUMERIC') || tipoCampo.includes('NUMERO') || tipoCampo.includes('MONEDA')) {
-        // 🔥 SOLUCIÓN AL TS1109: Se corrigió 'await.this' por 'await this'
         const numStats = await this.dataSource.query(
           `
           SELECT 
@@ -106,7 +171,6 @@ export class ReportesService {
           suma: numStats[0]?.suma || 0,
         };
       } else if (tipoCampo.includes('MATRIZ')) {
-        // Matriz por Filas y Columnas
         const matrizConteo = await this.dataSource.query(
           `
           SELECT 
@@ -130,7 +194,6 @@ export class ReportesService {
           matriz_respuestas: matrizConteo,
         };
       } else {
-        // Para campos de texto libre
         const totalRespuestasTexto = await this.dataSource.query(
           `SELECT COUNT(id)::int AS conteo FROM respuestas WHERE pregunta_id = $1 AND valor_texto IS NOT NULL AND fecha_desactivacion IS NULL`,
           [preg.pregunta_id],
@@ -231,17 +294,16 @@ export class ReportesService {
    * Genera el archivo Excel profesional de la matriz socioeconómica del periodo.
    */
   async generarMatrizSocioeconomicaExcel(periodoId: string): Promise<{ buffer: Buffer; nombrePeriodo: string }> {
-    const dataset = await this.obtenerDatasetPlano(periodoId); // reutiliza el método que ya existe
+    const dataset = await this.obtenerDatasetPlano(periodoId);
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'AzuayCare';
     workbook.created = new Date();
 
     const hoja = workbook.addWorksheet('Matriz Socioeconómica', {
-      views: [{ state: 'frozen', ySplit: 1 }], // congela encabezado
-    });    
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
 
-    // Columnas dinámicas de "respuestas_dinamicas" (todas las preguntas del formulario)
     const clavesDinamicas = new Set<string>();
     dataset.datos.forEach((fila: any) => {
       if (fila.respuestas_dinamicas) Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
@@ -259,9 +321,8 @@ export class ReportesService {
       { header: 'Balance', key: 'balance', width: 14, style: { numFmt: '$#,##0.00' } },
       { header: 'Nivel Económico', key: 'nivel_economico', width: 20 },
       ...Array.from(clavesDinamicas).map((clave) => ({ header: clave, key: clave, width: 22 })),
-    ];    
+    ];
 
-    // Encabezado con estilo profesional
     hoja.getRow(1).eachCell((cell) => {
       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003366' } };
@@ -282,9 +343,8 @@ export class ReportesService {
         nivel_economico: fila.nivel_economico || 'N/A',
         ...(fila.respuestas_dinamicas || {}),
       });
-    });    
+    });
 
-    // Bordes ligeros a toda la tabla de datos
     hoja.eachRow((row) => {
       row.eachCell((cell) => {
         cell.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
@@ -341,7 +401,9 @@ export class ReportesService {
     };
   }
 
-  // NUEVO MÉTODO EXTREMADAMENTE OPTIMIZADO CON STREAMING
+  /**
+   * Descarga optimizada en streaming para datasets grandes.
+   */
   async descargarExcelStream(periodoId: string, res: Response) {
     const periodo = await this.dataSource.manager.query(
       `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
@@ -352,7 +414,6 @@ export class ReportesService {
       throw new NotFoundException('El periodo de matrícula solicitado no existe.');
     }
 
-    // 1. Crear el Excel Writer enlazado directamente a la respuesta HTTP
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       stream: res,
       useStyles: true,
@@ -361,7 +422,6 @@ export class ReportesService {
 
     const worksheet = workbook.addWorksheet('Dataset Plano');
 
-    // 2. Definir las columnas (esto automatiza las cabeceras)
     worksheet.columns = [
       { header: 'Cédula', key: 'cedula', width: 15 },
       { header: 'Apellidos', key: 'apellidos', width: 25 },
@@ -375,7 +435,6 @@ export class ReportesService {
       { header: 'Nivel Económico', key: 'nivel_economico', width: 25 },
     ];
 
-    // 3. Iniciar el QueryRunner para abrir un Stream a la Base de Datos
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -399,16 +458,13 @@ export class ReportesService {
       ORDER BY c.nombre ASC, u.primer_apellido ASC
     `;
 
-    // 4. Iniciar el Stream: Toma una fila de la BD e inmediatamente la manda al Excel
     const dbStream = await queryRunner.stream(query, [periodoId]);
 
     dbStream.on('data', (row) => {
-      // Inyectar la fila en el Excel. ".commit()" libera la RAM de esa fila
       worksheet.addRow(row).commit();
     });
 
     dbStream.on('end', async () => {
-      // Cuando la BD termina, cerramos el Excel y enviamos el EOF al cliente
       await workbook.commit();
       await queryRunner.release();
     });

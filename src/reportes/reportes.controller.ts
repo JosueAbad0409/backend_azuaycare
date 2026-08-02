@@ -10,6 +10,12 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class ReportesController {
   constructor(private readonly reportesService: ReportesService) {}
 
+  @Get('dashboard-resumen')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerDashboardResumen() {
+    return this.reportesService.obtenerDashboardResumen();
+  }
+
   @Get('estructura-agregada/:formularioId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   obtenerEstructuraAgregada(@Param('formularioId') formularioId: string) {
@@ -22,15 +28,12 @@ export class ReportesController {
     return this.reportesService.obtenerDatasetPlano(periodoId);
   }
 
-  // 🆕 ENDPOINT PARA STREAMING DE EXCEL
   @Get('dataset-plano/:periodoId/excel')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   async descargarExcelStream(@Param('periodoId') periodoId: string, @Res() res: Response) {
-    // 1. Configuramos las cabeceras HTTP para forzar la descarga de un Excel
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Reporte_AzuayCare_${periodoId}.xlsx"`);
     
-    // 2. Pasamos el objeto de respuesta al servicio para que escriba directamente ahí
     await this.reportesService.descargarExcelStream(periodoId, res);
   }
 
@@ -40,14 +43,12 @@ export class ReportesController {
     return this.reportesService.obtenerFormulariosDisponibles(periodoId);
   }
 
-  // 🆕 Endpoint que el frontend ya está esperando
   @Get('estadisticas/periodo/:periodoId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   obtenerEstadisticasPeriodo(@Param('periodoId') periodoId: string) {
     return this.reportesService.obtenerEstadisticasPeriodo(periodoId);
   }
 
-  // 🆕 Descarga real del Excel
   @Get('socioeconomico/periodo/:periodoId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   async descargarMatrizExcel(@Param('periodoId') periodoId: string, @Res() res: Response) {

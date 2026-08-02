@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Inject } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import type { Cache } from 'cache-manager'; // 👈 CAMBIO AQUÍ (import type)
+import type { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, DataSource } from 'typeorm';
 import { FichaRespondida } from './entities/ficha-respondida.entity';
@@ -66,6 +66,49 @@ export class FichasRespondidasService {
     } catch (error: any) {
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
+  }
+
+  /**
+   * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
+   */
+  async getFichasPaginadasYFiltradas(skip: number, take: number, search: string, estado: string) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const skipReal = Math.max(Number(skip) || 0, 0);
+
+    const query = this.fichasRepository.createQueryBuilder('f')
+      .leftJoinAndSelect('f.usuario', 'u')
+      .leftJoinAndSelect('f.periodo', 'p')
+      .where('f.fecha_desactivacion IS NULL')
+      .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
+
+    // Filtro por estado
+    if (estado && estado !== 'TODOS') {
+      query.andWhere('f.estado_ficha = :estado', { estado });
+    }
+
+    // Filtro por término de búsqueda (nombre, apellido, cédula, email)
+    if (search && search.trim() !== '') {
+      const term = `%${search.trim().toLowerCase()}%`;
+      query.andWhere(
+        `(LOWER(u.primer_nombre) LIKE :term OR 
+          LOWER(u.primer_apellido) LIKE :term OR 
+          LOWER(u.cedula) LIKE :term OR 
+          LOWER(u.email_institucional) LIKE :term)`,
+        { term }
+      );
+    }
+
+    // Ejecutamos ambas consultas en paralelo (datos y total)
+    const [data, total] = await query
+      .orderBy('f.created_at', 'DESC')
+      .skip(skipReal)
+      .take(limiteReal)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+    };
   }
 
   findAll(skip: number = 0, take: number = 10) {

@@ -31,7 +31,18 @@ export class FichasRespondidasController {
     await this.mailService.enviarConfirmacionFicha(email, 'Josué (Prueba)');
     return `Correo de prueba enviado a ${email}. Revisa tu bandeja de entrada o spam.`;
   }
-  
+
+  @Get('paginadas')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  getFichasPaginadas(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+    @Query('search') search = '',
+    @Query('estado') estado = 'TODOS',
+  ) {
+    return this.fichasService.getFichasPaginadasYFiltradas(+skip, +take, search, estado);
+  }
+
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   findAll(
