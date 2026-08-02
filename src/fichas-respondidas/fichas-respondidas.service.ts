@@ -353,37 +353,53 @@ export class FichasRespondidasService {
   }
 
   private construirRespuestaHtml(resp: any): string {
-    if (!resp) return '<i>Sin responder</i>';
+  if (!resp) return '<i>Sin responder</i>';
 
-    const escapar = (txt: string) =>
-      String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escapar = (txt: string) =>
+    String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-    if (resp.valor_texto) return escapar(resp.valor_texto);
-    if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) return escapar(resp.valor_numerico.toString());
+  if (resp.valor_texto) return escapar(resp.valor_texto);
+  if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) return escapar(resp.valor_numerico.toString());
 
-    if (resp.opcionesSeleccionadas?.length > 0) {
-      return escapar(resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '));
-    }
-
-    if (resp.respuestasMatriz?.length > 0) {
-      const filasAgrupadas = new Map<string, string[]>();
-      resp.respuestasMatriz.forEach((rm: any) => {
-        const fila = rm.fila?.texto_fila || 'Criterio';
-        const columna = rm.columna?.texto_columna || 'Opción';
-        if (!filasAgrupadas.has(fila)) filasAgrupadas.set(fila, []);
-        filasAgrupadas.get(fila)!.push(columna);
-      });
-
-      let html = '<ul style="margin: 5px 0 0 20px; padding: 0; font-size: 11px;">';
-      filasAgrupadas.forEach((columnas, fila) => {
-        html += `<li style="margin-bottom: 4px;"><b>${escapar(fila)}:</b> ${escapar(columnas.join(', '))}</li>`;
-      });
-      html += '</ul>';
-      return html;
-    }
-
-    return '<i>Sin responder</i>';
+  if (resp.opcionesSeleccionadas?.length > 0) {
+    return escapar(resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '));
   }
+
+  if (resp.respuestasMatriz?.length > 0) {
+    const filasAgrupadas = new Map<string, string[]>();
+    resp.respuestasMatriz.forEach((rm: any) => {
+      const fila = rm.fila?.texto_fila || 'Criterio';
+      const columna = rm.columna?.texto_columna || 'Opción';
+      if (!filasAgrupadas.has(fila)) filasAgrupadas.set(fila, []);
+      filasAgrupadas.get(fila)!.push(columna);
+    });
+
+    let html = `
+      <table style="width:100%; border-collapse: collapse; margin-top: 4px; font-size: 11px;">
+        <thead>
+          <tr style="background:#f0f0f0;">
+            <th style="border:1px solid #ccc; padding:5px 8px; text-align:left; width:40%;">Criterio</th>
+            <th style="border:1px solid #ccc; padding:5px 8px; text-align:left;">Selección</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    filasAgrupadas.forEach((columnas, fila) => {
+      html += `
+          <tr>
+            <td style="border:1px solid #ccc; padding:5px 8px; font-weight:bold;">${escapar(fila)}</td>
+            <td style="border:1px solid #ccc; padding:5px 8px;">${escapar(columnas.join(', '))}</td>
+          </tr>`;
+    });
+
+    html += `
+        </tbody>
+      </table>`;
+    return html;
+  }
+
+  return '<i>Sin responder</i>';
+}
 
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
     this.logger.log('🔄 --- INICIANDO AUTOCOMPLETADO DE FICHA ---');

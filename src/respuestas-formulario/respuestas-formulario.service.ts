@@ -291,11 +291,16 @@ export class RespuestasFormularioService {
   }
 
   async findByFicha(fichaId: string) {
-    return this.respuestasRepository.find({
-      where: { ficha_id: fichaId, fecha_desactivacion: IsNull() },
-      relations: { pregunta: true, opcionesSeleccionadas: true, documentos: true },
-    });
-  }
+  return this.respuestasRepository.find({
+    where: { ficha_id: fichaId, fecha_desactivacion: IsNull() },
+    relations: {
+      pregunta: true,
+      opcionesSeleccionadas: true,
+      documentos: true,
+      respuestasMatriz: { fila: true, columna: true }, // 👈 agregado
+    },
+  });
+}
 
   // 👇 LÍMITE DE SEGURIDAD APLICADO AQUÍ
   async findAll(skip: number = 0, take: number = 10) {
