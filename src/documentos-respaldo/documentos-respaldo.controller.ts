@@ -15,7 +15,7 @@ import {
   Param
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { SkipThrottle } from '@nestjs/throttler'; // <-- NUEVO IMPORT
+import { SkipThrottle } from '@nestjs/throttler';
 import { DocumentosRespaldoService } from './documentos-respaldo.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -27,7 +27,7 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class DocumentosRespaldoController {
   constructor(private readonly documentosService: DocumentosRespaldoService) {}
 
-  @SkipThrottle() // <-- EXIME LA SUBIDA DE ARCHIVOS DEL LÍMITE GLOBAL
+  @SkipThrottle() // <-- EXIME LA SUBIDA DE ARCHIVOS DEL LÍMITE GLOBAL (EVITA BLOQUEOS 429)
   @Post('upload')
   @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
   @UseInterceptors(FileInterceptor('file'))

@@ -84,10 +84,8 @@ export class RespuestasFormularioService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
-    let fichaId = '';
-
     try {
-      // 1. Limpieza de respuestas anteriores (Borrado lógico en lugar de físico)
+      // 1. Limpieza de respuestas anteriores (Borrado lógico)
       for (const fId of fichasIdsUnicas) {
         await queryRunner.manager.update(
           RespuestasFormulario, 
@@ -96,9 +94,12 @@ export class RespuestasFormularioService {
         );
       }
 
-      // 2. INSERCIÓN MASIVA OPTIMIZADA (Arreglos en lugar de bucles save())
-      const entidadesRespuestas = dtos.map(dto => {
-        fichaId = dto.ficha_id; // Capturamos el último ID para el final
+      let fichaId = '';
+
+      // 2. INSERCIÓN MASIVA OPTIMIZADA
+      // Preparamos el array de entidades a crear
+      const respuestasACrear = dtos.map(dto => {
+        fichaId = dto.ficha_id; // Conservamos el último fichaId para uso posterior
         return this.respuestasRepository.create({
           ficha_id: dto.ficha_id,
           pregunta_id: dto.pregunta_id,
@@ -107,30 +108,27 @@ export class RespuestasFormularioService {
         });
       });
 
-      // Guardamos todas las entidades base en un solo viaje a la BD
-      const respuestasSalvadas = await queryRunner.manager.save(entidadesRespuestas);
+      // Guardamos TODAS las respuestas base en una sola transacción
+      const respuestasGuardadas = await queryRunner.manager.save(RespuestasFormulario, respuestasACrear);
 
-      const registrosIntermedios: any[] = [];
-      const registrosMatriz: any[] = [];
+      const opcionesAInsertar: any[] = [];
+      const matricesAInsertar: any[] = [];
 
-      // Mapeamos los IDs generados con sus respectivas opciones
+      // Relacionamos los IDs autogenerados con sus opciones y matrices
       for (let i = 0; i < dtos.length; i++) {
         const dto = dtos[i];
-        const respuestaSalvada = respuestasSalvadas[i];
+        const respuestaId = respuestasGuardadas[i].id;
 
         if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
           dto.opciones_seleccionadas.forEach((opcionId: string) => {
-            registrosIntermedios.push({
-              respuesta_id: respuestaSalvada.id,
-              opcion_id: opcionId,
-            });
+            opcionesAInsertar.push({ respuesta_id: respuestaId, opcion_id: opcionId });
           });
         }
 
         if (dto.respuestas_matriz && dto.respuestas_matriz.length > 0) {
           dto.respuestas_matriz.forEach((matriz: any) => {
-            registrosMatriz.push({
-              respuesta_id: respuestaSalvada.id,
+            matricesAInsertar.push({
+              respuesta_id: respuestaId,
               fila_id: matriz.fila_id,
               columna_id: matriz.columna_id,
               valor_texto: matriz.valor_texto ?? null
@@ -139,22 +137,23 @@ export class RespuestasFormularioService {
         }
       }
 
-      // Ejecutamos las inserciones secundarias de forma masiva
-      if (registrosIntermedios.length > 0) {
+      // Insertamos las opciones secundarias en bloque
+      if (opcionesAInsertar.length > 0) {
         await queryRunner.manager
           .createQueryBuilder()
           .insert()
           .into('respuestas_opciones_seleccionadas')
-          .values(registrosIntermedios)
+          .values(opcionesAInsertar)
           .execute();
       }
 
-      if (registrosMatriz.length > 0) {
+      // Insertamos las matrices secundarias en bloque
+      if (matricesAInsertar.length > 0) {
         await queryRunner.manager
           .createQueryBuilder()
           .insert()
-          .into('respuestas_matriz') 
-          .values(registrosMatriz)
+          .into('respuestas_matriz')
+          .values(matricesAInsertar)
           .execute();
       }
 
@@ -208,7 +207,7 @@ export class RespuestasFormularioService {
 
       return {
         success: true,
-        message: `${respuestasSalvadas.length} respuestas almacenadas de forma optimizada. Balances en cálculo.`,
+        message: `${respuestasGuardadas.length} respuestas almacenadas de forma optimizada. Balances en cálculo.`,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -298,7 +297,7 @@ export class RespuestasFormularioService {
     });
   }
 
-// 👇 LÍMITE DE SEGURIDAD APLICADO AQUÍ
+  // 👇 LÍMITE DE SEGURIDAD APLICADO AQUÍ
   async findAll(skip: number = 0, take: number = 10) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
     const skipReal = Math.max(Number(skip) || 0, 0);

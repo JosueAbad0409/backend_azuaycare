@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Req, Query, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express'; 
-import { SkipThrottle } from '@nestjs/throttler'; // <-- NUEVO IMPORT
+import { SkipThrottle } from '@nestjs/throttler';
 import { RespuestasFormularioService } from './respuestas-formulario.service';
 import { CreateRespuestasFormularioDto } from './dto/create-respuestas-formulario.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -13,7 +13,7 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class RespuestasFormularioController {
   constructor(private readonly respuestasService: RespuestasFormularioService) {}
 
-  @SkipThrottle() // <-- EXIME ESTA RUTA DEL LÍMITE GLOBAL
+  @SkipThrottle() // <-- EXIME ESTA RUTA DEL LÍMITE GLOBAL (EVITA BLOQUEOS 429 EN AUTOGUARDADO / ENVIOS)
   @Post('enviar-bloque')
   @Roles('ESTUDIANTE', 'INVITADO')
   @UseInterceptors(FilesInterceptor('archivos')) 
