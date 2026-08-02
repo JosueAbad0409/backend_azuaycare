@@ -135,7 +135,9 @@ export class AuthService implements OnModuleInit {
           email_institucional: true,
           primer_nombre: true,
           primer_apellido: true,
+          cedula: true,
           carrera_id: true,
+          ciclo_id: true,
         },
         relations: { rol: true },
       });
@@ -199,6 +201,14 @@ export class AuthService implements OnModuleInit {
         nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
       });
 
+      // El estudiante debe completar cédula, carrera y ciclo la primera vez.
+      // Si a un estudiante le falta cualquiera de estos 3 datos, el frontend
+      // debe mostrarle el pequeño formulario de registro complementario.
+      const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
+      const perfilCompleto =
+        rolFinal !== 'ESTUDIANTE' ||
+        Boolean(usuario.cedula && usuario.carrera_id && usuario.ciclo_id);
+
       return {
         message: 'Autenticación exitosa',
         accessToken,
@@ -206,8 +216,12 @@ export class AuthService implements OnModuleInit {
           id: usuario.id,
           email: usuario.email_institucional,
           nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
-          rol: usuario.rol?.nombre ?? nombreRolAsignado,
+          rol: rolFinal,
+          cedula: usuario.cedula ?? null,
+          carrera_id: usuario.carrera_id ?? null,
+          ciclo_id: usuario.ciclo_id ?? null,
         },
+        perfilCompleto,
       };
     } catch (error) {
       if (

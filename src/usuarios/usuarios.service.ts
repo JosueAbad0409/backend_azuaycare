@@ -5,6 +5,7 @@ import { Usuario } from './entities/usuario.entity';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { Ciclo } from '../ciclos/entities/ciclo.entity';
+import { CompletarPerfilDto } from './dto/CompletarPerfilDto ';
 
 @Injectable()
 export class UsuariosService {
@@ -136,6 +137,55 @@ export class UsuariosService {
     }
 
     return this.findOne(id);
+  }
+
+  /**
+   * Permite que el propio estudiante complete su registro (cédula, carrera y ciclo)
+   * la primera vez que ingresa con sus credenciales de Google.
+   * El id del usuario se obtiene del token JWT (no se recibe por parámetro del cliente),
+   * de modo que un estudiante nunca pueda editar el perfil de otro usuario.
+   */
+  async completarPerfilEstudiante(usuarioId: string, dto: CompletarPerfilDto) {
+    const usuario = await this.usuariosRepository.findOne({
+      where: { id: usuarioId, fecha_desactivacion: IsNull() },
+      select: { id: true, cedula: true, carrera_id: true, ciclo_id: true },
+    });
+
+    if (!usuario) {
+      throw new NotFoundException('El usuario no existe o fue desactivado.');
+    }
+
+    // Validamos que el ciclo exista, esté activo y pertenezca a la carrera indicada
+    const ciclo = await this.ciclosRepository.findOne({
+      where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
+      select: { id: true, carrera_id: true },
+    });
+
+    if (!ciclo) {
+      throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+    }
+
+    if (ciclo.carrera_id !== dto.carrera_id) {
+      throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+    }
+
+    // Validamos que la cédula no esté siendo usada por otro usuario
+    const cedulaEnUso = await this.usuariosRepository.findOne({
+      where: { cedula: dto.cedula },
+      select: { id: true },
+    });
+
+    if (cedulaEnUso && cedulaEnUso.id !== usuarioId) {
+      throw new BadRequestException('La cédula ingresada ya está registrada por otro usuario.');
+    }
+
+    await this.usuariosRepository.update(usuarioId, {
+      cedula: dto.cedula,
+      carrera_id: dto.carrera_id,
+      ciclo_id: dto.ciclo_id,
+    });
+
+    return this.findOne(usuarioId);
   }
 
   async remove(id: string) {

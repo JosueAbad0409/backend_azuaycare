@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
+import { CompletarPerfilDto } from './dto/CompletarPerfilDto ';
 
 @Controller('usuarios')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -50,6 +51,21 @@ export class UsuariosController {
     }
 
     return this.usuariosService.findOne(id);
+  }
+
+  // El estudiante completa su propio registro (cédula, carrera y ciclo)
+  // la primera vez que ingresa con Google. El id se toma del token JWT,
+  // nunca de la URL, para que nadie pueda editar el perfil de otra persona.
+  @Patch('perfil/completar')
+  @Roles('ESTUDIANTE')
+  completarPerfil(
+    @Req() req: RequestWithUser,
+    @Body() completarPerfilDto: CompletarPerfilDto,
+  ) {
+    return this.usuariosService.completarPerfilEstudiante(
+      req.user.id,
+      completarPerfilDto,
+    );
   }
 
   @Patch(':id')
