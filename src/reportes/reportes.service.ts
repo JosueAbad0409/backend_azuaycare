@@ -410,12 +410,21 @@ export class ReportesService {
     };
   }
 
-  async generarDatasetFiltradoExcel(filtros: FiltroReporteDto): Promise<{ buffer: Buffer; nombrePeriodo: string }> {
+  async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
     const dataset = await this.obtenerDatasetFiltrado(filtros);
 
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'AzuayCare';
-    workbook.created = new Date();
+    const nombrePeriodo = dataset.periodo.replace(/\s+/g, '_');
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="Dataset_Filtrado_${nombrePeriodo}.xlsx"`,
+      'Transfer-Encoding': 'chunked',
+    });
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: res,
+      useStyles: true,
+      useSharedStrings: true,
+    });
 
     const hoja = workbook.addWorksheet('Dataset Filtrado', {
       views: [{ state: 'frozen', ySplit: 1 }],
@@ -461,7 +470,7 @@ export class ReportesService {
         balance: Number(fila.balance) || 0,
         nivel_economico: fila.nivel_economico || 'N/A',
         ...(fila.respuestas_dinamicas || {}),
-      });
+      }).commit();
     });
 
     hoja.eachRow((row) => {
@@ -470,10 +479,21 @@ export class ReportesService {
       });
     });
 
-    hoja.autoFilter = { from: 'A1', to: `${String.fromCharCode(65 + hoja.columns.length - 1)}1` };
+    const getExcelColumnLetter = (index: number): string => {
+      let letter = '';
+      let value = index;
+      while (value > 0) {
+        const remainder = (value - 1) % 26;
+        letter = String.fromCharCode(65 + remainder) + letter;
+        value = Math.floor((value - 1) / 26);
+      }
+      return letter;
+    };
 
-    const arrayBuffer = await workbook.xlsx.writeBuffer();
-    return { buffer: Buffer.from(arrayBuffer), nombrePeriodo: dataset.periodo };
+    const lastColumnLetter = getExcelColumnLetter(hoja.columns.length);
+    hoja.autoFilter = { from: 'A1', to: `${lastColumnLetter}1` };
+
+    await workbook.commit();
   }
 
   async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {

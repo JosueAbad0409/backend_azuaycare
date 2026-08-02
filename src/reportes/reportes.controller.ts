@@ -38,15 +38,7 @@ export class ReportesController {
   @Post('dataset-filtrado/excel')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   async descargarDatasetFiltradoExcel(@Body() filtros: FiltroReporteDto, @Res() res: Response) {
-    const { buffer, nombrePeriodo } = await this.reportesService.generarDatasetFiltradoExcel(filtros);
-    const nombreArchivo = `Dataset_Filtrado_${nombrePeriodo.replace(/\s+/g, '_')}.xlsx`;
-
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
-      'Content-Length': buffer.length.toString(),
-    });
-    res.end(buffer);
+    await this.reportesService.descargarDatasetFiltradoExcel(filtros, res);
   }
 
   @Post('dataset-filtrado/pdf')

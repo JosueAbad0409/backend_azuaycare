@@ -4,98 +4,188 @@
   <meta charset="UTF-8">
   <title>Reporte Consolidado</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; color: #333; }
-    .header { text-align: center; margin-bottom: 20px; }
-    .header h1 { margin: 0; font-size: 24px; }
-    .header p { margin: 4px 0; font-size: 14px; color: #555; }
-    .section { margin-top: 24px; }
-    .section h2 { border-bottom: 1px solid #ccc; padding-bottom: 6px; font-size: 18px; margin-bottom: 12px; }
-    .summary { display: flex; flex-wrap: wrap; gap: 12px; }
-    .summary-item { flex: 1 1 220px; background: #f4f7fb; padding: 12px; border-radius: 6px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
-    th { background: #003366; color: #fff; }
-    .small-text { font-size: 11px; color: #666; }
+    :root {
+      color-scheme: light;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #1f2937;
+      background: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; background: #f4f6f8; }
+    .page { max-width: 1080px; margin: 0 auto; background: #fff; padding: 32px; border-radius: 14px; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08); }
+    .brand-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
+    .brand-bar .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-bar .brand img { width: 72px; height: auto; border-radius: 8px; }
+    .brand-bar .brand h1 { margin: 0; font-size: 24px; letter-spacing: 0.02em; color: #10375c; }
+    .brand-bar .brand small { color: #475569; display: block; margin-top: 4px; }
+    .document-meta { text-align: right; color: #475569; font-size: 12px; }
+    .document-meta strong { color: #0f172a; }
+
+    .banner-signature { margin: 24px 0; padding: 18px 20px; background: #eff6ff; border-left: 6px solid #1d4ed8; border-radius: 10px; }
+    .banner-signature p { margin: 0; line-height: 1.5; font-size: 13px; color: #1e293b; }
+
+    .section { margin-top: 28px; }
+    .section-title { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+    .section-title .number { color: #1d4ed8; font-size: 18px; font-weight: 700; }
+    .section-title h2 { margin: 0; font-size: 18px; letter-spacing: 0.01em; color: #0f172a; }
+
+    .card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; background: #fbfdff; }
+    .card strong { display: block; font-size: 12px; color: #475569; margin-bottom: 6px; }
+    .card span { font-size: 18px; font-weight: 700; color: #0f172a; }
+
+    .label-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .label-item { border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 14px; background: #ffffff; }
+    .label-item strong { display: block; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #334155; margin-bottom: 8px; }
+    .label-item span { display: block; font-size: 14px; color: #0f172a; font-weight: 600; }
+
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-spacing: 0; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+    th { background: #1d4ed8; color: #ffffff; font-weight: 700; }
+    tbody tr:hover { background: rgba(59, 130, 246, 0.05); }
+
+    .section-block { border-left: 4px solid #1d4ed8; padding-left: 18px; margin-bottom: 18px; }
+    .section-block p { margin: 8px 0; color: #334155; line-height: 1.6; }
+
+    .footer { margin-top: 32px; display: flex; justify-content: space-between; align-items: center; gap: 16px; color: #475569; font-size: 12px; }
+    .signature-block { width: 320px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; color: #0f172a; font-weight: 600; }
+
+    @media print {
+      body { background: #fff; }
+      .page { box-shadow: none; border-radius: 0; margin: 0; padding: 16px; }
+      .brand-bar, .banner-signature, .footer { page-break-inside: avoid; }
+      table th, table td { font-size: 11px; }
+      .card-grid, .label-grid { gap: 8px; }
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>Reporte Consolidado</h1>
-    <p>Periodo: {{periodo}}</p>
-    <p>Generado: {{generated_at}}</p>
-  </div>
+  <div class="page">
+    <div class="brand-bar">
+      <div class="brand">
+        <div class="brand-mark">AC</div>
+        <div>
+          <h1>AzuayCare</h1>
+          <small>Ficha Socioeconómica - Vista Impresa</small>
+        </div>
+      </div>
+      <div class="document-meta">
+        <div><strong>Periodo:</strong> {{periodo}}</div>
+        <div><strong>Generado:</strong> {{generated_at}}</div>
+      </div>
+    </div>
 
-  <div class="section">
-    <h2>Resumen</h2>
-    <div class="summary">
-      <div class="summary-item">
-        <strong>Total registros</strong>
-        <div>{{total_registros}}</div>
+    <div class="banner-signature">
+      <p><strong>Firma Digital y Consentimiento:</strong> Documento de uso oficial. El contenido presentado en este reporte representa el estado de la ficha socioeconómica y puede ser validado mediante firma digital institucional.</p>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="number">I</div>
+        <h2>Resumen ejecutivo</h2>
       </div>
-      <div class="summary-item">
-        <strong>Total fichas analizadas</strong>
-        <div>{{total_fichas_respondidas}}</div>
-      </div>
-      <div class="summary-item">
-        <strong>Filtros aplicados</strong>
-        <div class="small-text">
-          {{#if filtros.periodo_id}}Periodo: {{filtros.periodo_id}}<br>{{/if}}
-          {{#if filtros.formulario_id}}Formulario: {{filtros.formulario_id}}<br>{{/if}}
-          {{#if filtros.carrera_id}}Carrera: {{filtros.carrera_id}}<br>{{/if}}
-          {{#if filtros.ciclo_id}}Ciclo: {{filtros.ciclo_id}}<br>{{/if}}
-          {{#if filtros.estado_ficha}}Estado: {{filtros.estado_ficha}}{{/if}}
+      <div class="card-grid">
+        <div class="card">
+          <strong>Total registros</strong>
+          <span>{{total_registros}}</span>
+        </div>
+        <div class="card">
+          <strong>Total fichas analizadas</strong>
+          <span>{{total_fichas_respondidas}}</span>
+        </div>
+        <div class="card">
+          <strong>Filtros aplicados</strong>
+          <span>{{#if filtros.estado_ficha}}{{filtros.estado_ficha}}{{else}}Todos{{/if}}</span>
         </div>
       </div>
     </div>
-  </div>
 
-  <div class="section">
-    <h2>Datos de la muestra</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Cédula</th>
-          <th>Apellidos</th>
-          <th>Nombres</th>
-          <th>Email</th>
-          <th>Carrera</th>
-          <th>Ciclo</th>
-          <th>Estado</th>
-          <th>Ingresos</th>
-          <th>Egresos</th>
-          <th>Balance</th>
-          <th>Nivel Económico</th>
-        </tr>
-      </thead>
-      <tbody>
-        {{#each dataset}}
-          <tr>
-            <td>{{cedula}}</td>
-            <td>{{apellidos}}</td>
-            <td>{{nombres}}</td>
-            <td>{{email}}</td>
-            <td>{{carrera}}</td>
-            <td>{{ciclo}}</td>
-            <td>{{estado}}</td>
-            <td>{{ingresos}}</td>
-            <td>{{egresos}}</td>
-            <td>{{balance}}</td>
-            <td>{{nivel_economico}}</td>
-          </tr>
-        {{/each}}
-      </tbody>
-    </table>
-  </div>
+    <div class="section">
+      <div class="section-title">
+        <div class="number">II</div>
+        <h2>Parámetros del Reporte</h2>
+      </div>
+      <div class="label-grid">
+        <div class="label-item">
+          <strong>Periodo</strong>
+          <span>{{periodo}}</span>
+        </div>
+        <div class="label-item">
+          <strong>Formulario</strong>
+          <span>{{filtros.formulario_id}}</span>
+        </div>
+        <div class="label-item">
+          <strong>Carrera</strong>
+          <span>{{filtros.carrera_id}}</span>
+        </div>
+        <div class="label-item">
+          <strong>Ciclo</strong>
+          <span>{{filtros.ciclo_id}}</span>
+        </div>
+        <div class="label-item">
+          <strong>Estado ficha</strong>
+          <span>{{#if filtros.estado_ficha}}{{filtros.estado_ficha}}{{else}}Todos{{/if}}</span>
+        </div>
+      </div>
+    </div>
 
-  <div class="section">
-    <h2>Estructura Agregada</h2>
-    {{#each estructura_agregada}}
-      <div style="margin-bottom: 18px;">
-        <strong>Sección:</strong> {{seccion_nombre}}<br>
-        <strong>Pregunta:</strong> {{enunciado}}<br>
-        <strong>Tipo de campo:</strong> {{tipo_campo}}<br>
-        <div style="margin-top: 8px;">
+    <div class="section">
+      <div class="section-title">
+        <div class="number">III</div>
+        <h2>Datos de la muestra</h2>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Cédula</th>
+              <th>Apellidos</th>
+              <th>Nombres</th>
+              <th>Email</th>
+              <th>Carrera</th>
+              <th>Ciclo</th>
+              <th>Estado</th>
+              <th>Ingresos</th>
+              <th>Egresos</th>
+              <th>Balance</th>
+              <th>Nivel Económico</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each dataset}}
+              <tr>
+                <td>{{cedula}}</td>
+                <td>{{apellidos}}</td>
+                <td>{{nombres}}</td>
+                <td>{{email}}</td>
+                <td>{{carrera}}</td>
+                <td>{{ciclo}}</td>
+                <td>{{estado}}</td>
+                <td>{{ingresos}}</td>
+                <td>{{egresos}}</td>
+                <td>{{balance}}</td>
+                <td>{{nivel_economico}}</td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="number">IV</div>
+        <h2>Estructura consolidada</h2>
+      </div>
+      {{#each estructura_agregada}}
+        <div class="section-block">
+          <strong>Sección {{seccion_nombre}}</strong>
+          <p><strong>Pregunta:</strong> {{enunciado}}</p>
+          <p><strong>Tipo de campo:</strong> {{tipo_campo}}</p>
           {{#if metricas.opciones}}
+            <p><strong>Opciones:</strong></p>
             <ul>
               {{#each metricas.opciones}}
                 <li>{{texto}} — {{conteo}} ({{porcentaje}}%)</li>
@@ -103,16 +193,21 @@
             </ul>
           {{else}}
             {{#if metricas.promedio}}
-              Promedio: {{metricas.promedio}}<br>
-              Mínimo: {{metricas.minimo}}<br>
-              Máximo: {{metricas.maximo}}<br>
+              <p><strong>Promedio:</strong> {{metricas.promedio}}</p>
+              <p><strong>Mínimo:</strong> {{metricas.minimo}}</p>
+              <p><strong>Máximo:</strong> {{metricas.maximo}}</p>
             {{else}}
-              Total respuestas: {{metricas.total_respuestas}}
+              <p><strong>Total respuestas:</strong> {{metricas.total_respuestas}}</p>
             {{/if}}
           {{/if}}
         </div>
-      </div>
-    {{/each}}
+      {{/each}}
+    </div>
+
+    <div class="footer">
+      <div>Documento generado por la plataforma AzuayCare.</div>
+      <div class="signature-block">Firma digital autorizada</div>
+    </div>
   </div>
 </body>
 </html>
