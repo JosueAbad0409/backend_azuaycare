@@ -33,13 +33,13 @@ export class ReportesService {
       `SELECT COUNT(*)::int AS total FROM fichas_respondidas WHERE fecha_desactivacion IS NULL`
     );
 
-    // 3. Gráfico de Pastel (Niveles Económicos)
+    // 3. Gráfico de Pastel (Rangos de Vulnerabilidad / Niveles) - Corregido a rangos_variable_calculada
     const nivelesData = await this.dataSource.query(
-      `SELECT n.nombre as label, COUNT(f.id)::int as total
+      `SELECT COALESCE(r.nombre, 'Sin Rango') as label, COUNT(f.id)::int as total
        FROM fichas_respondidas f
-       INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id
+       LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_resultado_id
        WHERE f.fecha_desactivacion IS NULL
-       GROUP BY n.nombre`
+       GROUP BY r.nombre`
     );
 
     // 4. Gráfico de Barras (Fichas por Carrera)
@@ -64,12 +64,12 @@ export class ReportesService {
       graficos: {
         nivelesEconomicos: {
           labels: nivelesData.map((n: any) => n.label),
-          data: nivelesData.map((n: any) => n.total)
+          data: nivelesData.map((n: any) => Number(n.total) || 0)
         },
         fichasPorCarrera: {
           labels: carrerasData.map((c: any) => c.carrera),
-          enviadas: carrerasData.map((c: any) => c.enviadas),
-          validadas: carrerasData.map((c: any) => c.validadas)
+          enviadas: carrerasData.map((c: any) => Number(c.enviadas) || 0),
+          validadas: carrerasData.map((c: any) => Number(c.validadas) || 0)
         }
       }
     };
@@ -246,22 +246,22 @@ export class ReportesService {
         f.total_ingresos AS "ingresos",
         f.total_egresos AS "egresos",
         f.balance_final AS "balance",
-        n.nombre AS "nivel_economico",
+        COALESCE(r.nombre, 'Sin Rango') AS "nivel_economico",
         
         (
           SELECT jsonb_object_agg(
             p.enunciado,
-            COALESCE(r.valor_texto, r.valor_numerico::text, '')
+            COALESCE(res.valor_texto, res.valor_numerico::text, '')
           )
-          FROM respuestas r
-          INNER JOIN preguntas p ON p.id = r.pregunta_id
-          WHERE r.ficha_id = f.id AND r.fecha_desactivacion IS NULL
+          FROM respuestas res
+          INNER JOIN preguntas p ON p.id = res.pregunta_id
+          WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
         ) AS "respuestas_dinamicas"
         
       FROM fichas_respondidas f
       INNER JOIN usuarios u ON u.id = f.usuario_id
       LEFT JOIN carreras c ON c.id = u.carrera_id
-      LEFT JOIN niveles_economicos n ON n.id = f.nivel_economico_id
+      LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_resultado_id
       WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL
       ORDER BY c.nombre ASC, u.primer_apellido ASC
     `;
@@ -385,11 +385,11 @@ export class ReportesService {
 
     const distribucion = await this.dataSource.query(
       `
-      SELECT n.nombre AS rango_nombre, COUNT(f.id)::int AS total 
+      SELECT COALESCE(r.nombre, 'Sin Rango') AS rango_nombre, COUNT(f.id)::int AS total 
       FROM fichas_respondidas f 
-      INNER JOIN niveles_economicos n ON n.id = f.nivel_economico_id 
+      LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_resultado_id 
       WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL 
-      GROUP BY n.nombre 
+      GROUP BY r.nombre 
       ORDER BY total DESC
       `,
       [periodoId],
@@ -449,11 +449,11 @@ export class ReportesService {
         f.total_ingresos AS "ingresos",
         f.total_egresos AS "egresos",
         f.balance_final AS "balance",
-        n.nombre AS "nivel_economico"
+        COALESCE(r.nombre, 'Sin Rango') AS "nivel_economico"
       FROM fichas_respondidas f
       INNER JOIN usuarios u ON u.id = f.usuario_id
       LEFT JOIN carreras c ON c.id = u.carrera_id
-      LEFT JOIN niveles_economicos n ON n.id = f.nivel_economico_id
+      LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_resultado_id
       WHERE f.periodo_id = $1 AND f.fecha_desactivacion IS NULL
       ORDER BY c.nombre ASC, u.primer_apellido ASC
     `;
