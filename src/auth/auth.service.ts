@@ -183,6 +183,7 @@ export class AuthService implements OnModuleInit {
         email: usuario.email_institucional,
         rol: usuario.rol?.nombre ?? nombreRolAsignado,
         carrera_id: usuario.carrera_id ?? null,
+        nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
       });
 
       return {
