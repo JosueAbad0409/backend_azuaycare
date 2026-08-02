@@ -131,6 +131,7 @@ export class AuthService implements OnModuleInit {
       });
 
       // 5. Auto-provisioning si es la primera vez que inicia sesión
+      // 5. Auto-provisioning si es la primera vez que inicia sesión
       if (!usuario) {
         let rolDb = this.rolesCache.get(nombreRolAsignado);
 
@@ -154,10 +155,26 @@ export class AuthService implements OnModuleInit {
         });
 
         await this.usuariosRepository.save(usuario);
-      } else if (!usuario.google_id) {
-        // Vinculamos el Google ID si ya estaba pre-registrado en el sistema sin él
-        usuario.google_id = googleId;
-        await this.usuariosRepository.save(usuario);
+      } else {
+        // --- NUEVO: Actualización dinámica ---
+        let necesitaActualizar = false;
+
+        // Vinculamos el Google ID si ya estaba pre-registrado sin él
+        if (!usuario.google_id) {
+          usuario.google_id = googleId;
+          necesitaActualizar = true;
+        }
+
+        // Si la base de datos dice "Usuario", pero Google mandó el nombre real, lo actualizamos
+        if (usuario.primer_nombre === 'Usuario' && payloadName !== 'Usuario') {
+          usuario.primer_nombre = payloadName;
+          usuario.primer_apellido = payloadLastName;
+          necesitaActualizar = true;
+        }
+
+        if (necesitaActualizar) {
+          await this.usuariosRepository.save(usuario);
+        }
       }
 
       // 6. Firmar y retornar JWT
