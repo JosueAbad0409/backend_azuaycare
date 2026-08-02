@@ -15,7 +15,7 @@ import { LoginGoogleDto } from './dto/login-google.dto';
 @Injectable()
 export class AuthService implements OnModuleInit {
   private readonly googleClient: OAuth2Client;
-  
+
   // Cacheamos los roles para no ir a buscarlos a la DB en cada login nuevos
   //cambios
   private readonly rolesCache: Map<string, Role> = new Map();
@@ -60,8 +60,12 @@ export class AuthService implements OnModuleInit {
     try {
       let email = '';
       let googleId = '';
-      let payloadName = 'Usuario';
-      let payloadLastName = 'Azuay';
+
+      // Nuevas variables para dividir nombres y apellidos
+      let primerNombre = 'Usuario';
+      let segundoNombre: string | null = null;
+      let primerApellido = 'Azuay';
+      let segundoApellido: string | null = null;
 
       // 1. BYPASS PARA PRUEBAS LOCALES DESDE LA TERMINAL (MODO DESARROLLO)
       if (process.env.ALLOW_TEST_LOGIN === 'true' && loginGoogleDto.emailTest) {
@@ -73,7 +77,6 @@ export class AuthService implements OnModuleInit {
           throw new UnauthorizedException('El idToken de Google es requerido.');
         }
 
-        // Al validar la existencia, TypeScript infiere correctamente que token es string obligatorio
         const ticket = await this.googleClient.verifyIdToken({
           idToken: loginGoogleDto.token,
           audience: process.env.GOOGLE_CLIENT_ID,
@@ -86,8 +89,15 @@ export class AuthService implements OnModuleInit {
 
         email = payload.email.toLowerCase().trim();
         googleId = payload.sub;
-        payloadName = payload.given_name ?? 'Usuario';
-        payloadLastName = payload.family_name ?? 'Azuay';
+
+        // --- LÓGICA PARA SEPARAR NOMBRES Y APELLIDOS ---
+        const rawGiven = (payload.given_name ?? 'Usuario').trim().split(' ');
+        primerNombre = rawGiven[0]; // El primer elemento es el primer nombre
+        segundoNombre = rawGiven.length > 1 ? rawGiven.slice(1).join(' ') : null; // El resto al segundo nombre
+
+        const rawFamily = (payload.family_name ?? 'Azuay').trim().split(' ');
+        primerApellido = rawFamily[0]; // El primer elemento es el primer apellido
+        segundoApellido = rawFamily.length > 1 ? rawFamily.slice(1).join(' ') : null; // El resto al segundo apellido
       }
 
       // 3. Clasificación del Correo por RegEx (Estudiante regular vs Invitado vs Coordinador)
@@ -130,7 +140,7 @@ export class AuthService implements OnModuleInit {
         relations: { rol: true },
       });
 
-      // 5. Auto-provisioning si es la primera vez que inicia sesión
+
       // 5. Auto-provisioning si es la primera vez que inicia sesión
       if (!usuario) {
         let rolDb = this.rolesCache.get(nombreRolAsignado);
@@ -146,29 +156,32 @@ export class AuthService implements OnModuleInit {
           this.rolesCache.set(nombreRolAsignado, rolDb);
         }
 
+        // Asignamos cada campo a su columna correspondiente
         usuario = this.usuariosRepository.create({
           google_id: googleId,
           email_institucional: email,
-          primer_nombre: payloadName,
-          primer_apellido: payloadLastName,
+          primer_nombre: primerNombre,
+          segundo_nombre: segundoNombre,
+          primer_apellido: primerApellido,
+          segundo_apellido: segundoApellido,
           rol: rolDb,
         });
 
         await this.usuariosRepository.save(usuario);
       } else {
-        // --- NUEVO: Actualización dinámica ---
+        // --- Actualización dinámica si ya existe ---
         let necesitaActualizar = false;
 
-        // Vinculamos el Google ID si ya estaba pre-registrado sin él
         if (!usuario.google_id) {
           usuario.google_id = googleId;
           necesitaActualizar = true;
         }
 
-        // Si la base de datos dice "Usuario", pero Google mandó el nombre real, lo actualizamos
-        if (usuario.primer_nombre === 'Usuario' && payloadName !== 'Usuario') {
-          usuario.primer_nombre = payloadName;
-          usuario.primer_apellido = payloadLastName;
+        if (usuario.primer_nombre === 'Usuario' && primerNombre !== 'Usuario') {
+          usuario.primer_nombre = primerNombre;
+          usuario.segundo_nombre = segundoNombre;
+          usuario.primer_apellido = primerApellido;
+          usuario.segundo_apellido = segundoApellido;
           necesitaActualizar = true;
         }
 
