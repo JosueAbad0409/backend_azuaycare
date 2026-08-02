@@ -4,12 +4,15 @@ import { Repository, IsNull } from 'typeorm';
 import { Usuario } from './entities/usuario.entity';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
+import { Ciclo } from '../ciclos/entities/ciclo.entity';
 
 @Injectable()
 export class UsuariosService {
   constructor(
     @InjectRepository(Usuario)
     private readonly usuariosRepository: Repository<Usuario>,
+    @InjectRepository(Ciclo)
+    private readonly ciclosRepository: Repository<Ciclo>,
   ) {}
 
   async create(createUsuarioDto: CreateUsuarioDto) {
@@ -22,6 +25,21 @@ export class UsuariosService {
 
     if (existe) {
       throw new BadRequestException('El usuario con este correo electrónico ya está registrado.');
+    }
+
+    if (createUsuarioDto.ciclo_id) {
+      const ciclo = await this.ciclosRepository.findOne({
+        where: { id: createUsuarioDto.ciclo_id, fecha_desactivacion: IsNull() },
+        select: { id: true, carrera_id: true },
+      });
+
+      if (!ciclo) {
+        throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+      }
+
+      if (createUsuarioDto.carrera_id && ciclo.carrera_id !== createUsuarioDto.carrera_id) {
+        throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+      }
     }
 
     const nuevoUsuario = this.usuariosRepository.create({
@@ -49,15 +67,16 @@ export class UsuariosService {
         cedula: true,
         rol_id: true,
         carrera_id: true,
+        ciclo_id: true,
       },
-      relations: { rol: true },
+      relations: { rol: true, ciclo: true },
     });
   }
 
   async findOne(id: string) {
     const usuario = await this.usuariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { rol: true },
+      relations: { rol: true, ciclo: true },
     });
 
     if (!usuario) {
@@ -68,11 +87,47 @@ export class UsuariosService {
   }
 
   async update(id: string, updateUsuarioDto: UpdateUsuarioDto) {
-    const datosActualizados: Partial<Usuario> = { ...updateUsuarioDto };
+    const usuarioExistente = await this.usuariosRepository.findOne({
+      where: { id, fecha_desactivacion: IsNull() },
+      select: { id: true, carrera_id: true, ciclo_id: true },
+    });
+
+    if (!usuarioExistente) {
+      throw new NotFoundException('El usuario a actualizar no existe o fue desactivado.');
+    }
 
     if (updateUsuarioDto.email_institucional) {
-      datosActualizados.email_institucional = updateUsuarioDto.email_institucional.toLowerCase().trim();
+      updateUsuarioDto.email_institucional = updateUsuarioDto.email_institucional.toLowerCase().trim();
     }
+
+    if (updateUsuarioDto.ciclo_id) {
+      const ciclo = await this.ciclosRepository.findOne({
+        where: { id: updateUsuarioDto.ciclo_id, fecha_desactivacion: IsNull() },
+        select: { id: true, carrera_id: true },
+      });
+
+      if (!ciclo) {
+        throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+      }
+
+      const carreraIdAValidar = updateUsuarioDto.carrera_id ?? usuarioExistente.carrera_id;
+      if (carreraIdAValidar && ciclo.carrera_id !== carreraIdAValidar) {
+        throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+      }
+    }
+
+    if (updateUsuarioDto.carrera_id && usuarioExistente.ciclo_id) {
+      const cicloActual = await this.ciclosRepository.findOne({
+        where: { id: usuarioExistente.ciclo_id, fecha_desactivacion: IsNull() },
+        select: { id: true, carrera_id: true },
+      });
+
+      if (cicloActual && cicloActual.carrera_id !== updateUsuarioDto.carrera_id) {
+        throw new BadRequestException('No es posible cambiar la carrera sin actualizar primero el ciclo asociado.');
+      }
+    }
+
+    const datosActualizados: Partial<Usuario> = { ...updateUsuarioDto };
 
     const resultado = await this.usuariosRepository.update(id, datosActualizados);
 

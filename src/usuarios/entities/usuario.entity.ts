@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Role } from '../../roles/entities/role.entity';
 import { Carrera } from 'src/carreras/entities/carrera.entity';
+import { Ciclo } from 'src/ciclos/entities/ciclo.entity';
 import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordinadores-carrera.entity';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
 import { PerfilCoordinador } from 'src/perfil-coordinador/entities/perfil-coordinador.entity';
@@ -66,6 +67,13 @@ export class Usuario {
   @ManyToOne(() => Carrera, (carrera) => carrera.usuarios, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'carrera_id' })
   carrera: Carrera | null;
+
+  @Column({ name: 'ciclo_id', type: 'uuid', nullable: true })
+  ciclo_id: string | null;
+
+  @ManyToOne(() => Ciclo, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'ciclo_id' })
+  ciclo: Ciclo | null;
 
   @OneToMany(() => CoordinadoresCarrera, (coordinacion) => coordinacion.usuario)
   coordinaciones: CoordinadoresCarrera[];

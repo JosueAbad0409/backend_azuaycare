@@ -1,9 +1,10 @@
-import { Controller, Get, Param, UseGuards, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ReportesService } from './reportes.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { FiltroReporteDto } from './dto/filtro-reporte.dto';
 
 @Controller('reportes')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,6 +21,46 @@ export class ReportesController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   obtenerEstructuraAgregada(@Param('formularioId') formularioId: string) {
     return this.reportesService.obtenerEstructuraAgregada(formularioId);
+  }
+
+  @Get('filtros-disponibles/:formularioId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerFiltrosDisponibles(@Param('formularioId') formularioId: string) {
+    return this.reportesService.obtenerFiltrosDisponibles(formularioId);
+  }
+
+  @Post('dataset-filtrado')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerDatasetFiltrado(@Body() filtros: FiltroReporteDto) {
+    return this.reportesService.obtenerDatasetFiltrado(filtros);
+  }
+
+  @Post('dataset-filtrado/excel')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  async descargarDatasetFiltradoExcel(@Body() filtros: FiltroReporteDto, @Res() res: Response) {
+    const { buffer, nombrePeriodo } = await this.reportesService.generarDatasetFiltradoExcel(filtros);
+    const nombreArchivo = `Dataset_Filtrado_${nombrePeriodo.replace(/\s+/g, '_')}.xlsx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
+  }
+
+  @Post('dataset-filtrado/pdf')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  async descargarDatasetFiltradoPdf(@Body() filtros: FiltroReporteDto, @Res() res: Response) {
+    const buffer = await this.reportesService.generarReporteFiltradoPdf(filtros);
+    const nombreArchivo = `Reporte_Filtrado_${Date.now()}.pdf`;
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${nombreArchivo}"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    res.end(buffer);
   }
 
   @Get('dataset-plano/:periodoId')

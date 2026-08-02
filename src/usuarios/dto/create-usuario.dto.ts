@@ -37,4 +37,8 @@ export class CreateUsuarioDto {
   @IsUUID('4', { message: 'El carrera_id debe ser un UUID válido.' })
   @IsOptional()
   carrera_id?: string;
+
+  @IsUUID('4', { message: 'El ciclo_id debe ser un UUID válido.' })
+  @IsOptional()
+  ciclo_id?: string;
 }

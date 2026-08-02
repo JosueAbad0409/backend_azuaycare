@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte Consolidado</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #333; }
+    .header { text-align: center; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .header p { margin: 4px 0; font-size: 14px; color: #555; }
+    .section { margin-top: 24px; }
+    .section h2 { border-bottom: 1px solid #ccc; padding-bottom: 6px; font-size: 18px; margin-bottom: 12px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 12px; }
+    .summary-item { flex: 1 1 220px; background: #f4f7fb; padding: 12px; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+    th { background: #003366; color: #fff; }
+    .small-text { font-size: 11px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Reporte Consolidado</h1>
+    <p>Periodo: {{periodo}}</p>
+    <p>Generado: {{generated_at}}</p>
+  </div>
+
+  <div class="section">
+    <h2>Resumen</h2>
+    <div class="summary">
+      <div class="summary-item">
+        <strong>Total registros</strong>
+        <div>{{total_registros}}</div>
+      </div>
+      <div class="summary-item">
+        <strong>Total fichas analizadas</strong>
+        <div>{{total_fichas_respondidas}}</div>
+      </div>
+      <div class="summary-item">
+        <strong>Filtros aplicados</strong>
+        <div class="small-text">
+          {{#if filtros.periodo_id}}Periodo: {{filtros.periodo_id}}<br>{{/if}}
+          {{#if filtros.formulario_id}}Formulario: {{filtros.formulario_id}}<br>{{/if}}
+          {{#if filtros.carrera_id}}Carrera: {{filtros.carrera_id}}<br>{{/if}}
+          {{#if filtros.ciclo_id}}Ciclo: {{filtros.ciclo_id}}<br>{{/if}}
+          {{#if filtros.estado_ficha}}Estado: {{filtros.estado_ficha}}{{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Datos de la muestra</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Cédula</th>
+          <th>Apellidos</th>
+          <th>Nombres</th>
+          <th>Email</th>
+          <th>Carrera</th>
+          <th>Ciclo</th>
+          <th>Estado</th>
+          <th>Ingresos</th>
+          <th>Egresos</th>
+          <th>Balance</th>
+          <th>Nivel Económico</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each dataset}}
+          <tr>
+            <td>{{cedula}}</td>
+            <td>{{apellidos}}</td>
+            <td>{{nombres}}</td>
+            <td>{{email}}</td>
+            <td>{{carrera}}</td>
+            <td>{{ciclo}}</td>
+            <td>{{estado}}</td>
+            <td>{{ingresos}}</td>
+            <td>{{egresos}}</td>
+            <td>{{balance}}</td>
+            <td>{{nivel_economico}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Estructura Agregada</h2>
+    {{#each estructura_agregada}}
+      <div style="margin-bottom: 18px;">
+        <strong>Sección:</strong> {{seccion_nombre}}<br>
+        <strong>Pregunta:</strong> {{enunciado}}<br>
+        <strong>Tipo de campo:</strong> {{tipo_campo}}<br>
+        <div style="margin-top: 8px;">
+          {{#if metricas.opciones}}
+            <ul>
+              {{#each metricas.opciones}}
+                <li>{{texto}} — {{conteo}} ({{porcentaje}}%)</li>
+              {{/each}}
+            </ul>
+          {{else}}
+            {{#if metricas.promedio}}
+              Promedio: {{metricas.promedio}}<br>
+              Mínimo: {{metricas.minimo}}<br>
+              Máximo: {{metricas.maximo}}<br>
+            {{else}}
+              Total respuestas: {{metricas.total_respuestas}}
+            {{/if}}
+          {{/if}}
+        </div>
+      </div>
+    {{/each}}
+  </div>
+</body>
+</html>

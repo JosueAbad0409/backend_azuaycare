@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm'; 
+import { PdfModule } from '../common/pdf/pdf.module';
 import { ReportesService } from './reportes.service';
 import { ReportesController } from './reportes.controller';
 
 @Module({
-  imports: [TypeOrmModule], 
+  imports: [PdfModule],
   controllers: [ReportesController],
   providers: [ReportesService],
   exports: [ReportesService],
