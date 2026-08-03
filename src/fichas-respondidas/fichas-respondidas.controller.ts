@@ -39,8 +39,10 @@ export class FichasRespondidasController {
     @Query('take') take = 10,
     @Query('search') search = '',
     @Query('estado') estado = 'TODOS',
+    @Req() req: RequestWithUser // <-- 1. Añadimos el Request
   ) {
-    return this.fichasService.getFichasPaginadasYFiltradas(+skip, +take, search, estado);
+    // 2. Pasamos req.user al servicio
+    return this.fichasService.getFichasPaginadasYFiltradas(+skip, +take, search, estado, req.user);
   }
 
   @Get()

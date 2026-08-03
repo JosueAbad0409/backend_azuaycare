@@ -145,6 +145,13 @@ export class AuthService implements OnModuleInit {
 
       // 5. Auto-provisioning si es la primera vez que inicia sesión
       if (!usuario) {
+
+        if (nombreRolAsignado === 'COORDINADOR_CARRERA' && !administradoresPrueba[email]) {
+          throw new UnauthorizedException(
+            'Tu correo no está registrado como Coordinador autorizado. Un administrador debe crear tu cuenta previamente.'
+          );
+        }
+        
         let rolDb = this.rolesCache.get(nombreRolAsignado);
 
         if (!rolDb) {

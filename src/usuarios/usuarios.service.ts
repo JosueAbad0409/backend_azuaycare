@@ -27,6 +27,18 @@ export class UsuariosService {
     if (existe) {
       throw new BadRequestException('El usuario con este correo electrónico ya está registrado.');
     }
+    
+    if (createUsuarioDto.cedula) {
+      const cedulaExiste = await this.usuariosRepository.findOne({
+        where: { cedula: createUsuarioDto.cedula },
+        select: { id: true },
+      });
+
+      if (cedulaExiste) {
+        throw new BadRequestException('La cédula ingresada ya está registrada en otro usuario.');
+      }
+    }
+
 
     if (createUsuarioDto.ciclo_id) {
       const ciclo = await this.ciclosRepository.findOne({

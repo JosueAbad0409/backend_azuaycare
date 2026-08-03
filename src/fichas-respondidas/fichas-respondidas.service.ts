@@ -15,6 +15,7 @@ import { RespuestasFormulario } from '../respuestas-formulario/entities/respuest
 import { PdfRendererService } from '../common/pdf/pdf-renderer.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordinadores-carrera.entity';
 
 @Injectable()
 export class FichasRespondidasService {
@@ -26,6 +27,8 @@ export class FichasRespondidasService {
     private readonly dataSource: DataSource,
     private readonly pdfRenderer: PdfRendererService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    @InjectRepository(CoordinadoresCarrera)
+    private readonly coordinadoresRepository: Repository<CoordinadoresCarrera>,
   ) { }
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
@@ -71,7 +74,7 @@ export class FichasRespondidasService {
   /**
    * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
    */
-  async getFichasPaginadasYFiltradas(skip: number, take: number, search: string, estado: string) {
+  async getFichasPaginadasYFiltradas(skip: number, take: number, search: string, estado: string, user: any) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
     const skipReal = Math.max(Number(skip) || 0, 0);
 
@@ -80,6 +83,25 @@ export class FichasRespondidasService {
       .leftJoinAndSelect('f.periodo', 'p')
       .where('f.fecha_desactivacion IS NULL')
       .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
+
+    // 🔒 FASE 3: CANDADO DE AISLAMIENTO POR COORDINADOR
+    if (user.rol === 'COORDINADOR_CARRERA') {
+      // Buscamos las carreras a las que pertenece este coordinador
+      const asignaciones = await this.coordinadoresRepository.find({
+        where: { usuario_id: user.id },
+        select: { carrera_id: true } // Corregido para TypeORM 0.3.x
+      });
+
+      const carrerasIds = asignaciones.map(a => a.carrera_id);
+
+      // Si es coordinador de carrera pero por algún motivo no tiene carreras asignadas, devolvemos vacío
+      if (carrerasIds.length === 0) {
+        return { data: [], total: 0 };
+      }
+
+      // Aplicamos el filtro usando el alias 'u' de usuario
+      query.andWhere('u.carrera_id IN (:...carrerasIds)', { carrerasIds });
+    }
 
     // Filtro por estado
     if (estado && estado !== 'TODOS') {
