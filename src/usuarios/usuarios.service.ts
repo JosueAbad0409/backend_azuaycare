@@ -63,9 +63,11 @@ export class UsuariosService {
     return this.usuariosRepository.save(nuevoUsuario);
   }
 
-  findAll(skip: number=0, take: number=10) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+  findAll(skip: number = 0, take: number = 1000) {
+    // Aumentamos el límite de 10 a 1000 y el tope a 5000 para cargar todos los usuarios en el admin
+    const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
     const skipReal = Math.max(Number(skip) || 0, 0);
+    
     return this.usuariosRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip: skipReal,
