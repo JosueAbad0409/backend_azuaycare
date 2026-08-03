@@ -175,6 +175,10 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
+  // ELIMINACIÓN LÓGICA
+  // ----------------------------------------------------------------------
+
+  // ----------------------------------------------------------------------
   // ELIMINACIÓN FÍSICA (Base de datos + Storage)
   // ----------------------------------------------------------------------
 
@@ -218,5 +222,21 @@ export class DocumentosRespaldoService {
     await this.documentosRepository.delete(id);
 
     return { message: 'Documento eliminado físicamente del sistema y del almacenamiento.' };
+  }
+
+  async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
+    if (!archivos || archivos.length === 0) return [];
+
+    const promesas = archivos.map(async (archivo) => {
+      const urlPublica = await this.subirArchivoAStorage(archivo);
+      return {
+        ruta_archivo: urlPublica,
+        nombre_original: archivo.originalname,
+        mime_type: archivo.mimetype,
+        tamanio_bytes: archivo.size,
+      };
+    });
+
+    return Promise.all(promesas);
   }
 }
