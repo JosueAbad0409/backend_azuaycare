@@ -153,18 +153,18 @@ export class DocumentosRespaldoService {
     return this.firmarUrls(documentos);
   }
 
-  private async firmarUrls(documentos: DocumentoRespaldo[]) {
-    for (const doc of documentos) {
-      const { data, error } = await this.supabase.storage
-        .from(this.BUCKET_NAME)
-        .createSignedUrl(doc.ruta_archivo, 60);
+  private firmarUrls(documentos: DocumentoRespaldo[]) {
+  for (const doc of documentos) {
+    const { data } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(doc.ruta_archivo);
 
-      if (!error && data) {
-        doc.ruta_archivo = data.signedUrl;
-      }
+    if (data?.publicUrl) {
+      doc.ruta_archivo = data.publicUrl;
     }
-    return documentos;
   }
+  return documentos;
+}
 
   // ----------------------------------------------------------------------
   // VERIFICACIÓN (coordinador)
