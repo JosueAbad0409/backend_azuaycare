@@ -175,43 +175,48 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // ELIMINACIÓN LÓGICA
+  // ELIMINACIÓN FÍSICA (Base de datos + Storage)
   // ----------------------------------------------------------------------
 
   async remove(id: string, usuarioId: string, rol: string) {
+    // 1. Buscar el documento (quitamos la condición de fecha_desactivacion porque ahora lo borraremos real)
     const documento = await this.documentosRepository.findOne({ where: { id } });
+    
     if (!documento) {
-      throw new NotFoundException('El documento de respaldo no existe o ya fue removido.');
+      throw new NotFoundException('El documento de respaldo no existe.');
     }
 
+    // 2. Validar permisos
     if (documento.respuesta_id) {
       await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
     } else if (documento.ficha_id) {
       await this.validarPropiedadFicha(documento.ficha_id, usuarioId, rol);
     } else if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
-      throw new ForbiddenException('No tienes permiso para eliminar este documento suelto.');
+      throw new ForbiddenException('No tienes permiso para eliminar este documento.');
     }
 
-    await this.documentosRepository.update(id, {
-      fecha_desactivacion: new Date(),
-    });
+    // 3. Eliminar físicamente el archivo del Storage de Supabase
+    try {
+      // Como guardamos la URL completa (ej: https://.../public/archivo.pdf), extraemos solo el nombre final
+      const nombreArchivo = documento.ruta_archivo.split('/').pop();
+      
+      if (nombreArchivo) {
+        const { error } = await this.supabase.storage
+          .from(this.BUCKET_NAME)
+          .remove([nombreArchivo]);
+          
+        if (error) {
+          console.error(`Error de Supabase al borrar archivo: ${error.message}`);
+          // No lanzamos excepción para que al menos se borre de la BD si Supabase falla
+        }
+      }
+    } catch (error) {
+      console.error('Error al intentar eliminar archivo de Supabase:', error);
+    }
 
-    return { message: 'Documento de respaldo eliminado con éxito.' };
-  }
+    // 4. Eliminar físicamente de la base de datos PostgreSQL
+    await this.documentosRepository.delete(id);
 
-  async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
-    if (!archivos || archivos.length === 0) return [];
-
-    const promesas = archivos.map(async (archivo) => {
-      const urlPublica = await this.subirArchivoAStorage(archivo);
-      return {
-        ruta_archivo: urlPublica,
-        nombre_original: archivo.originalname,
-        mime_type: archivo.mimetype,
-        tamanio_bytes: archivo.size,
-      };
-    });
-
-    return Promise.all(promesas);
+    return { message: 'Documento eliminado físicamente del sistema y del almacenamiento.' };
   }
 }
