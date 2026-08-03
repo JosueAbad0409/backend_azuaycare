@@ -2,8 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, InternalServerErrorE
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { DocumentoRespaldo } from './entities/documentos-respaldo.entity';
-import { CreateDocumentosRespaldoDto } from './dto/create-documentos-respaldo.dto';
-import { Express } from 'express'; 
+import { Express } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
@@ -24,46 +23,13 @@ export class DocumentosRespaldoService {
     );
   }
 
-  async subirUnArchivoTemporal(archivo: Express.Multer.File) {
-    if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
-
-    const partesNombre = archivo.originalname.split('.');
-    const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
-    const nombreSinExtension = partesNombre.join('');
-    
-    // Limpiamos el nombre para evitar errores en las URLs
-    const nombreLimpio = nombreSinExtension.replace(/[^a-zA-Z0-9]/g, '_');
-    const nombreUnico = extension 
-      ? `${Date.now()}-${nombreLimpio}.${extension}` 
-      : `${Date.now()}-${nombreLimpio}`;
-    
-    const { data, error } = await this.supabase.storage
-      .from(this.BUCKET_NAME)
-      .upload(nombreUnico, archivo.buffer, {
-        contentType: archivo.mimetype,
-        upsert: false,
-      });
-
-    if (error) {
-      throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
-    }
-
-    // Generamos la URL pública para devolverla a Angular
-    const { data: urlData } = this.supabase.storage
-      .from(this.BUCKET_NAME)
-      .getPublicUrl(data.path);
-
-    return {
-      url: urlData.publicUrl, // Angular necesita exactamente esta propiedad "url"
-      path: data.path,
-      nombre_original: archivo.originalname
-    };
-  }
+  // ----------------------------------------------------------------------
+  // VALIDACIÓN DE PERMISOS
+  // ----------------------------------------------------------------------
 
   private async validarPropiedadDocumento(respuestaId: string, usuarioId: string, rol: string) {
     if (rol.includes('COORDINADOR')) return true;
 
-    // TypeORM averigua el nombre real de la tabla en Postgres automáticamente
     const respuesta = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
       .innerJoin('r.ficha', 'f')
       .where('r.id = :respuestaId', { respuestaId })
@@ -73,8 +39,8 @@ export class DocumentosRespaldoService {
     if (!respuesta || respuesta.usuario_id !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para gestionar los documentos de esta respuesta.');
     }
+    return true;
   }
-
 
   private async validarPropiedadFicha(fichaId: string, usuarioId: string, rol: string) {
     if (rol.includes('COORDINADOR')) return true;
@@ -87,17 +53,84 @@ export class DocumentosRespaldoService {
     if (!ficha || ficha.usuario_id !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para ver los documentos de esta ficha.');
     }
+    return true;
   }
 
-  async create(createDto: CreateDocumentosRespaldoDto, usuarioId: string, rol: string) {
-    await this.validarPropiedadDocumento(createDto.respuesta_id, usuarioId, rol);
-    const nuevoDocumento = this.documentosRepository.create(createDto);
+  // ----------------------------------------------------------------------
+  // SUBIDA A SUPABASE (helper interno reutilizable)
+  // ----------------------------------------------------------------------
+
+  private async subirArchivoAStorage(archivo: Express.Multer.File) {
+    const partesNombre = archivo.originalname.split('.');
+    const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
+    const nombreSinExtension = partesNombre.join('');
+
+    const nombreLimpio = nombreSinExtension.replace(/[^a-zA-Z0-9]/g, '_');
+    const nombreUnico = extension
+      ? `${Date.now()}-${nombreLimpio}.${extension}`
+      : `${Date.now()}-${nombreLimpio}`;
+
+    const { data, error } = await this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(nombreUnico, archivo.buffer, {
+        contentType: archivo.mimetype,
+        upsert: false,
+      });
+
+    if (error) {
+      throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
+    }
+
+    return data; // { path, ... }
+  }
+
+  // ----------------------------------------------------------------------
+  // SUBIDA + CREACIÓN EN BD (endpoint principal /upload)
+  // ----------------------------------------------------------------------
+
+  /**
+   * Sube el archivo a Supabase y crea el registro en BD en un solo paso.
+   * Acepta respuesta_id (documento de pregunta) o ficha_id (documento general).
+   */
+  async subirYCrear(
+    archivo: Express.Multer.File,
+    body: { respuesta_id?: string; ficha_id?: string },
+    usuarioId: string,
+    rol: string,
+  ): Promise<DocumentoRespaldo> {
+    if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
+
+    if (!body.respuesta_id && !body.ficha_id) {
+      throw new BadRequestException('Debes indicar respuesta_id o ficha_id para asociar el documento.');
+    }
+
+    if (body.respuesta_id) {
+      await this.validarPropiedadDocumento(body.respuesta_id, usuarioId, rol);
+    } else {
+      await this.validarPropiedadFicha(body.ficha_id as string, usuarioId, rol);
+    }
+
+    const subido = await this.subirArchivoAStorage(archivo);
+
+    const nuevoDocumento = this.documentosRepository.create({
+      respuesta_id: body.respuesta_id ?? null,
+      ficha_id: body.ficha_id ?? null,
+      ruta_archivo: subido.path,
+      nombre_original: archivo.originalname,
+      mime_type: archivo.mimetype,
+      tamanio_bytes: archivo.size,
+    });
+
     return this.documentosRepository.save(nuevoDocumento);
   }
 
+  // ----------------------------------------------------------------------
+  // CONSULTAS
+  // ----------------------------------------------------------------------
+
   async findByRespuesta(respuestaId: string, usuarioId: string, rol: string) {
     await this.validarPropiedadDocumento(respuestaId, usuarioId, rol);
-    
+
     const documentos = await this.documentosRepository.find({
       where: { respuesta_id: respuestaId, fecha_desactivacion: IsNull() },
       relations: { respuesta: true, verificador: true },
@@ -108,10 +141,13 @@ export class DocumentosRespaldoService {
 
   async findByFicha(fichaId: string, usuarioId: string, rol: string) {
     await this.validarPropiedadFicha(fichaId, usuarioId, rol);
-    
+
     const documentos = await this.documentosRepository.find({
-      where: { respuesta: { ficha_id: fichaId }, fecha_desactivacion: IsNull() },
-      relations: { respuesta: { pregunta: true }, verificador: true },
+      where: [
+        { respuesta: { ficha_id: fichaId }, fecha_desactivacion: IsNull() },
+        { ficha_id: fichaId, fecha_desactivacion: IsNull() },
+      ],
+      relations: { respuesta: { pregunta: true }, ficha: true, verificador: true },
     });
 
     return this.firmarUrls(documentos);
@@ -121,7 +157,7 @@ export class DocumentosRespaldoService {
     for (const doc of documentos) {
       const { data, error } = await this.supabase.storage
         .from(this.BUCKET_NAME)
-        .createSignedUrl(doc.ruta_archivo, 60); 
+        .createSignedUrl(doc.ruta_archivo, 60);
 
       if (!error && data) {
         doc.ruta_archivo = data.signedUrl;
@@ -130,20 +166,27 @@ export class DocumentosRespaldoService {
     return documentos;
   }
 
+  // ----------------------------------------------------------------------
+  // VERIFICACIÓN (coordinador)
+  // ----------------------------------------------------------------------
+
   async verificar(id: string, verificado: boolean, observacion: string | undefined, verificadorId: string) {
     const documento = await this.documentosRepository.findOne({ where: { id, fecha_desactivacion: IsNull() } });
     if (!documento) throw new NotFoundException('Documento no encontrado.');
 
-    // 🔥 FIX: Cast "as any" para que TypeScript no bloquee la actualización de relaciones físicas
     await this.documentosRepository.update(id, {
       verificado,
       observacion: observacion || null,
-      verificador: verificadorId, 
-      fecha_verificacion: new Date()
-    } as any);
+      usuario_verificador: verificadorId,
+      fecha_verificacion: new Date(),
+    });
 
     return this.documentosRepository.findOne({ where: { id } });
   }
+
+  // ----------------------------------------------------------------------
+  // ELIMINACIÓN LÓGICA
+  // ----------------------------------------------------------------------
 
   async remove(id: string, usuarioId: string, rol: string) {
     const documento = await this.documentosRepository.findOne({ where: { id } });
@@ -151,7 +194,13 @@ export class DocumentosRespaldoService {
       throw new NotFoundException('El documento de respaldo no existe o ya fue removido.');
     }
 
-    await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
+    if (documento.respuesta_id) {
+      await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
+    } else if (documento.ficha_id) {
+      await this.validarPropiedadFicha(documento.ficha_id, usuarioId, rol);
+    } else {
+      throw new ForbiddenException('Documento sin propietario válido.');
+    }
 
     await this.documentosRepository.update(id, {
       fecha_desactivacion: new Date(),
@@ -160,32 +209,17 @@ export class DocumentosRespaldoService {
     return { message: 'Documento de respaldo eliminado con éxito.' };
   }
 
+  // ----------------------------------------------------------------------
+  // SUBIDA MÚLTIPLE (solo storage, sin crear registros — se mantiene por compatibilidad)
+  // ----------------------------------------------------------------------
+
   async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
     if (!archivos || archivos.length === 0) return [];
 
     const promesas = archivos.map(async (archivo) => {
-      const partesNombre = archivo.originalname.split('.');
-      const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
-      const nombreSinExtension = partesNombre.join('');
-      
-      const nombreLimpio = nombreSinExtension.replace(/[^a-zA-Z0-9]/g, '_');
-      const nombreUnico = extension 
-        ? `${Date.now()}-${nombreLimpio}.${extension}` 
-        : `${Date.now()}-${nombreLimpio}`;
-      
-      const { data, error } = await this.supabase.storage
-        .from(this.BUCKET_NAME)
-        .upload(nombreUnico, archivo.buffer, {
-          contentType: archivo.mimetype,
-          upsert: false,
-        });
-
-      if (error) {
-        throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
-      }
-
+      const subido = await this.subirArchivoAStorage(archivo);
       return {
-        ruta_archivo: data.path, 
+        ruta_archivo: subido.path,
         nombre_original: archivo.originalname,
         mime_type: archivo.mimetype,
         tamanio_bytes: archivo.size,

@@ -1,14 +1,14 @@
-import { 
-  Controller, 
-  Post, 
+import {
+  Controller,
+  Post,
   Get,
   Patch,
   Delete,
-  UseInterceptors, 
-  UploadedFile, 
-  Body, 
-  ParseFilePipe, 
-  MaxFileSizeValidator, 
+  UseInterceptors,
+  UploadedFile,
+  Body,
+  ParseFilePipe,
+  MaxFileSizeValidator,
   FileTypeValidator,
   UseGuards,
   Req,
@@ -36,12 +36,14 @@ export class DocumentosRespaldoController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }), // 10MB máximo
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }), 
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }),
         ],
       }),
     ) file: Express.Multer.File,
+    @Body() body: { respuesta_id?: string; ficha_id?: string },
+    @Req() req: RequestWithUser,
   ) {
-    return await this.documentosService.subirUnArchivoTemporal(file);
+    return await this.documentosService.subirYCrear(file, body, req.user.id, req.user.rol);
   }
 
   @Get('respuesta/:respuestaId')
@@ -59,8 +61,8 @@ export class DocumentosRespaldoController {
   @Patch(':id/verificar')
   @Roles('COORDINADOR_BIENESTAR')
   verificar(
-    @Param('id') id: string, 
-    @Body() body: { verificado: boolean; observacion?: string }, 
+    @Param('id') id: string,
+    @Body() body: { verificado: boolean; observacion?: string },
     @Req() req: RequestWithUser
   ) {
     return this.documentosService.verificar(id, body.verificado, body.observacion, req.user.id);

@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { RespuestasFormulario } from '../../respuestas-formulario/entities/respuestas-formulario.entity';
+import { FichaRespondida } from '../../fichas-respondidas/entities/ficha-respondida.entity';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
 
 @Entity({ name: 'documentos_respaldo' })
@@ -7,8 +8,13 @@ export class DocumentoRespaldo {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'respuesta_id', type: 'uuid', nullable: false })
-  respuesta_id: string;
+  // Opcional: solo se llena cuando el documento respalda una pregunta puntual
+  @Column({ name: 'respuesta_id', type: 'uuid', nullable: true })
+  respuesta_id: string | null;
+
+  // Opcional: se llena cuando el documento es general de la ficha (cédula, certificado, etc.)
+  @Column({ name: 'ficha_id', type: 'uuid', nullable: true })
+  ficha_id: string | null;
 
   @Column({ name: 'ruta_archivo', type: 'text', nullable: false })
   ruta_archivo: string;
@@ -43,9 +49,13 @@ export class DocumentoRespaldo {
   @Column({ type: 'timestamp', name: 'fecha_desactivacion', nullable: true })
   fecha_desactivacion: Date | null;
 
-  @ManyToOne(() => RespuestasFormulario, (respuesta) => respuesta.documentos, { onDelete: 'CASCADE' })
+  @ManyToOne(() => RespuestasFormulario, (respuesta) => respuesta.documentos, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'respuesta_id' })
-  respuesta: RespuestasFormulario;
+  respuesta: RespuestasFormulario | null;
+
+  @ManyToOne(() => FichaRespondida, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'ficha_id' })
+  ficha: FichaRespondida | null;
 
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'usuario_verificador' })
