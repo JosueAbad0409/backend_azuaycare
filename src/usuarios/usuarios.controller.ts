@@ -35,7 +35,7 @@ export class UsuariosController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA') 
   findAll(
     @Query('skip') skip = 0,
-    @Query('take') take = 10,
+    @Query('take') take = 1000,
   ) {
     return this.usuariosService.findAll(+skip, +take); // CORRECCIÓN
   }
