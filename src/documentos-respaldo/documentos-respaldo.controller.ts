@@ -27,7 +27,7 @@ import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.inte
 export class DocumentosRespaldoController {
   constructor(private readonly documentosService: DocumentosRespaldoService) {}
 
-  @SkipThrottle() // <-- EXIME LA SUBIDA DE ARCHIVOS DEL LÍMITE GLOBAL (EVITA BLOQUEOS 429)
+  @SkipThrottle()
   @Post('upload')
   @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
   @UseInterceptors(FileInterceptor('file'))
@@ -35,7 +35,7 @@ export class DocumentosRespaldoController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }), // 10MB máximo
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 10 }),
           new FileTypeValidator({ fileType: /(jpg|jpeg|png|pdf)$/ }),
         ],
       }),
@@ -44,6 +44,13 @@ export class DocumentosRespaldoController {
     @Req() req: RequestWithUser,
   ) {
     return await this.documentosService.subirYCrear(file, body, req.user.id, req.user.rol);
+  }
+
+  // NUEVO: Permite al usuario ver sus propios documentos sueltos o subidos
+  @Get('mis-documentos')
+  @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  findMisDocumentos(@Req() req: RequestWithUser) {
+    return this.documentosService.findByUsuario(req.user.id);
   }
 
   @Get('respuesta/:respuestaId')

@@ -10,7 +10,7 @@ import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondid
 @Injectable()
 export class DocumentosRespaldoService {
   private supabase: SupabaseClient;
-  private readonly BUCKET_NAME = 'documentos_azuaycare';
+  private readonly BUCKET_NAME = 'documentos_azuaycare'; // Asegúrate de que el bucket sea público en Supabase
 
   constructor(
     @InjectRepository(DocumentoRespaldo)
@@ -57,10 +57,10 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // SUBIDA A SUPABASE (helper interno reutilizable)
+  // SUBIDA A SUPABASE Y GENERACIÓN DE URL PÚBLICA
   // ----------------------------------------------------------------------
 
-  private async subirArchivoAStorage(archivo: Express.Multer.File) {
+  private async subirArchivoAStorage(archivo: Express.Multer.File): Promise<string> {
     const partesNombre = archivo.originalname.split('.');
     const extension = partesNombre.length > 1 ? partesNombre.pop() : '';
     const nombreSinExtension = partesNombre.join('');
@@ -81,17 +81,18 @@ export class DocumentosRespaldoService {
       throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
     }
 
-    return data; // { path, ... }
+    // MODIFICADO: Generamos la URL pública inmediatamente después de subirlo
+    const { data: urlData } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl; // Retorna la URL completa: https://[proyecto].supabase.co/storage/...
   }
 
   // ----------------------------------------------------------------------
-  // SUBIDA + CREACIÓN EN BD (endpoint principal /upload)
+  // SUBIDA + CREACIÓN EN BD
   // ----------------------------------------------------------------------
 
-  /**
-   * Sube el archivo a Supabase y crea el registro en BD en un solo paso.
-   * Acepta respuesta_id (documento de pregunta) o ficha_id (documento general).
-   */
   async subirYCrear(
     archivo: Express.Multer.File,
     body: { respuesta_id?: string; ficha_id?: string },
@@ -100,74 +101,63 @@ export class DocumentosRespaldoService {
   ): Promise<DocumentoRespaldo> {
     if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
 
-    if (!body.respuesta_id && !body.ficha_id) {
-      throw new BadRequestException('Debes indicar respuesta_id o ficha_id para asociar el documento.');
-    }
-
     if (body.respuesta_id) {
       await this.validarPropiedadDocumento(body.respuesta_id, usuarioId, rol);
-    } else {
-      await this.validarPropiedadFicha(body.ficha_id as string, usuarioId, rol);
+    } else if (body.ficha_id) {
+      await this.validarPropiedadFicha(body.ficha_id, usuarioId, rol);
     }
 
-    const subido = await this.subirArchivoAStorage(archivo);
+    // `urlPublica` ahora contiene el string completo (https://...)
+    const urlPublica = await this.subirArchivoAStorage(archivo);
 
     const nuevoDocumento = this.documentosRepository.create({
+      usuario_id: usuarioId, 
       respuesta_id: body.respuesta_id ?? null,
       ficha_id: body.ficha_id ?? null,
-      ruta_archivo: subido.path,
+      ruta_archivo: urlPublica, // Se guarda la URL completa en la BD
       nombre_original: archivo.originalname,
       mime_type: archivo.mimetype,
       tamanio_bytes: archivo.size,
+      verificado: null 
     });
 
     return this.documentosRepository.save(nuevoDocumento);
   }
 
   // ----------------------------------------------------------------------
-  // CONSULTAS
+  // CONSULTAS (Optimizadas)
   // ----------------------------------------------------------------------
+
+  async findByUsuario(usuarioId: string) {
+    // Ya no necesitamos llamar a `firmarUrls`, retornamos directo de la BD
+    return await this.documentosRepository.find({
+      where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
+    });
+  }
 
   async findByRespuesta(respuestaId: string, usuarioId: string, rol: string) {
     await this.validarPropiedadDocumento(respuestaId, usuarioId, rol);
-
-    const documentos = await this.documentosRepository.find({
+    return await this.documentosRepository.find({
       where: { respuesta_id: respuestaId, fecha_desactivacion: IsNull() },
       relations: { respuesta: true, verificador: true },
     });
-
-    return this.firmarUrls(documentos);
   }
 
   async findByFicha(fichaId: string, usuarioId: string, rol: string) {
     await this.validarPropiedadFicha(fichaId, usuarioId, rol);
-
-    const documentos = await this.documentosRepository.find({
+    return await this.documentosRepository.find({
       where: [
         { respuesta: { ficha_id: fichaId }, fecha_desactivacion: IsNull() },
         { ficha_id: fichaId, fecha_desactivacion: IsNull() },
       ],
       relations: { respuesta: { pregunta: true }, ficha: true, verificador: true },
     });
-
-    return this.firmarUrls(documentos);
   }
 
-  private firmarUrls(documentos: DocumentoRespaldo[]) {
-  for (const doc of documentos) {
-    const { data } = this.supabase.storage
-      .from(this.BUCKET_NAME)
-      .getPublicUrl(doc.ruta_archivo);
-
-    if (data?.publicUrl) {
-      doc.ruta_archivo = data.publicUrl;
-    }
-  }
-  return documentos;
-}
+  // ELIMINÉ el método `firmarUrls` porque ya no hace falta.
 
   // ----------------------------------------------------------------------
-  // VERIFICACIÓN (coordinador)
+  // VERIFICACIÓN
   // ----------------------------------------------------------------------
 
   async verificar(id: string, verificado: boolean, observacion: string | undefined, verificadorId: string) {
@@ -198,8 +188,8 @@ export class DocumentosRespaldoService {
       await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
     } else if (documento.ficha_id) {
       await this.validarPropiedadFicha(documento.ficha_id, usuarioId, rol);
-    } else {
-      throw new ForbiddenException('Documento sin propietario válido.');
+    } else if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
+      throw new ForbiddenException('No tienes permiso para eliminar este documento suelto.');
     }
 
     await this.documentosRepository.update(id, {
@@ -209,17 +199,13 @@ export class DocumentosRespaldoService {
     return { message: 'Documento de respaldo eliminado con éxito.' };
   }
 
-  // ----------------------------------------------------------------------
-  // SUBIDA MÚLTIPLE (solo storage, sin crear registros — se mantiene por compatibilidad)
-  // ----------------------------------------------------------------------
-
   async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
     if (!archivos || archivos.length === 0) return [];
 
     const promesas = archivos.map(async (archivo) => {
-      const subido = await this.subirArchivoAStorage(archivo);
+      const urlPublica = await this.subirArchivoAStorage(archivo);
       return {
-        ruta_archivo: subido.path,
+        ruta_archivo: urlPublica,
         nombre_original: archivo.originalname,
         mime_type: archivo.mimetype,
         tamanio_bytes: archivo.size,

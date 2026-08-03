@@ -1,14 +1,12 @@
-import { IsNotEmpty, IsString, IsUUID, MaxLength, IsInt, IsOptional, ValidateIf } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, MaxLength, IsInt, IsOptional } from 'class-validator';
 
 export class CreateDocumentosRespaldoDto {
-  @ValidateIf((dto) => !dto.ficha_id)
+  @IsOptional()
   @IsUUID('4', { message: 'El respuesta_id debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes indicar respuesta_id si el documento no está asociado a una ficha.' })
   respuesta_id?: string;
 
-  @ValidateIf((dto) => !dto.respuesta_id)
+  @IsOptional()
   @IsUUID('4', { message: 'El ficha_id debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'Debes indicar ficha_id si el documento no está asociado a una respuesta.' })
   ficha_id?: string;
 
   @IsString({ message: 'La ruta del documento debe ser texto.' })
