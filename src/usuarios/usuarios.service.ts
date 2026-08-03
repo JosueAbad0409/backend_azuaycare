@@ -64,12 +64,11 @@ export class UsuariosService {
   }
 
   findAll(skip: number = 0, take: number = 1000) {
-    // Aumentamos el límite de 10 a 1000 y el tope a 5000 para cargar todos los usuarios en el admin
     const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
     const skipReal = Math.max(Number(skip) || 0, 0);
     
     return this.usuariosRepository.find({
-      where: { fecha_desactivacion: IsNull() },
+      // Quitamos el filtro "where: { fecha_desactivacion: IsNull() }" para que devuelva TODOS
       skip: skipReal,
       take: limiteReal,
       select: {
@@ -83,8 +82,10 @@ export class UsuariosService {
         rol_id: true,
         carrera_id: true,
         ciclo_id: true,
+        fecha_desactivacion: true, // <-- NUEVO: Para saber si está eliminado
       },
       relations: { rol: true, ciclo: true },
+      order: { primer_nombre: 'ASC' }
     });
   }
 
