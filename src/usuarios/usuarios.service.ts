@@ -36,7 +36,7 @@ export class UsuariosService {
     if (existe) {
       throw new BadRequestException('El usuario con este correo electrónico ya está registrado.');
     }
-    
+
     if (createUsuarioDto.cedula) {
       const cedulaExiste = await this.usuariosRepository.findOne({
         where: { cedula: createUsuarioDto.cedula },
@@ -74,7 +74,7 @@ export class UsuariosService {
   findAll(skip: number = 0, take: number = 1000) {
     const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
     const skipReal = Math.max(Number(skip) || 0, 0);
-    
+
     return this.usuariosRepository.find({
       skip: skipReal,
       take: limiteReal,
@@ -201,15 +201,52 @@ export class UsuariosService {
   }
 
   async actualizarFoto(usuarioId: string, archivo: Express.Multer.File) {
-    const nombreUnico = `perfil-${usuarioId}-${Date.now()}.webp`;
-    const { error } = await this.supabase.storage
-      .from('fotos_perfil')
-      .upload(nombreUnico, archivo.buffer, { contentType: archivo.mimetype, upsert: true });
+    // 1. Obtener el usuario actual para verificar si ya tiene una foto
+    const usuario = await this.usuariosRepository.findOne({
+      where: { id: usuarioId, fecha_desactivacion: IsNull() },
+      select: { id: true, foto_url: true },
+    });
 
-    if (error) {
-      throw new InternalServerErrorException(`Error al subir la foto: ${error.message}`);
+    if (!usuario) {
+      throw new NotFoundException('El usuario no existe o fue desactivado.');
     }
 
+    // 2. Si el usuario ya tiene una foto alojada en Supabase, la eliminamos primero
+    if (usuario.foto_url && usuario.foto_url.includes('supabase.co')) {
+      // Extraemos el nombre del archivo exacto desde la URL pública
+      const urlParts = usuario.foto_url.split('/');
+      const nombreArchivoAnterior = urlParts[urlParts.length - 1];
+
+      if (nombreArchivoAnterior) {
+        const { error: deleteError } = await this.supabase.storage
+          .from('fotos_perfil')
+          .remove([nombreArchivoAnterior]);
+
+        if (deleteError) {
+          console.warn(`No se pudo eliminar la foto anterior: ${deleteError.message}`);
+          // Dependiendo de tu lógica, puedes lanzar error o simplemente continuar
+        }
+      }
+    }
+
+    // 3. Subir la nueva foto (Mantenemos tu lógica de Date.now() para evitar problemas de caché en el navegador)
+    // Nota: Asegúrate de que el archivo realmente sea webp, de lo contrario podrías querer extraer la extensión dinámica.
+    const nombreUnico = `perfil-${usuarioId}-${Date.now()}.webp`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from('fotos_perfil')
+      .upload(nombreUnico, archivo.buffer, {
+        contentType: archivo.mimetype,
+        upsert: false
+      });
+
+    if (uploadError) {
+      // Esto imprimirá en la terminal de NestJS el motivo exacto del bloqueo
+      console.error("ERROR REAL DE SUPABASE:", uploadError);
+      throw new InternalServerErrorException(`Error al subir la nueva foto: ${uploadError.message}`);
+    }
+
+    // 4. Obtener la URL pública y guardar en la base de datos
     const { data } = this.supabase.storage.from('fotos_perfil').getPublicUrl(nombreUnico);
 
     await this.usuariosRepository.update(usuarioId, {
