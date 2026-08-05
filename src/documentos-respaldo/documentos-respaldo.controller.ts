@@ -29,7 +29,7 @@ export class DocumentosRespaldoController {
 
   @SkipThrottle()
   @Post('upload')
-  @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR')
   @UseInterceptors(FileInterceptor('file'))
   async subirDocumento(
     @UploadedFile(
@@ -46,21 +46,21 @@ export class DocumentosRespaldoController {
     return await this.documentosService.subirYCrear(file, body, req.user.id, req.user.rol);
   }
 
-  // NUEVO: Permite al usuario ver sus propios documentos sueltos o subidos
+  // Permite al usuario ver sus propios documentos sueltos o subidos
   @Get('mis-documentos')
-  @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   findMisDocumentos(@Req() req: RequestWithUser) {
     return this.documentosService.findByUsuario(req.user.id);
   }
 
   @Get('respuesta/:respuestaId')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findByRespuesta(@Param('respuestaId') respuestaId: string, @Req() req: RequestWithUser) {
     return this.documentosService.findByRespuesta(respuestaId, req.user.id, req.user.rol);
   }
 
   @Get('ficha/:fichaId')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findByFicha(@Param('fichaId') fichaId: string, @Req() req: RequestWithUser) {
     return this.documentosService.findByFicha(fichaId, req.user.id, req.user.rol);
   }
@@ -76,7 +76,7 @@ export class DocumentosRespaldoController {
   }
 
   @Delete(':id')
-  @Roles('ESTUDIANTE', 'COORDINADOR_BIENESTAR')
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR')
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.documentosService.remove(id, req.user.id, req.user.rol);
   }

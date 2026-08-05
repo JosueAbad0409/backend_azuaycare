@@ -10,7 +10,14 @@ import {
   Req,
   ForbiddenException,
   Query,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express'; // ✅ CORRECCIÓN 1: Usar "import type" para Express
 import { UsuariosService } from './usuarios.service';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
@@ -18,7 +25,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { RequestWithUser } from 'src/auth/interfaces/request-with-user.interface';
-import { CompletarPerfilDto } from './dto/CompletarPerfilDto ';
+import { CompletarPerfilDto } from './dto/completar-perfil.dto'; // ✅ CORRECCIÓN 2: Ruta correcta en minúsculas
 
 @Controller('usuarios')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,7 +44,7 @@ export class UsuariosController {
     @Query('skip') skip = 0,
     @Query('take') take = 1000,
   ) {
-    return this.usuariosService.findAll(+skip, +take); // CORRECCIÓN
+    return this.usuariosService.findAll(+skip, +take); 
   }
 
   @Get(':id')
@@ -53,19 +60,34 @@ export class UsuariosController {
     return this.usuariosService.findOne(id);
   }
 
-  // El estudiante completa su propio registro (cédula, carrera y ciclo)
-  // la primera vez que ingresa con Google. El id se toma del token JWT,
-  // nunca de la URL, para que nadie pueda editar el perfil de otra persona.
+  // Ahora aplica tanto a ESTUDIANTE como a INVITADO y pasa el rol al servicio
   @Patch('perfil/completar')
-  @Roles('ESTUDIANTE')
+  @Roles('ESTUDIANTE', 'INVITADO')
   completarPerfil(
     @Req() req: RequestWithUser,
     @Body() completarPerfilDto: CompletarPerfilDto,
   ) {
     return this.usuariosService.completarPerfilEstudiante(
       req.user.id,
+      req.user.rol,
       completarPerfilDto,
     );
+  }
+
+  // Endpoint para actualizar foto de perfil (cualquier rol)
+  @Patch('foto')
+  @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  @UseInterceptors(FileInterceptor('foto'))
+  subirFoto(
+    @UploadedFile(new ParseFilePipe({
+      validators: [
+        new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 2 }),
+        new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
+      ],
+    })) file: Express.Multer.File,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.usuariosService.actualizarFoto(req.user.id, file);
   }
 
   @Patch(':id')

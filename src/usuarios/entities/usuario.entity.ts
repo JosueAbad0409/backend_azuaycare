@@ -51,6 +51,12 @@ export class Usuario {
   @Column({ name: 'carrera_id', type: 'uuid', nullable: true })
   carrera_id: string | null;
 
+  @Column({ name: 'foto_url', type: 'varchar', length: 500, nullable: true })
+  foto_url: string | null;
+
+  @Column({ name: 'foto_personalizada', type: 'boolean', default: false })
+  foto_personalizada: boolean;
+
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
 
@@ -78,12 +84,9 @@ export class Usuario {
   @OneToMany(() => CoordinadoresCarrera, (coordinacion) => coordinacion.usuario)
   coordinaciones: CoordinadoresCarrera[];
 
-
   @OneToOne(() => PerfilCoordinador, (perfil) => perfil.usuario)
   perfilCoordinador: PerfilCoordinador;
 
   @OneToMany(()=> FichaRespondida, (ficha) => ficha.usuario)
   fichasRespondidas: FichaRespondida[];
-
-
 }

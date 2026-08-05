@@ -1,20 +1,29 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Usuario } from './entities/usuario.entity';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { Ciclo } from '../ciclos/entities/ciclo.entity';
-import { CompletarPerfilDto } from './dto/CompletarPerfilDto ';
+import { CompletarPerfilDto } from './dto/completar-perfil.dto';
 
 @Injectable()
 export class UsuariosService {
+  private supabase: SupabaseClient;
+
   constructor(
     @InjectRepository(Usuario)
     private readonly usuariosRepository: Repository<Usuario>,
     @InjectRepository(Ciclo)
     private readonly ciclosRepository: Repository<Ciclo>,
-  ) {}
+  ) {
+    // Instanciación manual del cliente de Supabase
+    this.supabase = createClient(
+      process.env.SUPABASE_URL as string,
+      process.env.SUPABASE_KEY as string,
+    );
+  }
 
   async create(createUsuarioDto: CreateUsuarioDto) {
     const emailSanitizado = createUsuarioDto.email_institucional.toLowerCase().trim();
@@ -38,7 +47,6 @@ export class UsuariosService {
         throw new BadRequestException('La cédula ingresada ya está registrada en otro usuario.');
       }
     }
-
 
     if (createUsuarioDto.ciclo_id) {
       const ciclo = await this.ciclosRepository.findOne({
@@ -68,7 +76,6 @@ export class UsuariosService {
     const skipReal = Math.max(Number(skip) || 0, 0);
     
     return this.usuariosRepository.find({
-      // Quitamos el filtro "where: { fecha_desactivacion: IsNull() }" para que devuelva TODOS
       skip: skipReal,
       take: limiteReal,
       select: {
@@ -82,7 +89,8 @@ export class UsuariosService {
         rol_id: true,
         carrera_id: true,
         ciclo_id: true,
-        fecha_desactivacion: true, // <-- NUEVO: Para saber si está eliminado
+        foto_url: true,
+        fecha_desactivacion: true,
       },
       relations: { rol: true, ciclo: true },
       order: { primer_nombre: 'ASC' }
@@ -154,50 +162,59 @@ export class UsuariosService {
     return this.findOne(id);
   }
 
-  /**
-   * Permite que el propio estudiante complete su registro (cédula, carrera y ciclo)
-   * la primera vez que ingresa con sus credenciales de Google.
-   * El id del usuario se obtiene del token JWT (no se recibe por parámetro del cliente),
-   * de modo que un estudiante nunca pueda editar el perfil de otro usuario.
-   */
-  async completarPerfilEstudiante(usuarioId: string, dto: CompletarPerfilDto) {
+  async completarPerfilEstudiante(usuarioId: string, rol: string, dto: CompletarPerfilDto) {
     const usuario = await this.usuariosRepository.findOne({
       where: { id: usuarioId, fecha_desactivacion: IsNull() },
       select: { id: true, cedula: true, carrera_id: true, ciclo_id: true },
     });
+    if (!usuario) throw new NotFoundException('El usuario no existe o fue desactivado.');
 
-    if (!usuario) {
-      throw new NotFoundException('El usuario no existe o fue desactivado.');
+    const datosActualizar: Partial<Usuario> = { cedula: dto.cedula };
+
+    // Solo el Estudiante requiere carrera y ciclo; el Invitado no.
+    if (rol === 'ESTUDIANTE') {
+      if (!dto.carrera_id || !dto.ciclo_id) {
+        throw new BadRequestException('La carrera y el ciclo son obligatorios para estudiantes.');
+      }
+      const ciclo = await this.ciclosRepository.findOne({
+        where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
+        select: { id: true, carrera_id: true },
+      });
+      if (!ciclo) throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+      if (ciclo.carrera_id !== dto.carrera_id) {
+        throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+      }
+      datosActualizar.carrera_id = dto.carrera_id;
+      datosActualizar.ciclo_id = dto.ciclo_id;
     }
 
-    // Validamos que el ciclo exista, esté activo y pertenezca a la carrera indicada
-    const ciclo = await this.ciclosRepository.findOne({
-      where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
-      select: { id: true, carrera_id: true },
-    });
-
-    if (!ciclo) {
-      throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
-    }
-
-    if (ciclo.carrera_id !== dto.carrera_id) {
-      throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
-    }
-
-    // Validamos que la cédula no esté siendo usada por otro usuario
     const cedulaEnUso = await this.usuariosRepository.findOne({
       where: { cedula: dto.cedula },
       select: { id: true },
     });
-
     if (cedulaEnUso && cedulaEnUso.id !== usuarioId) {
       throw new BadRequestException('La cédula ingresada ya está registrada por otro usuario.');
     }
 
+    await this.usuariosRepository.update(usuarioId, datosActualizar);
+    return this.findOne(usuarioId);
+  }
+
+  async actualizarFoto(usuarioId: string, archivo: Express.Multer.File) {
+    const nombreUnico = `perfil-${usuarioId}-${Date.now()}.webp`;
+    const { error } = await this.supabase.storage
+      .from('fotos_perfil')
+      .upload(nombreUnico, archivo.buffer, { contentType: archivo.mimetype, upsert: true });
+
+    if (error) {
+      throw new InternalServerErrorException(`Error al subir la foto: ${error.message}`);
+    }
+
+    const { data } = this.supabase.storage.from('fotos_perfil').getPublicUrl(nombreUnico);
+
     await this.usuariosRepository.update(usuarioId, {
-      cedula: dto.cedula,
-      carrera_id: dto.carrera_id,
-      ciclo_id: dto.ciclo_id,
+      foto_url: data.publicUrl,
+      foto_personalizada: true,
     });
 
     return this.findOne(usuarioId);

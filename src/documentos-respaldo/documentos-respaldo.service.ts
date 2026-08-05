@@ -10,7 +10,7 @@ import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondid
 @Injectable()
 export class DocumentosRespaldoService {
   private supabase: SupabaseClient;
-  private readonly BUCKET_NAME = 'documentos_azuaycare'; // Asegúrate de que el bucket sea público en Supabase
+  private readonly BUCKET_NAME = 'documentos_azuaycare';
 
   constructor(
     @InjectRepository(DocumentoRespaldo)
@@ -81,12 +81,11 @@ export class DocumentosRespaldoService {
       throw new InternalServerErrorException(`Error al subir documento a Supabase: ${error.message}`);
     }
 
-    // MODIFICADO: Generamos la URL pública inmediatamente después de subirlo
     const { data: urlData } = this.supabase.storage
       .from(this.BUCKET_NAME)
       .getPublicUrl(data.path);
 
-    return urlData.publicUrl; // Retorna la URL completa: https://[proyecto].supabase.co/storage/...
+    return urlData.publicUrl;
   }
 
   // ----------------------------------------------------------------------
@@ -107,14 +106,13 @@ export class DocumentosRespaldoService {
       await this.validarPropiedadFicha(body.ficha_id, usuarioId, rol);
     }
 
-    // `urlPublica` ahora contiene el string completo (https://...)
     const urlPublica = await this.subirArchivoAStorage(archivo);
 
     const nuevoDocumento = this.documentosRepository.create({
       usuario_id: usuarioId, 
       respuesta_id: body.respuesta_id ?? null,
       ficha_id: body.ficha_id ?? null,
-      ruta_archivo: urlPublica, // Se guarda la URL completa en la BD
+      ruta_archivo: urlPublica,
       nombre_original: archivo.originalname,
       mime_type: archivo.mimetype,
       tamanio_bytes: archivo.size,
@@ -125,11 +123,10 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // CONSULTAS (Optimizadas)
+  // CONSULTAS
   // ----------------------------------------------------------------------
 
   async findByUsuario(usuarioId: string) {
-    // Ya no necesitamos llamar a `firmarUrls`, retornamos directo de la BD
     return await this.documentosRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
     });
@@ -154,8 +151,6 @@ export class DocumentosRespaldoService {
     });
   }
 
-  // ELIMINÉ el método `firmarUrls` porque ya no hace falta.
-
   // ----------------------------------------------------------------------
   // VERIFICACIÓN
   // ----------------------------------------------------------------------
@@ -175,22 +170,16 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // ELIMINACIÓN LÓGICA
-  // ----------------------------------------------------------------------
-
-  // ----------------------------------------------------------------------
   // ELIMINACIÓN FÍSICA (Base de datos + Storage)
   // ----------------------------------------------------------------------
 
   async remove(id: string, usuarioId: string, rol: string) {
-    // 1. Buscar el documento (quitamos la condición de fecha_desactivacion porque ahora lo borraremos real)
     const documento = await this.documentosRepository.findOne({ where: { id } });
     
     if (!documento) {
       throw new NotFoundException('El documento de respaldo no existe.');
     }
 
-    // 2. Validar permisos
     if (documento.respuesta_id) {
       await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
     } else if (documento.ficha_id) {
@@ -199,9 +188,7 @@ export class DocumentosRespaldoService {
       throw new ForbiddenException('No tienes permiso para eliminar este documento.');
     }
 
-    // 3. Eliminar físicamente el archivo del Storage de Supabase
     try {
-      // Como guardamos la URL completa (ej: https://.../public/archivo.pdf), extraemos solo el nombre final
       const nombreArchivo = documento.ruta_archivo.split('/').pop();
       
       if (nombreArchivo) {
@@ -211,14 +198,12 @@ export class DocumentosRespaldoService {
           
         if (error) {
           console.error(`Error de Supabase al borrar archivo: ${error.message}`);
-          // No lanzamos excepción para que al menos se borre de la BD si Supabase falla
         }
       }
     } catch (error) {
       console.error('Error al intentar eliminar archivo de Supabase:', error);
     }
 
-    // 4. Eliminar físicamente de la base de datos PostgreSQL
     await this.documentosRepository.delete(id);
 
     return { message: 'Documento eliminado físicamente del sistema y del almacenamiento.' };
