@@ -36,7 +36,7 @@ export class FichasRespondidasController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   getFichasPaginadas(
     @Query('skip') skip = 0,
-    @Query('take') take = 10,
+    @Query('take') take = 1000,
     @Query('search') search = '',
     @Query('estado') estado = 'TODOS',
     @Req() req: RequestWithUser // <-- 1. Añadimos el Request

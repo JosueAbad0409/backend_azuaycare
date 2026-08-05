@@ -75,7 +75,7 @@ export class FichasRespondidasService {
    * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
    */
   async getFichasPaginadasYFiltradas(skip: number, take: number, search: string, estado: string, user: any) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 10000);
     const skipReal = Math.max(Number(skip) || 0, 0);
 
     const query = this.fichasRepository.createQueryBuilder('f')
