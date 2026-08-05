@@ -36,6 +36,24 @@ export class CiclosService {
     return this.ciclosRepository.save(nuevoCiclo);
   }
 
+  // Agrégalo justo debajo de tu método findAll() o findOne()
+  async findByCarrera(carreraId: string) {
+    const ciclos = await this.ciclosRepository.find({
+      where: { 
+        carrera_id: carreraId, 
+        fecha_desactivacion: IsNull() 
+      },
+      relations: { carrera: true },
+      order: { nombre: 'ASC' },
+    });
+
+    if (!ciclos || ciclos.length === 0) {
+      throw new NotFoundException('No se encontraron ciclos para esta carrera.');
+    }
+
+    return ciclos;
+  }
+
   findAll(skip: number=0, take: number=10) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
     const skipReal = Math.max(Number(skip) || 0, 0);

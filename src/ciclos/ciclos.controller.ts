@@ -32,6 +32,12 @@ export class CiclosController {
     return this.ciclosService.findOne(id);
   }
 
+  @Get('carrera/:carreraId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
+  findByCarrera(@Param('carreraId') carreraId: string) {
+    return this.ciclosService.findByCarrera(carreraId);
+  }
+
   @Patch(':id')
   @Roles('COORDINADOR_BIENESTAR')
   update(@Param('id') id: string, @Body() updateCicloDto: UpdateCicloDto) {
