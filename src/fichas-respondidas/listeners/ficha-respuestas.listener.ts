@@ -59,7 +59,8 @@ export class FichaRespuestasListener {
         .where('rvc.formulario_id = :formId', { formId: ficha.formulario_id })
         .andWhere("rvc.variable_calculo = 'BALANCE'")
         .andWhere(':balance >= rvc.valor_min', { balance })
-        .andWhere(':balance <= rvc.valor_max', { balance })
+        // 🔥 FIX: Soporte para rangos infinitos (valor_max vacío)
+        .andWhere('(:balance <= rvc.valor_max OR rvc.valor_max IS NULL)', { balance })
         .andWhere('rvc.fecha_desactivacion IS NULL')
         .getRawOne();
 
@@ -67,8 +68,7 @@ export class FichaRespuestasListener {
         rangoAsignadoId = rango.id;
       }
 
-      // --- NUEVO: 4. Calcular Vulnerabilidad ---
-      // Suma del puntaje de riesgo de todas las opciones seleccionadas en esta ficha
+      // 4. Calcular Vulnerabilidad
       const riesgoDb = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
         .select('op.puntaje_riesgo', 'puntaje')
         .innerJoin('r.opcionesSeleccionadas', 'sel')
@@ -87,7 +87,8 @@ export class FichaRespuestasListener {
         .where('rvc.formulario_id = :formId', { formId: ficha.formulario_id })
         .andWhere("rvc.variable_calculo = 'VULNERABILIDAD'")
         .andWhere(':puntaje >= rvc.valor_min', { puntaje: puntajeVulnerabilidad })
-        .andWhere(':puntaje <= rvc.valor_max', { puntaje: puntajeVulnerabilidad })
+        // 🔥 FIX: Soporte para rangos infinitos de riesgo
+        .andWhere('(:puntaje <= rvc.valor_max OR rvc.valor_max IS NULL)', { puntaje: puntajeVulnerabilidad })
         .andWhere('rvc.fecha_desactivacion IS NULL')
         .getRawOne();
 

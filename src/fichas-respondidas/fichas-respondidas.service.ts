@@ -149,7 +149,8 @@ export class FichasRespondidasService {
       .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
 
     if (nivel && nivel !== 'TODOS') {
-      query.andWhere('rv.nombre = :nivel', { nivel });
+      // 🔥 FIX: Busca ignorando mayúsculas/minúsculas
+      query.andWhere('LOWER(rv.nombre) = LOWER(:nivel)', { nivel });
     }
 
     const [data, total] = await query
