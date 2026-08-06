@@ -61,6 +61,16 @@ export class PreguntasService {
       ...createPreguntaDto,
       creado_por: usuarioId,
     });
+
+    // 🔥 MAGIA AUTOMÁTICA: Si se agrega una pregunta, reabrir todas las fichas de este formulario
+    await this.preguntasRepository.query(`
+      UPDATE fichas_respondidas 
+      SET estado_ficha = 'BORRADOR', cerrado_manual_por = NULL 
+      WHERE formulario_id = (SELECT formulario_id FROM secciones WHERE id = $1)
+      AND estado_ficha != 'BORRADOR'
+      AND fecha_desactivacion IS NULL
+    `, [createPreguntaDto.seccion_id]); // 👈 Ojo: asegúrate de usar el nombre de tu variable DTO aquí (ej: createDto.seccion_id)
+
     return this.preguntasRepository.save(nuevaPregunta);
   }
 
@@ -115,6 +125,16 @@ export class PreguntasService {
       ...updatePreguntaDto,
       actualizado_por: usuarioId,
     });
+
+    // Si se edita una pregunta (ej: se vuelve obligatoria), también reabrimos:
+    await this.preguntasRepository.query(`
+      UPDATE fichas_respondidas 
+      SET estado_ficha = 'BORRADOR', cerrado_manual_por = NULL 
+      WHERE formulario_id = (SELECT formulario_id FROM secciones WHERE id = (SELECT seccion_id FROM preguntas WHERE id = $1))
+      AND estado_ficha != 'BORRADOR'
+      AND fecha_desactivacion IS NULL
+    `, [id]); // 👈 'id' es el parámetro que recibe tu método update
+    
     return this.findOne(id);
   }
 
