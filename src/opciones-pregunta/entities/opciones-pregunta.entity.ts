@@ -35,6 +35,9 @@ export class OpcionPregunta {
   // 🔥 NUEVO CAMPO AÑADIDO:
   @Column({ name: 'es_correcta', type: 'boolean', default: false })
   es_correcta: boolean;
+  
+  @Column({ name: 'puntaje_riesgo', type: 'integer', default: 0 })
+  puntaje_riesgo: number;
 
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por: string | null;

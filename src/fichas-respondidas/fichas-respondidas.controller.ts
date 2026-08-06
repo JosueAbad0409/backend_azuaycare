@@ -86,6 +86,17 @@ export class FichasRespondidasController {
     return this.fichasService.findOne(id, req.user);
   }
 
+  // 🔥 NUEVO ENDPOINT: Exclusivo para Bienestar Estudiantil
+  @Get('prioridad-atencion')
+  @Roles('COORDINADOR_BIENESTAR')
+  getFichasPorPrioridad(
+    @Query('skip') skip = 0,
+    @Query('take') take = 50,
+    @Query('nivel') nivel = 'TODOS',
+  ) {
+    return this.fichasService.getFichasPorPrioridadVulnerabilidad(+skip, +take, nivel);
+  }
+  
   @Patch(':id/cerrar-manual')
   @Roles('COORDINADOR_BIENESTAR')
   cerrarManual(@Param('id') id: string, @Req() req: RequestWithUser) {

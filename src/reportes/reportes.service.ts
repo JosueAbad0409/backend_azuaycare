@@ -12,7 +12,7 @@ export class ReportesService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly pdfRendererService: PdfRendererService,
-  ) {}
+  ) { }
 
   /**
    * Obtiene el resumen consolidado de métricas generales, periodo activo y datos preparativos
@@ -49,6 +49,15 @@ export class ReportesService {
        GROUP BY r.nombre`
     );
 
+    // 3.5. Gráfico de Pastel (Niveles de Vulnerabilidad)
+    const vulnerabilidadData = await this.dataSource.query(
+      `SELECT COALESCE(r.nombre, 'Sin Riesgo') as label, COUNT(f.id)::int as total
+       FROM fichas_respondidas f
+       LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_vulnerabilidad_id
+       WHERE f.fecha_desactivacion IS NULL
+       GROUP BY r.nombre`
+    );
+
     // 4. Gráfico de Barras (Fichas por Carrera)
     const carrerasData = await this.dataSource.query(
       `SELECT 
@@ -72,6 +81,11 @@ export class ReportesService {
         nivelesEconomicos: {
           labels: nivelesData.map((n: any) => n.label),
           data: nivelesData.map((n: any) => Number(n.total) || 0)
+        },
+        // 🔥 NUEVO GRÁFICO AGREGADO:
+        nivelesVulnerabilidad: {
+          labels: vulnerabilidadData.map((n: any) => n.label),
+          data: vulnerabilidadData.map((n: any) => Number(n.total) || 0)
         },
         fichasPorCarrera: {
           labels: carrerasData.map((c: any) => c.carrera),

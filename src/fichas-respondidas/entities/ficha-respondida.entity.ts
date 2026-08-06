@@ -54,6 +54,20 @@ export class FichaRespondida {
   @Column({ name: 'rango_resultado_id', type: 'uuid', nullable: true })
   rango_resultado_id: string | null;
 
+  @Column({ 
+    name: 'puntaje_vulnerabilidad', 
+    type: 'numeric', 
+    default: 0, 
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => value ? parseFloat(value) : 0
+    }
+  })
+  puntaje_vulnerabilidad: number;
+
+  @Column({ name: 'rango_vulnerabilidad_id', type: 'uuid', nullable: true })
+  rango_vulnerabilidad_id: string | null;
+
   @Column({ name: 'estado_ficha', type: 'character varying', length: 30, default: 'BORRADOR' })
   estado_ficha: string;
 
@@ -91,6 +105,10 @@ export class FichaRespondida {
   @ManyToOne(() => RangoVariableCalculada, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'rango_resultado_id' })
   rangoResultado: RangoVariableCalculada;
+
+  @ManyToOne(() => RangoVariableCalculada, { onDelete: 'NO ACTION' })
+  @JoinColumn({ name: 'rango_vulnerabilidad_id' })
+  rangoVulnerabilidad: RangoVariableCalculada;
 
   @ManyToOne(() => FichaRespondida, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'precargada_de_ficha_id' })

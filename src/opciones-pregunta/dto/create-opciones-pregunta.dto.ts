@@ -34,4 +34,10 @@ export class CreateOpcionPreguntaDto {
   @IsBoolean({ message: 'es_correcta debe ser un valor booleano.' })
   @IsOptional()
   es_correcta?: boolean;
+
+  @IsInt({ message: 'El puntaje de riesgo debe ser un número entero.' })
+  @Min(0, { message: 'El puntaje de riesgo no puede ser negativo.' })
+  @IsOptional()
+  puntaje_riesgo?: number;
+  
 }

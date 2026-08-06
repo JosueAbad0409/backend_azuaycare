@@ -133,6 +133,36 @@ export class FichasRespondidasService {
     };
   }
 
+  /**
+   * Obtiene la lista de fichas ordenadas por puntaje de vulnerabilidad (Mayor riesgo primero).
+   * Exclusivo para el equipo de Bienestar.
+   */
+  async getFichasPorPrioridadVulnerabilidad(skip: number, take: number, nivel: string) {
+    const limiteReal = Math.min(Math.max(Number(take) || 50, 1), 500);
+    const skipReal = Math.max(Number(skip) || 0, 0);
+
+    const query = this.fichasRepository.createQueryBuilder('f')
+      .leftJoinAndSelect('f.usuario', 'u')
+      .leftJoinAndSelect('f.rangoVulnerabilidad', 'rv')
+      .where('f.fecha_desactivacion IS NULL')
+      .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
+
+    if (nivel && nivel !== 'TODOS') {
+      query.andWhere('rv.nombre = :nivel', { nivel });
+    }
+
+    const [data, total] = await query
+      .orderBy('f.puntaje_vulnerabilidad', 'DESC')
+      .skip(skipReal)
+      .take(limiteReal)
+      .getManyAndCount();
+
+    return {
+      data,
+      total,
+    };
+  }
+
   findAll(skip: number = 0, take: number = 10) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
     const skipReal = Math.max(Number(skip) || 0, 0);
