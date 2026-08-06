@@ -12,6 +12,7 @@
     .form-descripcion { font-size: 12px; color: #777; margin-bottom: 15px; }
     h2 { color: {{plantilla.color_secundario}}; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
     .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid {{plantilla.color_primario}}; font-size: 13px; }
+    .alert-box { background-color: #fff3f3; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #d9534f; font-size: 13px; color: #a94442; }
     .pregunta { margin-bottom: 10px; font-size: 12px; }
     .pregunta b { display: block; color: #444; }
     .respuesta { margin-top: 3px; color: #111; background: #eee; padding: 5px; border-radius: 3px; }
@@ -40,6 +41,15 @@
     <strong>Total Egresos:</strong> {{formatCurrency ficha.total_egresos}} <br>
     <strong>Balance Calculado:</strong> {{formatCurrency ficha.balance_final}} <br>
     <strong>Clasificación Asignada:</strong> {{#if ficha.rangoResultado}}{{ficha.rangoResultado.nombre}}{{else}}En evaluación{{/if}}
+  </div>
+  {{/if}}
+
+  {{#if requiereAtencionSalud}}
+  <div class="alert-box">
+    <strong>⚠️ Atención Prioritaria (NEE / Salud):</strong><br>
+    {{#if tieneDiscapacidad}} - Presenta carnet de discapacidad registrado.<br>{{/if}}
+    {{#if usaLentes}} - Requiere apoyo visual (lentes).<br>{{/if}}
+    {{#if enfermedadCronica}} - Condición médica reportada: {{enfermedadCronica}}<br>{{/if}}
   </div>
   {{/if}}
 

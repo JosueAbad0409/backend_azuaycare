@@ -19,7 +19,8 @@ export class CreateSeccionDto {
   orden?: number;
 
   @IsString({ message: 'El tipo de sección debe ser un texto.' })
-  @IsIn(['INFORMACION_GENERAL', 'FINANCIERA'], { message: 'El tipo_seccion debe ser INFORMACION_GENERAL o FINANCIERA.' })
+  // 🔥 ACTUALIZACIÓN: Se agrega 'NEE_SALUD' a los tipos permitidos
+  @IsIn(['INFORMACION_GENERAL', 'FINANCIERA', 'NEE_SALUD'], { message: 'El tipo_seccion debe ser INFORMACION_GENERAL, FINANCIERA o NEE_SALUD.' })
   @IsOptional()
   tipo_seccion?: string;
 
