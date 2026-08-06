@@ -59,4 +59,9 @@ export class CreatePreguntaDto {
   @ValidateNested({ each: true })
   @Type(() => CreateOpcionPreguntaDto)
   opciones?: CreateOpcionPreguntaDto[];
+
+  @IsBoolean({ message: 'revision_manual_obligatoria debe ser un booleano.' })
+  @IsOptional()
+  revision_manual_obligatoria?: boolean;
+
 }

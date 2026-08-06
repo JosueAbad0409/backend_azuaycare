@@ -109,24 +109,23 @@ export class ReportesService {
           CASE WHEN EXISTS (SELECT 1 FROM documentos_respaldo d WHERE d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL) THEN true ELSE false END AS tiene_evidencia
         FROM respuestas r
         INNER JOIN preguntas p ON p.id = r.pregunta_id
-        LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+        -- 🔥 CORRECCIÓN: Nombre de tabla real en PostgreSQL
+        LEFT JOIN opciones_seleccionadas ros ON ros.respuesta_id = r.id 
         LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
         WHERE r.fecha_desactivacion IS NULL
           AND p.fecha_desactivacion IS NULL
-          -- 🔥 EL MOTOR: Atrapa si la pregunta es de vulnerabilidad o si la opción tiene puntaje de riesgo
+          -- Atrapa la vulnerabilidad
           AND (p.revision_manual_obligatoria = true OR op.puntaje_riesgo > 0)
       ),
       FichasFiltradas AS (
         SELECT 
           ficha_id,
-          -- Empaqueta dinámicamente todas las vulnerabilidades en un JSON
           jsonb_object_agg(
             pregunta, 
             jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia, 'riesgo', riesgo)
           ) as detalles_vulnerabilidad,
           SUM(riesgo) as riesgo_total
         FROM RespuestasVulnerables
-        -- Filtra las respuestas que son "No", "Ninguna", etc., para que no aparezcan como vulnerabilidades activas
         WHERE riesgo > 0 
            OR (riesgo = 0 AND UPPER(respuesta) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', ''))
         GROUP BY ficha_id

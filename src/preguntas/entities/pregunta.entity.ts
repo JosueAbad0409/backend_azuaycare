@@ -52,6 +52,10 @@ export class Pregunta {
   @Column({ name: 'requiere_evidencia', type: 'boolean', default: false })
   requiere_evidencia: boolean;
 
+  @Column({ name: 'revision_manual_obligatoria', type: 'boolean', default: false })
+  revision_manual_obligatoria: boolean;
+
+
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por?: string | null;
 

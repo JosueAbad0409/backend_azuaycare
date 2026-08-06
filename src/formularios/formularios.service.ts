@@ -303,6 +303,7 @@ export class FormulariosService {
             orden: preguntaOrigen.orden,
             codigo_sistema: preguntaOrigen.codigo_sistema,
             requiere_evidencia: preguntaOrigen.requiere_evidencia,
+            revision_manual_obligatoria: preguntaOrigen.revision_manual_obligatoria,
             creado_por: usuarioId,
           });
           const preguntaClonada = await queryRunner.manager.save(Pregunta, nuevaPregunta);
