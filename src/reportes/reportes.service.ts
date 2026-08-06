@@ -100,27 +100,52 @@ export class ReportesService {
    */
   async obtenerReporteEspecializadoNee(periodoId: string) {
     const query = `
+      WITH RespuestasVulnerables AS (
+        SELECT 
+          r.ficha_id,
+          p.enunciado AS pregunta,
+          COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) AS respuesta,
+          COALESCE(op.puntaje_riesgo, 0) AS riesgo,
+          CASE WHEN EXISTS (SELECT 1 FROM documentos_respaldo d WHERE d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL) THEN true ELSE false END AS tiene_evidencia
+        FROM respuestas r
+        INNER JOIN preguntas p ON p.id = r.pregunta_id
+        LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+        LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+        WHERE r.fecha_desactivacion IS NULL
+          AND p.fecha_desactivacion IS NULL
+          -- 🔥 EL MOTOR: Atrapa si la pregunta es de vulnerabilidad o si la opción tiene puntaje de riesgo
+          AND (p.revision_manual_obligatoria = true OR op.puntaje_riesgo > 0)
+      ),
+      FichasFiltradas AS (
+        SELECT 
+          ficha_id,
+          -- Empaqueta dinámicamente todas las vulnerabilidades en un JSON
+          jsonb_object_agg(
+            pregunta, 
+            jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia, 'riesgo', riesgo)
+          ) as detalles_vulnerabilidad,
+          SUM(riesgo) as riesgo_total
+        FROM RespuestasVulnerables
+        -- Filtra las respuestas que son "No", "Ninguna", etc., para que no aparezcan como vulnerabilidades activas
+        WHERE riesgo > 0 
+           OR (riesgo = 0 AND UPPER(respuesta) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', ''))
+        GROUP BY ficha_id
+      )
       SELECT 
         f.id as ficha_id,
-        u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido || ' ' || COALESCE(u.segundo_apellido, '') as estudiante,
+        u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido as estudiante,
         u.cedula,
         c.nombre as carrera,
         ci.nombre as ciclo,
-        MAX(CASE WHEN p.codigo_sistema = 'SALUD_DISCAPACIDAD_BOOL' THEN r.valor_texto ELSE NULL END) as discapacidad,
-        MAX(CASE WHEN p.codigo_sistema = 'SALUD_LENTES_BOOL' THEN r.valor_texto ELSE NULL END) as uso_lentes,
-        MAX(CASE WHEN p.codigo_sistema = 'SALUD_EMBARAZO_BOOL' THEN r.valor_texto ELSE NULL END) as embarazo,
-        MAX(CASE WHEN p.codigo_sistema = 'SALUD_ENFERMEDAD_CRONICA' THEN r.valor_texto ELSE NULL END) as detalle_adaptaciones,
-        MAX(CASE WHEN p.codigo_sistema IN ('SALUD_DISCAPACIDAD_BOOL') AND d.id IS NOT NULL THEN 'SI' ELSE 'NO' END) as tiene_certificado
-      FROM fichas_respondidas f
+        ff.detalles_vulnerabilidad,
+        ff.riesgo_total
+      FROM FichasFiltradas ff
+      INNER JOIN fichas_respondidas f ON f.id = ff.ficha_id
       INNER JOIN usuarios u ON u.id = f.usuario_id
       LEFT JOIN carreras c ON c.id = u.carrera_id
       LEFT JOIN ciclos ci ON ci.id = u.ciclo_id
-      INNER JOIN respuestas r ON r.ficha_id = f.id
-      INNER JOIN preguntas p ON p.id = r.pregunta_id
-      LEFT JOIN documentos_respaldo d ON d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL
       WHERE f.periodo_id = $1 AND f.estado_ficha NOT IN ('BORRADOR') AND f.fecha_desactivacion IS NULL
-      GROUP BY f.id, u.id, c.id, ci.id
-      HAVING MAX(CASE WHEN p.codigo_sistema IN ('SALUD_DISCAPACIDAD_BOOL', 'SALUD_LENTES_BOOL', 'SALUD_EMBARAZO_BOOL', 'SALUD_ENFERMEDAD_CRONICA') AND (UPPER(r.valor_texto) != 'NINGUNA' AND UPPER(r.valor_texto) != 'NO' AND UPPER(r.valor_texto) != 'N/A') THEN 1 ELSE 0 END) = 1
+      ORDER BY ff.riesgo_total DESC
     `;
 
     return await this.dataSource.query(query, [periodoId]);
