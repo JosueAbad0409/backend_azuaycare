@@ -110,8 +110,44 @@ export class SeccionesService {
     const seccion = await this.findOne(id);
     await this.validarFormularioModificable(seccion.formulario_id);
 
-    await this.seccionesRepository.delete(id);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    return { message: 'Sección eliminada físicamente con éxito.' };
+    try {
+      // 1. Obtener todas las preguntas asociadas a esta sección
+      const preguntas = await queryRunner.manager
+        .createQueryBuilder()
+        .select('id')
+        .from('preguntas', 'p')
+        .where('seccion_id = :seccionId', { seccionId: id })
+        .getRawMany();
+
+      if (preguntas.length > 0) {
+        const preguntaIds = preguntas.map(p => p.id);
+
+        // 2. Eliminar físicamente los registros hijos de las preguntas
+        await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
+
+        // 3. Eliminar físicamente las preguntas
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas').where('seccion_id = :seccionId', { seccionId: id }).execute();
+      }
+
+      // 4. Finalmente, eliminar físicamente la sección principal
+      await queryRunner.manager.delete(Seccion, id);
+
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw new BadRequestException('No se pudo eliminar la sección por conflictos en la base de datos.');
+    } finally {
+      await queryRunner.release();
+    }
+
+    return { message: 'Sección y todas sus dependencias eliminadas físicamente con éxito.' };
   }
 }
