@@ -110,40 +110,8 @@ export class SeccionesService {
     const seccion = await this.findOne(id);
     await this.validarFormularioModificable(seccion.formulario_id);
 
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    await this.seccionesRepository.delete(id);
 
-    try {
-      const now = new Date();
-      await queryRunner.manager.update(Seccion, id, { fecha_desactivacion: now });
-
-      const preguntas = await queryRunner.manager
-        .createQueryBuilder()
-        .select('id')
-        .from('preguntas', 'p')
-        .where('seccion_id = :seccionId', { seccionId: id })
-        .andWhere('fecha_desactivacion IS NULL')
-        .getRawMany();
-
-      if (preguntas.length > 0) {
-        const preguntaIds = preguntas.map(p => p.id);
-        await queryRunner.manager.createQueryBuilder().update('preguntas').set({ fecha_desactivacion: now }).where('seccion_id = :seccionId', { seccionId: id }).execute();
-        await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
-      }
-
-      await queryRunner.commitTransaction();
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
-
-    return { message: 'Sección y dependencias dadas de baja con éxito.' };
+    return { message: 'Sección eliminada físicamente con éxito.' };
   }
 }

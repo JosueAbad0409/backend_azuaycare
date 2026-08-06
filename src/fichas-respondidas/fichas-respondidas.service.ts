@@ -240,8 +240,21 @@ export class FichasRespondidasService {
     const formularioParaRespuesta = JSON.parse(JSON.stringify(formularioCompleto));
 
     if (formularioParaRespuesta && formularioParaRespuesta.secciones) {
+      
+      // 🔥 SOLUCIÓN: 1. Filtrar las secciones que fueron eliminadas (fecha_desactivacion no es null)
+      formularioParaRespuesta.secciones = formularioParaRespuesta.secciones.filter(
+        (seccion: any) => !seccion.fecha_desactivacion
+      );
+
       formularioParaRespuesta.secciones.forEach((seccion: any) => {
         if (seccion.preguntas) {
+          
+          // 🔥 SOLUCIÓN: 2. Filtrar las preguntas que fueron eliminadas
+          seccion.preguntas = seccion.preguntas.filter(
+            (pregunta: any) => !pregunta.fecha_desactivacion
+          );
+
+          // Asignar las respuestas a las preguntas que sí están activas
           seccion.preguntas.forEach((pregunta: any) => {
             pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
           });
