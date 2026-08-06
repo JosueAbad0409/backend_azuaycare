@@ -241,20 +241,20 @@ export class FichasRespondidasService {
 
     if (formularioParaRespuesta && formularioParaRespuesta.secciones) {
       
-      // 🔥 SOLUCIÓN: 1. Filtrar las secciones que fueron eliminadas (fecha_desactivacion no es null)
+      // 🔥 1. FILTRAR SECCIONES FANTASMAS (Eliminadas lógicamente)
       formularioParaRespuesta.secciones = formularioParaRespuesta.secciones.filter(
-        (seccion: any) => !seccion.fecha_desactivacion
+        (seccion: any) => seccion.fecha_desactivacion === null
       );
 
       formularioParaRespuesta.secciones.forEach((seccion: any) => {
         if (seccion.preguntas) {
           
-          // 🔥 SOLUCIÓN: 2. Filtrar las preguntas que fueron eliminadas
+          // 🔥 2. FILTRAR PREGUNTAS FANTASMAS (Eliminadas lógicamente)
           seccion.preguntas = seccion.preguntas.filter(
-            (pregunta: any) => !pregunta.fecha_desactivacion
+            (pregunta: any) => pregunta.fecha_desactivacion === null
           );
 
-          // Asignar las respuestas a las preguntas que sí están activas
+          // 3. Asignar las respuestas solo a las preguntas válidas y activas
           seccion.preguntas.forEach((pregunta: any) => {
             pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
           });
