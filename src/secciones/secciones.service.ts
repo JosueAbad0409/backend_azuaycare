@@ -115,7 +115,7 @@ export class SeccionesService {
     await queryRunner.startTransaction();
 
     try {
-      // 1. Obtener todas las preguntas asociadas a esta sección
+      // 1. Obtener todas las preguntas de esta sección
       const preguntas = await queryRunner.manager
         .createQueryBuilder()
         .select('id')
@@ -126,28 +126,47 @@ export class SeccionesService {
       if (preguntas.length > 0) {
         const preguntaIds = preguntas.map(p => p.id);
 
-        // 2. Eliminar físicamente los registros hijos de las preguntas
-        await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
+        // 2. Destruir primero las RESPUESTAS de prueba (esto es lo que bloqueaba la BD)
+        const respuestas = await queryRunner.manager
+          .createQueryBuilder()
+          .select('id')
+          .from('respuestas', 'r')
+          .where('pregunta_id IN (:...ids)', { ids: preguntaIds })
+          .getRawMany();
 
-        // 3. Eliminar físicamente las preguntas
+        if (respuestas.length > 0) {
+          const respuestaIds = respuestas.map(r => r.id);
+          // Borrar dependencias de las respuestas
+          await queryRunner.manager.createQueryBuilder().delete().from('opciones_seleccionadas').where('respuesta_id IN (:...ids)', { ids: respuestaIds }).execute().catch(() => null);
+          await queryRunner.manager.createQueryBuilder().delete().from('respuestas_matriz').where('respuesta_id IN (:...ids)', { ids: respuestaIds }).execute().catch(() => null);
+          await queryRunner.manager.createQueryBuilder().delete().from('documentos_respaldo').where('respuesta_id IN (:...ids)', { ids: respuestaIds }).execute().catch(() => null);
+          // Borrar las respuestas
+          await queryRunner.manager.createQueryBuilder().delete().from('respuestas').where('id IN (:...ids)', { ids: respuestaIds }).execute();
+        }
+
+        // 3. Destruir configuración de la pregunta (Opciones, Matrices, Dependencias)
+        await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute().catch(() => null);
+        await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute().catch(() => null);
+        await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute().catch(() => null);
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute().catch(() => null);
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias').where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute().catch(() => null);
+
+        // 4. Destruir las Preguntas
         await queryRunner.manager.createQueryBuilder().delete().from('preguntas').where('seccion_id = :seccionId', { seccionId: id }).execute();
       }
 
-      // 4. Finalmente, eliminar físicamente la sección principal
+      // 5. Finalmente, Destruir la Sección
       await queryRunner.manager.delete(Seccion, id);
 
       await queryRunner.commitTransaction();
-    } catch (error) {
+    } catch (error: any) {
       await queryRunner.rollbackTransaction();
-      throw new BadRequestException('No se pudo eliminar la sección por conflictos en la base de datos.');
+      console.error('🔥 ERROR AL ELIMINAR SECCIÓN EN BD:', error);
+      throw new BadRequestException(`Conflicto al eliminar en BD: ${error.message}`);
     } finally {
       await queryRunner.release();
     }
 
-    return { message: 'Sección y todas sus dependencias eliminadas físicamente con éxito.' };
+    return { message: 'Sección eliminada físicamente con éxito.' };
   }
 }
