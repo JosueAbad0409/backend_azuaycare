@@ -79,29 +79,48 @@ export class FormulariosService {
     });
   }
 
-  async findOne(id: string) {
-    const formulario = await this.formulariosRepository.findOne({
-      where: { id, fecha_desactivacion: IsNull() },
-      relations: {
-        periodo: true,
-        tipoFormulario: true,
-        secciones: {
-          preguntas: {
-            tipoCampo: true,
-            opciones: true,
-            filas: true,
-            columnas: true,
-            dependencias: true,
-          },
-        },
-      },
-      order: {
-        secciones: {
-          orden: 'ASC',
-          preguntas: { orden: 'ASC', opciones: { orden: 'ASC' } },
-        },
-      },
-    });
+    async findOne(id: string) {
+    const formulario = await this.formulariosRepository
+      .createQueryBuilder('f')
+      .leftJoinAndSelect('f.periodo', 'periodo')
+      .leftJoinAndSelect('f.tipoFormulario', 'tipoFormulario')
+      .leftJoinAndSelect(
+        'f.secciones',
+        'secciones',
+        'secciones.fecha_desactivacion IS NULL',
+      )
+      .leftJoinAndSelect(
+        'secciones.preguntas',
+        'preguntas',
+        'preguntas.fecha_desactivacion IS NULL',
+      )
+      .leftJoinAndSelect('preguntas.tipoCampo', 'tipoCampo')
+      .leftJoinAndSelect(
+        'preguntas.opciones',
+        'opciones',
+        'opciones.fecha_desactivacion IS NULL',
+      )
+      .leftJoinAndSelect(
+        'preguntas.filas',
+        'filas',
+        'filas.fecha_desactivacion IS NULL',
+      )
+      .leftJoinAndSelect(
+        'preguntas.columnas',
+        'columnas',
+        'columnas.fecha_desactivacion IS NULL',
+      )
+      .leftJoinAndSelect(
+        'preguntas.dependencias',
+        'dependencias',
+        'dependencias.fecha_desactivacion IS NULL',
+      )
+      .where('f.id = :id', { id })
+      .andWhere('f.fecha_desactivacion IS NULL')
+      .orderBy('secciones.orden', 'ASC')
+      .addOrderBy('preguntas.orden', 'ASC')
+      .addOrderBy('opciones.orden', 'ASC')
+      .getOne();
 
     if (!formulario) {
       throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
@@ -110,15 +129,8 @@ export class FormulariosService {
     return formulario;
   }
 
-  async publicarFormulario(id: string) {
-    const formulario = await this.formulariosRepository.findOne({
-      where: { id, fecha_desactivacion: IsNull() },
-      relations: { secciones: { preguntas: true } },
-    });
-
-    if (!formulario) {
-      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
-    }
+    async publicarFormulario(id: string) {
+    const formulario = await this.findOne(id); // ya filtra desactivados
 
     if (formulario.bloqueado) {
       throw new BadRequestException('Este formulario es una versión anterior bloqueada; no puede publicarse.');
@@ -132,12 +144,19 @@ export class FormulariosService {
       throw new BadRequestException('No se puede publicar un formulario sin secciones estructuradas.');
     }
 
-    const tienePreguntas = formulario.secciones.some((s) => s.preguntas && s.preguntas.length > 0);
+    const tienePreguntas = formulario.secciones.some(
+      (s) => s.preguntas && s.preguntas.length > 0,
+    );
     if (!tienePreguntas) {
-      throw new BadRequestException('No se puede publicar un formulario sin al menos una pregunta dentro de sus secciones.');
+      throw new BadRequestException(
+        'No se puede publicar un formulario sin al menos una pregunta dentro de sus secciones.',
+      );
     }
 
-    await this.formulariosRepository.update(id, { publicado: true, fecha_publicacion: new Date() });
+    await this.formulariosRepository.update(id, {
+      publicado: true,
+      fecha_publicacion: new Date(),
+    });
     return this.findOne(id);
   }
 
