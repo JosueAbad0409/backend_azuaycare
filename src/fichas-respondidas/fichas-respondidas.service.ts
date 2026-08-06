@@ -143,6 +143,7 @@ export class FichasRespondidasService {
 
     const query = this.fichasRepository.createQueryBuilder('f')
       .leftJoinAndSelect('f.usuario', 'u')
+      .leftJoinAndSelect('u.carrera', 'c')
       .leftJoinAndSelect('f.rangoVulnerabilidad', 'rv')
       .where('f.fecha_desactivacion IS NULL')
       .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
