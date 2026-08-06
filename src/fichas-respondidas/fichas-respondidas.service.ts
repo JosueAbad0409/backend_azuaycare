@@ -334,10 +334,12 @@ export class FichasRespondidasService {
       nuevaFechaLimite.setDate(nuevaFechaLimite.getDate() + reabrirDto.dias_extension);
     }
 
-    await this.cambiarEstado(id, 'ENVIADA', coordinadorId, 'Reapertura autorizada por Bienestar Estudiantil');
+    // 🔥 CAMBIO CLAVE AQUÍ: Pasamos la ficha a 'BORRADOR' en lugar de 'ENVIADA'
+    // Esto quita el candado de solo lectura en el frontend del estudiante.
+    await this.cambiarEstado(id, 'BORRADOR', coordinadorId, 'Reapertura autorizada para completar nuevas preguntas agregadas al formulario');
 
     await this.fichasRepository.update(id, {
-      cerrado_manual_por: coordinadorId,
+      cerrado_manual_por: null, // Limpiamos por si Bienestar la había cerrado a la fuerza
       fecha_limite_edicion: nuevaFechaLimite
     });
 
