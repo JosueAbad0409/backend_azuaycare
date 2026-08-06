@@ -19,13 +19,16 @@ export class CreateSeccionDto {
   orden?: number;
 
   @IsString({ message: 'El tipo de sección debe ser un texto.' })
-  // 🔥 ACTUALIZACIÓN: Se agrega 'NEE_SALUD' a los tipos permitidos
-  @IsIn(['INFORMACION_GENERAL', 'FINANCIERA', 'NEE_SALUD'], { message: 'El tipo_seccion debe ser INFORMACION_GENERAL, FINANCIERA o NEE_SALUD.' })
+  @IsIn(['INFORMACION_GENERAL', 'FINANCIERA', 'NEE_SALUD'], {
+    message: 'El tipo_seccion debe ser INFORMACION_GENERAL, FINANCIERA o NEE_SALUD.',
+  })
   @IsOptional()
   tipo_seccion?: string;
 
   @IsString({ message: 'La subcategoría financiera debe ser un texto.' })
-  @IsIn(['INGRESOS', 'GASTOS', 'NINGUNO'], { message: 'La subcategoria_financiera debe ser INGRESOS, GASTOS o NINGUNO.' })
+  @IsIn(['INGRESOS', 'GASTOS', 'NINGUNO', 'AMBOS'], {
+    message: 'La subcategoria_financiera debe ser INGRESOS, GASTOS, NINGUNO o AMBOS.',
+  })
   @IsOptional()
   subcategoria_financiera?: string;
 }
