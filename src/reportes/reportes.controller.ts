@@ -16,6 +16,12 @@ export class ReportesController {
   obtenerDashboardResumen() {
     return this.reportesService.obtenerDashboardResumen();
   }
+  
+  @Get('nee/periodo/:periodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerReporteEspecializadoNee(@Param('periodoId') periodoId: string) {
+    return this.reportesService.obtenerReporteEspecializadoNee(periodoId);
+  }
 
   @Get('estructura-agregada/:formularioId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')

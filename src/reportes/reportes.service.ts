@@ -95,6 +95,36 @@ export class ReportesService {
       }
     };
   }
+  /**
+   * Obtiene el reporte especializado de Necesidades Educativas y Salud
+   */
+  async obtenerReporteEspecializadoNee(periodoId: string) {
+    const query = `
+      SELECT 
+        f.id as ficha_id,
+        u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido || ' ' || COALESCE(u.segundo_apellido, '') as estudiante,
+        u.cedula,
+        c.nombre as carrera,
+        ci.nombre as ciclo,
+        MAX(CASE WHEN p.codigo_sistema = 'SALUD_DISCAPACIDAD_BOOL' THEN r.valor_texto ELSE NULL END) as discapacidad,
+        MAX(CASE WHEN p.codigo_sistema = 'SALUD_LENTES_BOOL' THEN r.valor_texto ELSE NULL END) as uso_lentes,
+        MAX(CASE WHEN p.codigo_sistema = 'SALUD_EMBARAZO_BOOL' THEN r.valor_texto ELSE NULL END) as embarazo,
+        MAX(CASE WHEN p.codigo_sistema = 'SALUD_ENFERMEDAD_CRONICA' THEN r.valor_texto ELSE NULL END) as detalle_adaptaciones,
+        MAX(CASE WHEN p.codigo_sistema IN ('SALUD_DISCAPACIDAD_BOOL') AND d.id IS NOT NULL THEN 'SI' ELSE 'NO' END) as tiene_certificado
+      FROM fichas_respondidas f
+      INNER JOIN usuarios u ON u.id = f.usuario_id
+      LEFT JOIN carreras c ON c.id = u.carrera_id
+      LEFT JOIN ciclos ci ON ci.id = u.ciclo_id
+      INNER JOIN respuestas r ON r.ficha_id = f.id
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN documentos_respaldo d ON d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL
+      WHERE f.periodo_id = $1 AND f.estado_ficha NOT IN ('BORRADOR') AND f.fecha_desactivacion IS NULL
+      GROUP BY f.id, u.id, c.id, ci.id
+      HAVING MAX(CASE WHEN p.codigo_sistema IN ('SALUD_DISCAPACIDAD_BOOL', 'SALUD_LENTES_BOOL', 'SALUD_EMBARAZO_BOOL', 'SALUD_ENFERMEDAD_CRONICA') AND (UPPER(r.valor_texto) != 'NINGUNA' AND UPPER(r.valor_texto) != 'NO' AND UPPER(r.valor_texto) != 'N/A') THEN 1 ELSE 0 END) = 1
+    `;
+
+    return await this.dataSource.query(query, [periodoId]);
+  }
 
   /**
    * Genera el JSON estructurado con métricas y agregaciones por cada pregunta
