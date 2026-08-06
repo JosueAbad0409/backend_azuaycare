@@ -394,6 +394,44 @@ export class FichasRespondidasService {
       })),
     }));
 
+    // 🔥 NUEVA LÓGICA: Búsqueda de respuestas médicas usando codigo_sistema
+    let tieneDiscapacidad = false;
+    let usaLentes = false;
+    let enfermedadCronica = '';
+
+    if (data.formulario_estructurado?.secciones) {
+      for (const sec of data.formulario_estructurado.secciones) {
+        for (const preg of sec.preguntas || []) {
+          const resp = preg.respuesta_estudiante;
+          if (!resp) continue;
+
+          // Obtenemos el texto base de la respuesta (texto libre u opción múltiple)
+          let valorTexto = resp.valor_texto || '';
+          if (resp.opcionesSeleccionadas?.length > 0) {
+            valorTexto = resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', ');
+          }
+
+          // Normalizamos para hacer la validación
+          const valorNormalizado = valorTexto.toUpperCase().trim();
+
+          if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
+            tieneDiscapacidad = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+          } else if (preg.codigo_sistema === 'SALUD_LENTES_BOOL') {
+            usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+          } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
+            enfermedadCronica = valorTexto;
+            // Evitamos que muestre alerta si responden "Ninguna" o "No"
+            if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
+              enfermedadCronica = '';
+            }
+          }
+        }
+      }
+    }
+
+    // Se requiere atención de salud si alguna de las banderas está activa
+    const requiereAtencionSalud = tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
+
     const templateFuente = this.cargarTemplateFicha();
     const template = this.pdfRenderer.compilarTemplate('ficha-socioeconomica', templateFuente);
 
@@ -403,6 +441,11 @@ export class FichasRespondidasService {
       ficha: data.ficha,
       esFichaFinanciera,
       secciones,
+      // 🔥 VARIABLES INYECTADAS AL RENDERIZADOR PDF
+      requiereAtencionSalud,
+      tieneDiscapacidad,
+      usaLentes,
+      enfermedadCronica
     });
 
     return this.pdfRenderer.renderizarHtmlAPdf(html);
