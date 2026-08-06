@@ -107,117 +107,43 @@ export class SeccionesService {
   }
 
   async remove(id: string) {
-  const seccion = await this.findOne(id);
-  await this.validarFormularioModificable(seccion.formulario_id);
+    const seccion = await this.findOne(id);
+    await this.validarFormularioModificable(seccion.formulario_id);
 
-  const queryRunner = this.dataSource.createQueryRunner();
-  await queryRunner.connect();
-  await queryRunner.startTransaction();
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-  try {
-    // 1. Obtener IDs de preguntas
-    const preguntas = await queryRunner.manager
-      .createQueryBuilder()
-      .select('id')
-      .from('preguntas', 'p')
-      .where('seccion_id = :seccionId', { seccionId: id })
-      .getRawMany();
+    try {
+      const now = new Date();
+      await queryRunner.manager.update(Seccion, id, { fecha_desactivacion: now });
 
-    if (preguntas.length > 0) {
-      const preguntaIds = preguntas.map(p => p.id);
-
-      // 2. Obtener IDs de respuestas
-      const respuestas = await queryRunner.manager
+      const preguntas = await queryRunner.manager
         .createQueryBuilder()
         .select('id')
-        .from('respuestas', 'r')
-        .where('pregunta_id IN (:...ids)', { ids: preguntaIds })
+        .from('preguntas', 'p')
+        .where('seccion_id = :seccionId', { seccionId: id })
+        .andWhere('fecha_desactivacion IS NULL')
         .getRawMany();
 
-      if (respuestas.length > 0) {
-        const respuestaIds = respuestas.map(r => r.id);
-
-        // Borrar dependencias de respuestas (solo si existen registros)
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from('opciones_seleccionadas')
-          .where('respuesta_id IN (:...ids)', { ids: respuestaIds })
-          .execute();
-
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from('respuestas_matriz')
-          .where('respuesta_id IN (:...ids)', { ids: respuestaIds })
-          .execute();
-
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from('documentos_respaldo')
-          .where('respuesta_id IN (:...ids)', { ids: respuestaIds })
-          .execute();
-
-        // Borrar respuestas
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from('respuestas')
-          .where('id IN (:...ids)', { ids: respuestaIds })
-          .execute();
+      if (preguntas.length > 0) {
+        const preguntaIds = preguntas.map(p => p.id);
+        await queryRunner.manager.createQueryBuilder().update('preguntas').set({ fecha_desactivacion: now }).where('seccion_id = :seccionId', { seccionId: id }).execute();
+        await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
       }
 
-      // 3. Borrar configuración de preguntas
-      await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from('opciones_pregunta')
-        .where('pregunta_id IN (:...ids)', { ids: preguntaIds })
-        .execute();
-
-      await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from('filas_matriz')
-        .where('pregunta_id IN (:...ids)', { ids: preguntaIds })
-        .execute();
-
-      await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from('columnas_matriz')
-        .where('pregunta_id IN (:...ids)', { ids: preguntaIds })
-        .execute();
-
-      await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from('preguntas_dependencias')
-        .where('pregunta_id IN (:...ids) OR pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds })
-        .execute();
-
-      // 4. Borrar preguntas
-      await queryRunner.manager
-        .createQueryBuilder()
-        .delete()
-        .from('preguntas')
-        .where('seccion_id = :seccionId', { seccionId: id })
-        .execute();
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
 
-    // 5. Borrar la sección
-    await queryRunner.manager.delete(Seccion, id);
-
-    await queryRunner.commitTransaction();
-  } catch (error: any) {
-    await queryRunner.rollbackTransaction();
-    console.error('🔥 ERROR AL ELIMINAR SECCIÓN EN BD:', error);
-    throw new BadRequestException(`Conflicto al eliminar en BD: ${error.message}`);
-  } finally {
-    await queryRunner.release();
+    return { message: 'Sección y dependencias dadas de baja con éxito.' };
   }
-
-  return { message: 'Sección eliminada físicamente con éxito.' };
-}
 }
