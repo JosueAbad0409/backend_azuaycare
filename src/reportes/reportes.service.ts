@@ -99,56 +99,64 @@ export class ReportesService {
    * Obtiene el reporte especializado de Necesidades Educativas y Salud
    */
   async obtenerReporteEspecializadoNee(periodoId: string) {
-    const query = `
-      WITH RespuestasVulnerables AS (
-        SELECT 
-          r.ficha_id,
-          p.enunciado AS pregunta,
-          COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) AS respuesta,
-          COALESCE(op.puntaje_riesgo, 0) AS riesgo,
-          CASE WHEN EXISTS (SELECT 1 FROM documentos_respaldo d WHERE d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL) THEN true ELSE false END AS tiene_evidencia
-        FROM respuestas r
-        INNER JOIN preguntas p ON p.id = r.pregunta_id
-        -- 🔥 CORRECCIÓN: Nombre de tabla real en PostgreSQL
-        LEFT JOIN opciones_seleccionadas ros ON ros.respuesta_id = r.id 
-        LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
-        WHERE r.fecha_desactivacion IS NULL
-          AND p.fecha_desactivacion IS NULL
-          -- Atrapa la vulnerabilidad
-          AND (p.revision_manual_obligatoria = true OR op.puntaje_riesgo > 0)
-      ),
-      FichasFiltradas AS (
-        SELECT 
-          ficha_id,
-          jsonb_object_agg(
-            pregunta, 
-            jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia, 'riesgo', riesgo)
-          ) as detalles_vulnerabilidad,
-          SUM(riesgo) as riesgo_total
-        FROM RespuestasVulnerables
-        WHERE riesgo > 0 
-           OR (riesgo = 0 AND UPPER(respuesta) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', ''))
-        GROUP BY ficha_id
-      )
-      SELECT 
-        f.id as ficha_id,
-        u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido as estudiante,
-        u.cedula,
-        c.nombre as carrera,
-        ci.nombre as ciclo,
-        ff.detalles_vulnerabilidad,
-        ff.riesgo_total
-      FROM FichasFiltradas ff
-      INNER JOIN fichas_respondidas f ON f.id = ff.ficha_id
-      INNER JOIN usuarios u ON u.id = f.usuario_id
-      LEFT JOIN carreras c ON c.id = u.carrera_id
-      LEFT JOIN ciclos ci ON ci.id = u.ciclo_id
-      WHERE f.periodo_id = $1 AND f.estado_ficha NOT IN ('BORRADOR') AND f.fecha_desactivacion IS NULL
-      ORDER BY ff.riesgo_total DESC
-    `;
-
-    return await this.dataSource.query(query, [periodoId]);
-  }
+  const query = `
+    WITH RespuestasVulnerables AS (
+      SELECT
+        r.ficha_id,
+        p.enunciado AS pregunta,
+        COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) AS respuesta,
+        COALESCE(op.puntaje_riesgo, 0) AS riesgo,
+        p.revision_manual_obligatoria,  -- ← AGREGAR
+        CASE WHEN EXISTS (
+          SELECT 1 FROM documentos_respaldo d
+          WHERE d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL
+        ) THEN true ELSE false END AS tiene_evidencia
+      FROM respuestas r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      -- Usar el nombre real de la tabla de opciones seleccionadas:
+      LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+      WHERE r.fecha_desactivacion IS NULL
+        AND p.fecha_desactivacion IS NULL
+        AND (p.revision_manual_obligatoria = true OR op.puntaje_riesgo > 0)
+    ),
+    FichasFiltradas AS (
+      SELECT
+        ficha_id,
+        jsonb_object_agg(
+          pregunta,
+          jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia, 'riesgo', riesgo)
+        ) as detalles_vulnerabilidad,
+        SUM(riesgo) as riesgo_total
+      FROM RespuestasVulnerables
+      WHERE riesgo > 0
+         OR revision_manual_obligatoria = true   -- ← AGREGAR: no descartar revisión manual
+         OR (
+           riesgo = 0
+           AND UPPER(COALESCE(respuesta, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+         )
+      GROUP BY ficha_id
+    )
+    SELECT
+      f.id as ficha_id,
+      u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido as estudiante,
+      u.cedula,
+      c.nombre as carrera,
+      ci.nombre as ciclo,
+      ff.detalles_vulnerabilidad,
+      ff.riesgo_total
+    FROM FichasFiltradas ff
+    INNER JOIN fichas_respondidas f ON f.id = ff.ficha_id
+    INNER JOIN usuarios u ON u.id = f.usuario_id
+    LEFT JOIN carreras c ON c.id = u.carrera_id
+    LEFT JOIN ciclos ci ON ci.id = u.ciclo_id
+    WHERE f.periodo_id = $1
+      AND f.estado_ficha NOT IN ('BORRADOR')
+      AND f.fecha_desactivacion IS NULL
+    ORDER BY ff.riesgo_total DESC
+  `;
+  return await this.dataSource.query(query, [periodoId]);
+}
 
   /**
    * Genera el JSON estructurado con métricas y agregaciones por cada pregunta
