@@ -23,6 +23,7 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
       { nombre: 'SELECCION_UNICA', descripcion: 'Opciones donde solo se puede elegir una respuesta' },
       { nombre: 'SELECCION_MULTIPLE', descripcion: 'Opciones donde se pueden elegir varias respuestas' },
       { nombre: 'MATRIZ', descripcion: 'Estructura de filas y columnas para respuestas complejas' },
+      { nombre: 'FECHA', descripcion: 'Campo para seleccionar una fecha (Date)' }
     ];
 
     try {
