@@ -382,7 +382,7 @@ export class FichasRespondidasService {
     return this.templateFichaCache;
   }
 
-  async generarPdfFicha(id: string, user: any): Promise<Buffer> {
+    async generarPdfFicha(id: string, user: any): Promise<Buffer> {
     const data = await this.getResumenFicha(id, user);
 
     let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
@@ -391,13 +391,51 @@ export class FichasRespondidasService {
 
     if (!plantilla) {
       plantilla = {
-        color_primario: '#003366', color_secundario: '#666666',
-        encabezado: 'Sistema de Bienestar Estudiantil', pie_pagina: 'Ficha generada automáticamente',
-        mostrar_tabla_rango: false, logo_url: '',
+        color_primario: '#003366',
+        color_secundario: '#666666',
+        encabezado: 'Sistema de Bienestar Estudiantil',
+        pie_pagina: 'Ficha generada automáticamente',
+        mostrar_tabla_rango: true,
+        logo_url: '',
       };
     }
 
-    const esFichaFinanciera = plantilla.mostrar_tabla_rango === true || data.ficha.rangoResultado !== null;
+    // Totales desde la ficha (pueden venir en 0 si el listener no corrió)
+    let totalIngresos = Number(data.ficha.total_ingresos) || 0;
+    let totalEgresos = Number(data.ficha.total_egresos) || 0;
+    let balanceFinal = Number(data.ficha.balance_final);
+    let estatusNombre = data.ficha.rangoResultado?.nombre || null;
+
+    // Si no hay totales guardados, recalcular desde respuestas (solo para el PDF)
+    if (totalIngresos === 0 && totalEgresos === 0) {
+      const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
+      totalIngresos = recalc.totalIngresos;
+      totalEgresos = recalc.totalEgresos;
+      balanceFinal = recalc.balance;
+      if (recalc.rangoNombre) {
+        estatusNombre = recalc.rangoNombre;
+      }
+    }
+
+    if (Number.isNaN(balanceFinal)) {
+      balanceFinal = totalIngresos - totalEgresos;
+    }
+
+    // Mostrar bloque económico si hay plantilla, rango o cualquier monto
+    const esFichaFinanciera =
+      plantilla.mostrar_tabla_rango === true ||
+      data.ficha.rangoResultado != null ||
+      totalIngresos > 0 ||
+      totalEgresos > 0 ||
+      balanceFinal !== 0;
+
+    const fichaParaPdf = {
+      ...data.ficha,
+      total_ingresos: totalIngresos,
+      total_egresos: totalEgresos,
+      balance_final: balanceFinal,
+      rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
+    };
 
     const secciones = (data.formulario_estructurado?.secciones || []).map((sec: any) => ({
       nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
@@ -407,7 +445,7 @@ export class FichasRespondidasService {
       })),
     }));
 
-    // 🔥 NUEVA LÓGICA: Búsqueda de respuestas médicas usando codigo_sistema
+    // Salud / NEE
     let tieneDiscapacidad = false;
     let usaLentes = false;
     let enfermedadCronica = '';
@@ -418,13 +456,13 @@ export class FichasRespondidasService {
           const resp = preg.respuesta_estudiante;
           if (!resp) continue;
 
-          // Obtenemos el texto base de la respuesta (texto libre u opción múltiple)
           let valorTexto = resp.valor_texto || '';
           if (resp.opcionesSeleccionadas?.length > 0) {
-            valorTexto = resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', ');
+            valorTexto = resp.opcionesSeleccionadas
+              .map((o: any) => o.opcion?.texto_opcion)
+              .join(', ');
           }
 
-          // Normalizamos para hacer la validación
           const valorNormalizado = valorTexto.toUpperCase().trim();
 
           if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
@@ -433,7 +471,6 @@ export class FichasRespondidasService {
             usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
           } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
             enfermedadCronica = valorTexto;
-            // Evitamos que muestre alerta si responden "Ninguna" o "No"
             if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
               enfermedadCronica = '';
             }
@@ -442,26 +479,79 @@ export class FichasRespondidasService {
       }
     }
 
-    // Se requiere atención de salud si alguna de las banderas está activa
-    const requiereAtencionSalud = tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
+    const requiereAtencionSalud =
+      tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
 
     const templateFuente = this.cargarTemplateFicha();
-    const template = this.pdfRenderer.compilarTemplate('ficha-socioeconomica', templateFuente);
+    const template = this.pdfRenderer.compilarTemplate(
+      'ficha-socioeconomica',
+      templateFuente,
+    );
 
     const html = template({
       plantilla,
       formulario: data.formulario_estructurado,
-      ficha: data.ficha,
+      ficha: fichaParaPdf,
       esFichaFinanciera,
       secciones,
-      // 🔥 VARIABLES INYECTADAS AL RENDERIZADOR PDF
       requiereAtencionSalud,
       tieneDiscapacidad,
       usaLentes,
-      enfermedadCronica
+      enfermedadCronica,
     });
 
     return this.pdfRenderer.renderizarHtmlAPdf(html);
+  }
+
+  /** Recalcula ingresos/egresos/balance/rango solo para el PDF (no escribe en BD). */
+  private async recalcularTotalesParaPdf(fichaId: string, formularioId: string) {
+    const ingresosDb = await this.dataSource.manager
+      .createQueryBuilder()
+      .select('r.valor_numerico', 'num')
+      .addSelect('r.valor_texto', 'txt')
+      .from('respuestas_formulario', 'r')
+      .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
+      .where('r.ficha_id = :fichaId', { fichaId })
+      .andWhere("p.categoria_financiera = 'INGRESO'")
+      .andWhere('r.fecha_desactivacion IS NULL')
+      .getRawMany();
+
+    const egresosDb = await this.dataSource.manager
+      .createQueryBuilder()
+      .select('r.valor_numerico', 'num')
+      .addSelect('r.valor_texto', 'txt')
+      .from('respuestas_formulario', 'r')
+      .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
+      .where('r.ficha_id = :fichaId', { fichaId })
+      .andWhere("p.categoria_financiera = 'EGRESO'")
+      .andWhere('r.fecha_desactivacion IS NULL')
+      .getRawMany();
+
+    let totalIngresos = 0;
+    ingresosDb.forEach((r) => (totalIngresos += Number(r.num) || Number(r.txt) || 0));
+
+    let totalEgresos = 0;
+    egresosDb.forEach((r) => (totalEgresos += Number(r.num) || Number(r.txt) || 0));
+
+    const balance = totalIngresos - totalEgresos;
+
+    const rango = await this.dataSource.manager
+      .createQueryBuilder()
+      .select('rvc.nombre', 'nombre')
+      .from('rangos_variable_calculada', 'rvc')
+      .where('rvc.formulario_id = :formId', { formId: formularioId })
+      .andWhere("rvc.variable_calculo = 'BALANCE'")
+      .andWhere(':balance >= rvc.valor_min', { balance })
+      .andWhere('(rvc.valor_max IS NULL OR :balance <= rvc.valor_max)', { balance })
+      .andWhere('rvc.fecha_desactivacion IS NULL')
+      .getRawOne();
+
+    return {
+      totalIngresos,
+      totalEgresos,
+      balance,
+      rangoNombre: rango?.nombre || null,
+    };
   }
 
   private construirRespuestaHtml(resp: any): string {
