@@ -21,7 +21,7 @@ export class CiclosController {
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findAll(
     @Query('skip') skip = 0,
-    @Query('take') take = 10,
+    @Query('take') take = 1000,
   ) {
     return this.ciclosService.findAll(+skip, +take); // CORRECCIÓN
   }

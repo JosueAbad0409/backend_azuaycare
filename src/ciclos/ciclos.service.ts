@@ -54,8 +54,8 @@ export class CiclosService {
     return ciclos;
   }
 
-  findAll(skip: number=0, take: number=10) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+  findAll(skip: number=0, take: number=1000) {
+    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 1000);
     const skipReal = Math.max(Number(skip) || 0, 0);
     return this.ciclosRepository.find({
       where: { fecha_desactivacion: IsNull() },
