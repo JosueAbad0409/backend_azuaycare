@@ -407,6 +407,7 @@ export class FichasRespondidasService {
     let estatusNombre = data.ficha.rangoResultado?.nombre || null;
 
     // Si no hay totales guardados, recalcular desde respuestas (solo para el PDF)
+        // Si no hay totales guardados, recalcular desde respuestas
     if (totalIngresos === 0 && totalEgresos === 0) {
       const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
       totalIngresos = recalc.totalIngresos;
@@ -419,6 +420,27 @@ export class FichasRespondidasService {
 
     if (Number.isNaN(balanceFinal)) {
       balanceFinal = totalIngresos - totalEgresos;
+    }
+
+    // 🔥 Siempre resolver clasificación si aún no hay rango asignado
+    if (!estatusNombre) {
+      const rango = await this.dataSource.manager
+        .createQueryBuilder()
+        .select('rvc.nombre', 'nombre')
+        .from('rangos_variable_calculada', 'rvc')
+        .where('rvc.formulario_id = :formId', { formId: data.ficha.formulario_id })
+        .andWhere("rvc.variable_calculo = 'BALANCE'")
+        .andWhere('CAST(rvc.valor_min AS numeric) <= :balance', { balance: balanceFinal })
+        .andWhere('(rvc.valor_max IS NULL OR CAST(rvc.valor_max AS numeric) >= :balance)', {
+          balance: balanceFinal,
+        })
+        .andWhere('rvc.fecha_desactivacion IS NULL')
+        .orderBy('rvc.orden', 'ASC')
+        .getRawOne();
+
+      if (rango?.nombre) {
+        estatusNombre = rango.nombre;
+      }
     }
 
     // Mostrar bloque económico si hay plantilla, rango o cualquier monto
