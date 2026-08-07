@@ -11,7 +11,7 @@ export class Carrera {
   @Column({ unique: true, nullable: false, length: 150 })
   nombre: string;
 
-  @Column({ name: 'correo_institucional',unique: true, type: 'varchar', nullable: false, length: 150})
+  @Column({ name: 'correo_institucional', type: 'varchar', nullable: false, length: 150})
   correo_institucional: string;
 
 
