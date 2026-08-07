@@ -45,18 +45,20 @@ export class CarrerasService {
     return this.carrerasRepository.save(nuevaCarrera);
   }
 
-  findAll(skip: number=0, take: number=10) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
-    const skipReal = Math.max(Number(skip) || 0, 0);
-    return this.carrerasRepository.find({
-      where: { fecha_desactivacion: IsNull() },
-      skip: skipReal,
-      take: limiteReal, 
-      // Agregamos el correo al select para que Postman lo devuelva
-      select: { id: true, nombre: true, correo_institucional: true }, 
-      order: { nombre: 'ASC' },
-    });
-  }
+  findAll(skip: number = 0, take: number = 100) {
+  const parsedTake = Number(take);
+  // Si no se envía take o no es un número, usa 100. Permite desde 1 hasta 1000 registros.
+  const limiteReal = Math.min(Math.max(isNaN(parsedTake) ? 100 : parsedTake, 1), 1000);
+  const skipReal = Math.max(Number(skip) || 0, 0);
+
+  return this.carrerasRepository.find({
+    where: { fecha_desactivacion: IsNull() },
+    skip: skipReal,
+    take: limiteReal, 
+    select: { id: true, nombre: true, correo_institucional: true }, 
+    order: { nombre: 'ASC' },
+  });
+}
 
   async findOne(id: string) {
     const carrera = await this.carrerasRepository.findOne({
