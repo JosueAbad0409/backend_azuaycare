@@ -32,10 +32,6 @@ export class CarrerasService {
       select: { id: true },
     });
 
-    if (existeCorreo) {
-      throw new BadRequestException('Ya existe una carrera activa registrada con este correo institucional.');
-    }
-
     // 3. Crear y guardar
     const nuevaCarrera = this.carrerasRepository.create({
       nombre: nombreSanitizado,
