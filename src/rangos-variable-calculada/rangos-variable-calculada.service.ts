@@ -60,4 +60,26 @@ export class RangosVariableCalculadaService {
     }
     return { asignado: true, rango };
   }
+
+  async update(id: string, updateDto: Partial<CreateRangoVariableCalculadaDto>) {
+  const rango = await this.rangosRepository.findOne({
+    where: { id, fecha_desactivacion: IsNull() },
+  });
+  if (!rango) {
+    throw new NotFoundException('Rango no encontrado.');
+  }
+
+  await this.validarFormularioNoPublicado(rango.formulario_id);
+
+  // No permitir cambiar el formulario al que pertenece
+  const { formulario_id, ...datos } = updateDto as any;
+
+  await this.rangosRepository.update(id, {
+    ...datos,
+  });
+
+  return this.rangosRepository.findOne({
+    where: { id, fecha_desactivacion: IsNull() },
+  });
+}
 }

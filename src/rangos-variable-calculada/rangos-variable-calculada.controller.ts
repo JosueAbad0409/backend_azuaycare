@@ -1,7 +1,6 @@
-import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Patch } from '@nestjs/common';
 import { RangosVariableCalculadaService } from './rangos-variable-calculada.service';
 import { CreateRangoVariableCalculadaDto, SimularRangoDto } from './dto/create-rangos-variable-calculada.dto';
-
 
 @Controller('rangos-variable-calculada')
 export class RangosVariableCalculadaController {
@@ -20,6 +19,15 @@ export class RangosVariableCalculadaController {
   @Get('formulario/:formularioId')
   findByFormulario(@Param('formularioId') formularioId: string) {
     return this.rangosService.findByFormulario(formularioId);
+  }
+
+  // 🔥 NUEVO: actualizar rango
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: Partial<CreateRangoVariableCalculadaDto>,
+  ) {
+    return this.rangosService.update(id, updateDto);
   }
 
   @Delete(':id')
