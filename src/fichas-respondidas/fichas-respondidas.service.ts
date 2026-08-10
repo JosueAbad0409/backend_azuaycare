@@ -134,30 +134,60 @@ export class FichasRespondidasService {
   }
 
   /**
-   * Obtiene la lista de fichas ordenadas por puntaje de vulnerabilidad (Mayor riesgo primero).
+   * Obtiene la lista de fichas ordenadas por cantidad de alertas (respuestas
+   * afirmativas a preguntas marcadas como revision_manual_obligatoria).
    * Exclusivo para el equipo de Bienestar.
+   *
+   * `nivel` acepta: 'TODOS' (default), 'CON_ALERTAS', 'SIN_ALERTAS'.
    */
   async getFichasPorPrioridadVulnerabilidad(skip: number, take: number, nivel: string) {
     const limiteReal = Math.min(Math.max(Number(take) || 50, 1), 500);
     const skipReal = Math.max(Number(skip) || 0, 0);
 
-    const query = this.fichasRepository.createQueryBuilder('f')
+    // Subconsulta: cuenta, por ficha, cuántas respuestas afirmativas tiene
+    // a preguntas marcadas como revision_manual_obligatoria.
+    const subQueryAlertas = `
+      SELECT r.ficha_id AS ficha_id, COUNT(*)::int AS total_alertas
+      FROM respuestas r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+      WHERE r.fecha_desactivacion IS NULL
+        AND p.fecha_desactivacion IS NULL
+        AND p.revision_manual_obligatoria = true
+        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+      GROUP BY r.ficha_id
+    `;
+
+    const baseQuery = () => this.fichasRepository.createQueryBuilder('f')
       .leftJoinAndSelect('f.usuario', 'u')
       .leftJoinAndSelect('u.carrera', 'c')
-      .leftJoinAndSelect('f.rangoVulnerabilidad', 'rv')
+      .leftJoin(`(${subQueryAlertas})`, 'alertas', 'alertas.ficha_id = f.id')
       .where('f.fecha_desactivacion IS NULL')
       .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
 
-    if (nivel && nivel !== 'TODOS') {
-      // 🔥 FIX: Busca ignorando mayúsculas/minúsculas
-      query.andWhere('LOWER(rv.nombre) = LOWER(:nivel)', { nivel });
-    }
+    const aplicarFiltroNivel = (query: ReturnType<typeof baseQuery>) => {
+      if (nivel === 'CON_ALERTAS') {
+        query.andWhere('COALESCE(alertas.total_alertas, 0) > 0');
+      } else if (nivel === 'SIN_ALERTAS') {
+        query.andWhere('COALESCE(alertas.total_alertas, 0) = 0');
+      }
+      return query;
+    };
 
-    const [data, total] = await query
-      .orderBy('f.puntaje_vulnerabilidad', 'DESC')
+    const total = await aplicarFiltroNivel(baseQuery()).getCount();
+
+    const { entities, raw } = await aplicarFiltroNivel(baseQuery())
+      .addSelect('COALESCE(alertas.total_alertas, 0)', 'total_alertas')
+      .orderBy('total_alertas', 'DESC')
       .skip(skipReal)
       .take(limiteReal)
-      .getManyAndCount();
+      .getRawAndEntities();
+
+    const data = entities.map((ficha, index) => ({
+      ...ficha,
+      total_alertas: Number(raw[index]?.total_alertas) || 0,
+    }));
 
     return {
       data,

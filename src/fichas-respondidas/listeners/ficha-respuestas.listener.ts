@@ -68,45 +68,18 @@ export class FichaRespuestasListener {
         rangoAsignadoId = rango.id;
       }
 
-      // 4. Calcular Vulnerabilidad
-      const riesgoDb = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
-        .select('op.puntaje_riesgo', 'puntaje')
-        .innerJoin('r.opcionesSeleccionadas', 'sel')
-        .innerJoin('sel.opcion', 'op')
-        .where('r.ficha_id = :fichaId', { fichaId: payload.fichaId })
-        .andWhere('r.fecha_desactivacion IS NULL')
-        .getRawMany();
-
-      const puntajeVulnerabilidad = riesgoDb.reduce(
-        (acc, row) => acc + (Number(row.puntaje) || 0), 0
-      );
-
-      let rangoVulnerabilidadId: string | null = null;
-      const rangoVulnerabilidad = await this.dataSource.manager
-        .createQueryBuilder('rangos_variable_calculada', 'rvc')
-        .where('rvc.formulario_id = :formId', { formId: ficha.formulario_id })
-        .andWhere("rvc.variable_calculo = 'VULNERABILIDAD'")
-        .andWhere(':puntaje >= rvc.valor_min', { puntaje: puntajeVulnerabilidad })
-        // 🔥 FIX: Soporte para rangos infinitos de riesgo
-        .andWhere('(:puntaje <= rvc.valor_max OR rvc.valor_max IS NULL)', { puntaje: puntajeVulnerabilidad })
-        .andWhere('rvc.fecha_desactivacion IS NULL')
-        .getRawOne();
-
-      if (rangoVulnerabilidad) {
-        rangoVulnerabilidadId = rangoVulnerabilidad.id;
-      }
-
-      // 5. Guardado atómico (Modificado para incluir vulnerabilidad)
+      // 4. Guardado atómico
+      // Nota: el cálculo de vulnerabilidad basado en puntaje_riesgo fue
+      // retirado del sistema. rango_vulnerabilidad_id y puntaje_vulnerabilidad
+      // ya no se recalculan aquí.
       await this.dataSource.manager.update(FichaRespondida, payload.fichaId, {
         total_ingresos: totalIngresos,
         total_egresos: totalEgresos,
         balance_final: balance,
         rango_resultado_id: rangoAsignadoId,
-        puntaje_vulnerabilidad: puntajeVulnerabilidad,
-        rango_vulnerabilidad_id: rangoVulnerabilidadId
       });
 
-      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance} | Riesgo: ${puntajeVulnerabilidad}`);
+      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance}`);
 
       // 6. Notificación
       const datosUsuario = await this.dataSource.manager.createQueryBuilder('fichas_respondidas', 'f')

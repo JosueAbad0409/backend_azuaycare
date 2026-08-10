@@ -49,13 +49,27 @@ export class ReportesService {
        GROUP BY r.nombre`
     );
 
-    // 3.5. Gráfico de Pastel (Niveles de Vulnerabilidad)
+    // 3.5. Gráfico de Pastel (Fichas con alertas de revisión, según respuestas)
     const vulnerabilidadData = await this.dataSource.query(
-      `SELECT COALESCE(r.nombre, 'Sin Riesgo') as label, COUNT(f.id)::int as total
+      `WITH AlertasPorFicha AS (
+         SELECT r.ficha_id, COUNT(*)::int AS total_alertas
+         FROM respuestas r
+         INNER JOIN preguntas p ON p.id = r.pregunta_id
+         LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+         LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+         WHERE r.fecha_desactivacion IS NULL
+           AND p.fecha_desactivacion IS NULL
+           AND p.revision_manual_obligatoria = true
+           AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+         GROUP BY r.ficha_id
+       )
+       SELECT
+         CASE WHEN a.total_alertas > 0 THEN 'Con alertas' ELSE 'Sin alertas' END AS label,
+         COUNT(f.id)::int AS total
        FROM fichas_respondidas f
-       LEFT JOIN rangos_variable_calculada r ON r.id = f.rango_vulnerabilidad_id
+       LEFT JOIN AlertasPorFicha a ON a.ficha_id = f.id
        WHERE f.fecha_desactivacion IS NULL
-       GROUP BY r.nombre`
+       GROUP BY label`
     );
 
     // 4. Gráfico de Barras (Fichas por Carrera)
@@ -105,8 +119,7 @@ export class ReportesService {
         r.ficha_id,
         p.enunciado AS pregunta,
         COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) AS respuesta,
-        COALESCE(op.puntaje_riesgo, 0) AS riesgo,
-        p.revision_manual_obligatoria,  -- ← AGREGAR
+        p.revision_manual_obligatoria,
         CASE WHEN EXISTS (
           SELECT 1 FROM documentos_respaldo d
           WHERE d.respuesta_id = r.id AND d.fecha_desactivacion IS NULL
@@ -118,23 +131,21 @@ export class ReportesService {
       LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
       WHERE r.fecha_desactivacion IS NULL
         AND p.fecha_desactivacion IS NULL
-        AND (p.revision_manual_obligatoria = true OR op.puntaje_riesgo > 0)
+        AND p.revision_manual_obligatoria = true
     ),
     FichasFiltradas AS (
       SELECT
         ficha_id,
         jsonb_object_agg(
           pregunta,
-          jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia, 'riesgo', riesgo)
+          jsonb_build_object('respuesta', respuesta, 'evidencia', tiene_evidencia)
         ) as detalles_vulnerabilidad,
-        SUM(riesgo) as riesgo_total
+        COUNT(*) as total_alertas
       FROM RespuestasVulnerables
-      WHERE riesgo > 0
-         OR revision_manual_obligatoria = true   -- ← AGREGAR: no descartar revisión manual
-         OR (
-           riesgo = 0
-           AND UPPER(COALESCE(respuesta, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-         )
+      WHERE
+        -- Solo se manda a revisión si la respuesta es afirmativa
+        -- (no cuando responde "No", "Ninguna", "N/A", etc.)
+        UPPER(COALESCE(respuesta, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
       GROUP BY ficha_id
     )
     SELECT
@@ -144,7 +155,7 @@ export class ReportesService {
       c.nombre as carrera,
       ci.nombre as ciclo,
       ff.detalles_vulnerabilidad,
-      ff.riesgo_total
+      ff.total_alertas
     FROM FichasFiltradas ff
     INNER JOIN fichas_respondidas f ON f.id = ff.ficha_id
     INNER JOIN usuarios u ON u.id = f.usuario_id
@@ -153,7 +164,7 @@ export class ReportesService {
     WHERE f.periodo_id = $1
       AND f.estado_ficha NOT IN ('BORRADOR')
       AND f.fecha_desactivacion IS NULL
-    ORDER BY ff.riesgo_total DESC
+    ORDER BY ff.total_alertas DESC
   `;
   return await this.dataSource.query(query, [periodoId]);
 }
