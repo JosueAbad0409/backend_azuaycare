@@ -164,9 +164,33 @@ export class RespuestasFormularioService {
           relations: { formulario: true },
         });
 
-        if (fichaActual && esEnvioFinal && (fichaActual as any).estado_ficha === 'BORRADOR') {
+        // Estados desde los que un envío final puede transicionar (BORRADOR normal,
+        // o RECHAZADA cuando el estudiante corrige y reenvía).
+        const estadosQuePermitenEnvio = ['BORRADOR', 'RECHAZADA'];
+
+        if (fichaActual && esEnvioFinal && estadosQuePermitenEnvio.includes((fichaActual as any).estado_ficha)) {
+          // Determina si la ficha tiene alguna respuesta afirmativa a una
+          // pregunta marcada como revision_manual_obligatoria (ej. embarazo,
+          // discapacidad). Si no tiene ninguna, se valida automáticamente;
+          // si tiene al menos una, queda en ENVIADA para revisión del staff.
+          const [{ tiene_alertas }] = await queryRunner.manager.query(
+            `SELECT EXISTS (
+               SELECT 1
+               FROM respuestas r
+               INNER JOIN preguntas p ON p.id = r.pregunta_id
+               LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+               LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+               WHERE r.ficha_id = $1
+                 AND r.fecha_desactivacion IS NULL
+                 AND p.fecha_desactivacion IS NULL
+                 AND p.revision_manual_obligatoria = true
+                 AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+             ) AS tiene_alertas`,
+            [fichaId],
+          );
+
           const datosUpdateFicha: Partial<FichaRespondida> = {
-            estado_ficha: 'ENVIADA',
+            estado_ficha: tiene_alertas ? 'ENVIADA' : 'VALIDADO',
           };
           
           if (fichaActual.formulario?.dias_plazo_modificacion) {

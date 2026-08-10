@@ -51,7 +51,10 @@ export class FichaRespuestasListener {
       let totalEgresos = 0;
       egresosDb.forEach(r => totalEgresos += Number(r.num) || Number(r.txt) || 0);
 
-      const balance = totalIngresos - totalEgresos;
+      const balanceCrudo = totalIngresos - totalEgresos;
+      // El balance nunca debe quedar negativo: si los egresos superan a los
+      // ingresos, se guarda 0 en vez de un número negativo.
+      const balance = Math.max(0, balanceCrudo);
 
       // 3. Buscar en el motor de variables calculadas para 'BALANCE'
       let rangoAsignadoId = null;
