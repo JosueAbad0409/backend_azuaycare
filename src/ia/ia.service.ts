@@ -21,7 +21,7 @@ export class IaService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   // ===================== TOOLS (lo que la IA puede pedir) =====================
 
@@ -323,16 +323,26 @@ export class IaService {
     };
 
     const messages: ChatMessage[] = [
+
       {
         role: 'system',
         content: `Eres el asistente de Bienestar Estudiantil de AzuayCare (Instituto Superior Tecnológico del Azuay).
 
-Reglas:
-- Usa las herramientas disponibles para obtener datos reales de la base de datos.
-- No inventes números ni nombres. Si no hay datos, dilo.
-- Responde en español, de forma clara y profesional.
-- Cuando hables de vulnerabilidad/prioridad, basa la respuesta en alertas (preguntas con revisión manual obligatoria y respuesta afirmativa).
-- No expongas UUIDs internos salvo que el usuario los pida.`,
+OBLIGATORIO:
+- Para CUALQUIER pregunta sobre números, fichas, alertas, estudiantes, estados, reportes o estadísticas, DEBES usar las herramientas (tools).
+- NUNCA inventes servicios médicos, telemedicina, clínicas ni datos.
+- Si una tool devuelve vacío o 0, dilo con claridad.
+- Responde solo con información obtenida de las tools o con orientación de uso del sistema.
+- Español, breve y profesional.
+- No muestres UUIDs salvo que te los pidan.
+
+Herramientas disponibles:
+- resumen_general
+- fichas_por_estado
+- fichas_con_alertas
+- buscar_estudiante
+- detalle_alertas_ficha
+- alertas_por_pregunta`,
       },
       { role: 'user', content: prompt },
     ];
