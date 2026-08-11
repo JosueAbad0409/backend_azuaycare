@@ -26,109 +26,166 @@ export class IaService {
   // ===================== TOOLS (lo que la IA puede pedir) =====================
 
   private readonly tools = [
-    {
-      type: 'function',
-      function: {
-        name: 'resumen_general',
-        description:
-          'Obtiene totales generales del sistema: total de fichas, carreras, formularios y periodo activo.',
-        parameters: { type: 'object', properties: {}, required: [] },
-      },
+  {
+    type: 'function',
+    function: {
+      name: 'resumen_general',
+      description: 'Totales del sistema: fichas, enviadas, validadas, carreras, formularios, periodo activo.',
+      parameters: { type: 'object', properties: {}, required: [] },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'fichas_por_estado',
-        description: 'Cuenta fichas agrupadas por estado (ENVIADA, VALIDADO, RECHAZADA, etc.).',
-        parameters: { type: 'object', properties: {}, required: [] },
-      },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fichas_por_estado',
+      description: 'Conteo de fichas por estado_ficha.',
+      parameters: { type: 'object', properties: {}, required: [] },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'fichas_con_alertas',
-        description:
-          'Lista o cuenta fichas con alertas de vulnerabilidad (respuestas afirmativas a preguntas con revision_manual_obligatoria). Útil para prioridad de atención.',
-        parameters: {
-          type: 'object',
-          properties: {
-            solo_conteo: {
-              type: 'boolean',
-              description: 'Si true, solo devuelve el número. Si false, lista estudiantes.',
-            },
-            limite: {
-              type: 'number',
-              description: 'Máximo de fichas a listar (default 20)',
-            },
-          },
-          required: [],
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fichas_por_carrera',
+      description: 'Conteo de fichas enviadas y validadas por carrera.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fichas_con_alertas',
+      description: 'Fichas con alertas de vulnerabilidad (revision_manual_obligatoria + respuesta afirmativa).',
+      parameters: {
+        type: 'object',
+        properties: {
+          solo_conteo: { type: 'boolean', description: 'Solo número total' },
+          limite: { type: 'number', description: 'Máx. filas a listar (default 20)' },
         },
+        required: [],
       },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'buscar_estudiante',
-        description: 'Busca un estudiante por cédula, nombre o apellido y muestra estado de su ficha.',
-        parameters: {
-          type: 'object',
-          properties: {
-            termino: {
-              type: 'string',
-              description: 'Cédula, nombre o apellido a buscar',
-            },
-          },
-          required: ['termino'],
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'alertas_por_pregunta',
+      description: 'Cuántas respuestas afirmativas hay por cada pregunta de revisión manual.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_estudiante',
+      description: 'Busca estudiante por cédula, nombre, apellido o email y su ficha.',
+      parameters: {
+        type: 'object',
+        properties: {
+          termino: { type: 'string', description: 'Texto de búsqueda' },
         },
+        required: ['termino'],
       },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'detalle_alertas_ficha',
-        description:
-          'Detalle de las respuestas que generan alerta en una ficha concreta (por cédula o ficha_id).',
-        parameters: {
-          type: 'object',
-          properties: {
-            cedula: { type: 'string', description: 'Cédula del estudiante' },
-            ficha_id: { type: 'string', description: 'UUID de la ficha' },
-          },
-          required: [],
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'detalle_alertas_ficha',
+      description: 'Detalle de alertas de una ficha por cédula o ficha_id.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cedula: { type: 'string' },
+          ficha_id: { type: 'string' },
         },
+        required: [],
       },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'alertas_por_pregunta',
-        description:
-          'Cuenta cuántas respuestas afirmativas hay por cada pregunta de revisión manual (embarazo, discapacidad, etc.).',
-        parameters: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_fichas_recientes',
+      description: 'Últimas fichas no borrador (estudiante, carrera, estado, fechas).',
+      parameters: {
+        type: 'object',
+        properties: {
+          estado: {
+            type: 'string',
+            description: 'Filtrar por estado (ENVIADA, VALIDADO, RECHAZADA) o TODOS',
+          },
+          limite: { type: 'number', description: 'Default 15, máx 40' },
+        },
+        required: [],
       },
     },
-  ];
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'resumen_economico',
+      description: 'Promedios de ingresos, egresos y balance de fichas activas no borrador.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_periodos',
+      description: 'Periodos de matrícula y cuál está activo.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_formularios',
+      description: 'Formularios publicados/activos con periodo.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_carreras',
+      description: 'Carreras activas del instituto.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+];
 
   // ===================== EJECUTORES DE TOOLS =====================
 
   private async ejecutarTool(name: string, args: any): Promise<any> {
-    switch (name) {
-      case 'resumen_general':
-        return this.toolResumenGeneral();
-      case 'fichas_por_estado':
-        return this.toolFichasPorEstado();
-      case 'fichas_con_alertas':
-        return this.toolFichasConAlertas(args);
-      case 'buscar_estudiante':
-        return this.toolBuscarEstudiante(args.termino);
-      case 'detalle_alertas_ficha':
-        return this.toolDetalleAlertas(args);
-      case 'alertas_por_pregunta':
-        return this.toolAlertasPorPregunta();
-      default:
-        return { error: `Tool desconocida: ${name}` };
-    }
+  switch (name) {
+    case 'resumen_general':
+      return this.toolResumenGeneral();
+    case 'fichas_por_estado':
+      return this.toolFichasPorEstado();
+    case 'fichas_por_carrera':
+      return this.toolFichasPorCarrera();
+    case 'fichas_con_alertas':
+      return this.toolFichasConAlertas(args);
+    case 'alertas_por_pregunta':
+      return this.toolAlertasPorPregunta();
+    case 'buscar_estudiante':
+      return this.toolBuscarEstudiante(args.termino);
+    case 'detalle_alertas_ficha':
+      return this.toolDetalleAlertas(args);
+    case 'listar_fichas_recientes':
+      return this.toolListarFichasRecientes(args);
+    case 'resumen_economico':
+      return this.toolResumenEconomico();
+    case 'listar_periodos':
+      return this.toolListarPeriodos();
+    case 'listar_formularios':
+      return this.toolListarFormularios();
+    case 'listar_carreras':
+      return this.toolListarCarreras();
+    default:
+      return { error: `Tool desconocida: ${name}` };
   }
+}
 
   private async toolResumenGeneral() {
     const [periodo] = await this.dataSource.query(`
@@ -404,4 +461,119 @@ Herramientas disponibles:
       throw new InternalServerErrorException('Fallo al procesar la solicitud con la IA');
     }
   }
+
+  private async toolFichasPorCarrera() {
+  return this.dataSource.query(`
+    SELECT
+      COALESCE(c.nombre, 'Sin carrera') AS carrera,
+      COUNT(f.id) FILTER (WHERE f.estado_ficha IN ('ENVIADA', 'ENVIADO'))::int AS enviadas,
+      COUNT(f.id) FILTER (WHERE f.estado_ficha = 'VALIDADO')::int AS validadas,
+      COUNT(f.id) FILTER (WHERE f.estado_ficha != 'BORRADOR')::int AS total
+    FROM fichas_respondidas f
+    INNER JOIN usuarios u ON u.id = f.usuario_id
+    LEFT JOIN carreras c ON c.id = u.carrera_id
+    WHERE f.fecha_desactivacion IS NULL
+    GROUP BY c.nombre
+    ORDER BY total DESC
+  `);
+}
+
+private async toolListarFichasRecientes(args: { estado?: string; limite?: number }) {
+  const limite = Math.min(Number(args?.limite) || 15, 40);
+  const estado = (args?.estado || 'TODOS').toUpperCase();
+
+  if (estado && estado !== 'TODOS') {
+    return this.dataSource.query(
+      `
+      SELECT
+        f.id AS ficha_id,
+        u.cedula,
+        u.primer_nombre || ' ' || u.primer_apellido AS estudiante,
+        c.nombre AS carrera,
+        f.estado_ficha,
+        f.created_at,
+        f.updated_at
+      FROM fichas_respondidas f
+      INNER JOIN usuarios u ON u.id = f.usuario_id
+      LEFT JOIN carreras c ON c.id = u.carrera_id
+      WHERE f.fecha_desactivacion IS NULL
+        AND f.estado_ficha = $1
+      ORDER BY f.updated_at DESC
+      LIMIT $2
+    `,
+      [estado, limite],
+    );
+  }
+
+  return this.dataSource.query(
+    `
+    SELECT
+      f.id AS ficha_id,
+      u.cedula,
+      u.primer_nombre || ' ' || u.primer_apellido AS estudiante,
+      c.nombre AS carrera,
+      f.estado_ficha,
+      f.created_at,
+      f.updated_at
+    FROM fichas_respondidas f
+    INNER JOIN usuarios u ON u.id = f.usuario_id
+    LEFT JOIN carreras c ON c.id = u.carrera_id
+    WHERE f.fecha_desactivacion IS NULL
+      AND f.estado_ficha != 'BORRADOR'
+    ORDER BY f.updated_at DESC
+    LIMIT $1
+  `,
+    [limite],
+  );
+}
+
+private async toolResumenEconomico() {
+  const [row] = await this.dataSource.query(`
+    SELECT
+      COUNT(*)::int AS fichas_consideradas,
+      ROUND(AVG(total_ingresos)::numeric, 2) AS promedio_ingresos,
+      ROUND(AVG(total_egresos)::numeric, 2) AS promedio_egresos,
+      ROUND(AVG(balance_final)::numeric, 2) AS promedio_balance,
+      ROUND(SUM(total_ingresos)::numeric, 2) AS suma_ingresos,
+      ROUND(SUM(total_egresos)::numeric, 2) AS suma_egresos
+    FROM fichas_respondidas
+    WHERE fecha_desactivacion IS NULL
+      AND estado_ficha != 'BORRADOR'
+  `);
+  return row;
+}
+
+private async toolListarPeriodos() {
+  return this.dataSource.query(`
+    SELECT id, nombre, fecha_inicio, fecha_fin, activo
+    FROM periodos_matricula
+    WHERE fecha_desactivacion IS NULL
+    ORDER BY fecha_inicio DESC
+  `);
+}
+
+private async toolListarFormularios() {
+  return this.dataSource.query(`
+    SELECT
+      f.id,
+      f.titulo,
+      f.publicado,
+      p.nombre AS periodo
+    FROM formularios f
+    LEFT JOIN periodos_matricula p ON p.id = f.periodo_id
+    WHERE f.fecha_desactivacion IS NULL
+    ORDER BY f.created_at DESC
+    LIMIT 30
+  `);
+}
+
+private async toolListarCarreras() {
+  return this.dataSource.query(`
+    SELECT id, nombre
+    FROM carreras
+    WHERE fecha_desactivacion IS NULL
+    ORDER BY nombre ASC
+  `);
+}
+
 }
