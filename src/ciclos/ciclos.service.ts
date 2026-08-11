@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { Ciclo } from './entities/ciclo.entity';
 import { CreateCicloDto } from './dto/create-ciclo.dto';
-import { UpdateCicloDto } from './dto/update-ciclo.dto'; //
+import { UpdateCicloDto } from './dto/update-ciclo.dto';
 
 @Injectable()
 export class CiclosService {
@@ -15,17 +15,17 @@ export class CiclosService {
   async create(createCicloDto: CreateCicloDto) {
     const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
 
+    // Validar duplicado por nombre o por número de orden dentro de la misma carrera
     const existe = await this.ciclosRepository.findOne({
-      where: { 
-        nombre: nombreSanitizado,
-        carrera_id: createCicloDto.carrera_id,
-        fecha_desactivacion: IsNull()
-      },
+      where: [
+        { nombre: nombreSanitizado, carrera_id: createCicloDto.carrera_id, fecha_desactivacion: IsNull() },
+        { orden: createCicloDto.orden, carrera_id: createCicloDto.carrera_id, fecha_desactivacion: IsNull() },
+      ],
       select: { id: true },
     });
 
     if (existe) {
-      throw new BadRequestException('Este ciclo ya está registrado en la carrera seleccionada.');
+      throw new BadRequestException('El nombre o el número de orden ya existen para esta carrera.');
     }
 
     const nuevoCiclo = this.ciclosRepository.create({
@@ -36,7 +36,6 @@ export class CiclosService {
     return this.ciclosRepository.save(nuevoCiclo);
   }
 
-  // Agrégalo justo debajo de tu método findAll() o findOne()
   async findByCarrera(carreraId: string) {
     const ciclos = await this.ciclosRepository.find({
       where: { 
@@ -44,7 +43,7 @@ export class CiclosService {
         fecha_desactivacion: IsNull() 
       },
       relations: { carrera: true },
-      order: { nombre: 'ASC' },
+      order: { orden: 'ASC' }, // Cambiado de 'nombre' a 'orden'
     });
 
     if (!ciclos || ciclos.length === 0) {
@@ -54,7 +53,7 @@ export class CiclosService {
     return ciclos;
   }
 
-  findAll(skip: number=0, take: number=1000) {
+  findAll(skip: number = 0, take: number = 1000) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 1000);
     const skipReal = Math.max(Number(skip) || 0, 0);
     return this.ciclosRepository.find({
@@ -62,7 +61,7 @@ export class CiclosService {
       skip: skipReal,
       take: limiteReal,
       relations: { carrera: true },
-      order: { carrera_id: 'ASC', nombre: 'ASC' },
+      order: { carrera_id: 'ASC', orden: 'ASC' }, // Cambiado a 'orden'
     });
   }
 
@@ -83,16 +82,34 @@ export class CiclosService {
     const cicloActual = await this.findOne(id);
     const datosActualizados: Partial<Ciclo> = { ...updateCicloDto };
 
-    if (updateCicloDto.nombre) {
-      const nombreSanitizado = updateCicloDto.nombre.toUpperCase().trim();
-      const carreraReferencia = updateCicloDto.carrera_id || cicloActual.carrera_id;
+    const carreraReferencia = updateCicloDto.carrera_id || cicloActual.carrera_id;
 
+    if (updateCicloDto.nombre) {
+      datosActualizados.nombre = updateCicloDto.nombre.toUpperCase().trim();
+    }
+
+    // Verificar colisión de nombre u orden
+    if (updateCicloDto.nombre || updateCicloDto.orden) {
       const colision = await this.ciclosRepository.findOne({
-        where: { nombre: nombreSanitizado, carrera_id: carreraReferencia, id: Not(id), fecha_desactivacion: IsNull() }
+        where: [
+          {
+            nombre: datosActualizados.nombre || cicloActual.nombre,
+            carrera_id: carreraReferencia,
+            id: Not(id),
+            fecha_desactivacion: IsNull(),
+          },
+          {
+            orden: updateCicloDto.orden ?? cicloActual.orden,
+            carrera_id: carreraReferencia,
+            id: Not(id),
+            fecha_desactivacion: IsNull(),
+          },
+        ],
       });
 
-      if (colision) throw new BadRequestException('El nombre ya existe para esa carrera.');
-      datosActualizados.nombre = nombreSanitizado;
+      if (colision) {
+        throw new BadRequestException('El nombre o el número de orden ya existe para esa carrera.');
+      }
     }
 
     await this.ciclosRepository.update(id, datosActualizados);

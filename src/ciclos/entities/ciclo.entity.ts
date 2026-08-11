@@ -9,6 +9,9 @@ export class Ciclo {
   @Column({type: 'varchar',nullable: false, length: 50 })
   nombre: string;
 
+  @Column({ type: 'int', nullable: false, default: 1 })
+  orden: number;
+
   @Column({ name: 'carrera_id', type: 'uuid', nullable: false })
   carrera_id: string;
 
