@@ -72,30 +72,34 @@ export class UsuariosService {
   }
 
   findAll(skip: number = 0, take: number = 1000) {
-    const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
-    const skipReal = Math.max(Number(skip) || 0, 0);
+  const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
+  const skipReal = Math.max(Number(skip) || 0, 0);
 
-    return this.usuariosRepository.find({
-      skip: skipReal,
-      take: limiteReal,
-      select: {
-        id: true,
-        email_institucional: true,
-        primer_nombre: true,
-        primer_apellido: true,
-        segundo_nombre: true,
-        segundo_apellido: true,
-        cedula: true,
-        rol_id: true,
-        carrera_id: true,
-        ciclo_id: true,
-        foto_url: true,
-        fecha_desactivacion: true,
-      },
-      relations: { rol: true, ciclo: true },
-      order: { primer_nombre: 'ASC' }
-    });
-  }
+  return this.usuariosRepository.find({
+    skip: skipReal,
+    take: limiteReal,
+    select: {
+      id: true,
+      email_institucional: true,
+      primer_nombre: true,
+      primer_apellido: true,
+      segundo_nombre: true,
+      segundo_apellido: true,
+      cedula: true,
+      rol_id: true,
+      carrera_id: true,
+      ciclo_id: true,
+      foto_url: true,
+      fecha_desactivacion: true,
+    },
+    relations: { 
+      rol: true, 
+      ciclo: true,
+      coordinaciones: { carrera: true } 
+    },
+    order: { primer_nombre: 'ASC' }
+  });
+}
 
   async findOne(id: string) {
     const usuario = await this.usuariosRepository.findOne({
