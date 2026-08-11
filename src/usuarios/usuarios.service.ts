@@ -95,6 +95,7 @@ export class UsuariosService {
     relations: { 
       rol: true, 
       ciclo: true,
+      carrera: true,
       coordinaciones: { carrera: true } 
     },
     order: { primer_nombre: 'ASC' }
