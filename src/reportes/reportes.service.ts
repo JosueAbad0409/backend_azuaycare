@@ -754,6 +754,7 @@ export class ReportesService {
     };
   }
 
+
   async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
   const dataset = await this.obtenerDatasetFiltrado(filtros);
   const agregado = await this.obtenerAgregadoPorPregunta(filtros);
@@ -789,36 +790,6 @@ export class ReportesService {
     filtrosParaPdf.ciclo_nombre = cicloRows?.[0]?.nombre || filtros.ciclo_id;
   }
 
-  // =====================================================
-  // FILTRO: Solo preguntas que realmente tienen respuestas
-  // =====================================================
-  const estructuraFiltrada = (agregado.estructura_agregada || []).filter((item: any) => {
-    const m = item.metricas;
-    if (!m) return false;
-
-    // Preguntas de opción / selección
-    if (m.opciones && Array.isArray(m.opciones)) {
-      return m.opciones.some((o: any) => Number(o.conteo) > 0);
-    }
-
-    // Preguntas numéricas
-    if (m.promedio !== undefined || m.suma !== undefined) {
-      return Number(m.suma || 0) > 0 || Number(m.promedio || 0) > 0;
-    }
-
-    // Texto libre / otros
-    if (m.total_respuestas !== undefined) {
-      return Number(m.total_respuestas) > 0;
-    }
-
-    // Matrices
-    if (m.matriz_respuestas && Array.isArray(m.matriz_respuestas)) {
-      return m.matriz_respuestas.some((r: any) => Number(r.conteo) > 0);
-    }
-
-    return false;
-  });
-
   const templatePath = path.join(
     process.cwd(),
     process.env.NODE_ENV === 'production'
@@ -835,7 +806,7 @@ export class ReportesService {
     total_registros: dataset.total_registros,
     dataset: dataset.datos.slice(0, 50),
     total_fichas_respondidas: agregado.total_fichas_respondidas,
-    estructura_agregada: estructuraFiltrada, // ← solo las que tienen datos
+    // estructura_agregada eliminada → ya no se genera la sección IV
     generated_at: new Date().toLocaleString('es-EC'),
   });
 

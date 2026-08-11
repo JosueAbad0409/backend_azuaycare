@@ -83,7 +83,6 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
     try {
       page = await browser.newPage();
 
-      // 🔧 CORRECCIÓN 2: Se cambió 'networkidle0' por 'domcontentloaded'
       await Promise.race([
         page.setContent(html, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_RENDER_MS }),
         new Promise((_, reject) =>

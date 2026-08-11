@@ -45,12 +45,6 @@
       gap: 14px;
     }
 
-    .brand-bar .brand img {
-      width: 72px;
-      height: auto;
-      border-radius: 8px;
-    }
-
     .brand-bar .brand .brand-mark {
       width: 56px;
       height: 56px;
@@ -191,36 +185,41 @@
       border-spacing: 0;
       border-collapse: collapse;
       margin-top: 12px;
+      table-layout: fixed;
     }
 
     th,
     td {
-      padding: 12px 10px;
+      padding: 6px 5px;
       text-align: left;
       border-bottom: 1px solid #e2e8f0;
-      font-size: 12px;
+      font-size: 9.5px;
+      word-break: break-word;
+      vertical-align: top;
     }
 
     th {
       background: #1d4ed8;
       color: #ffffff;
       font-weight: 700;
+      font-size: 9px;
+      white-space: nowrap;
     }
+
+    th:nth-child(1), td:nth-child(1) { width: 9%; }   /* Cédula */
+    th:nth-child(2), td:nth-child(2) { width: 11%; }  /* Apellidos */
+    th:nth-child(3), td:nth-child(3) { width: 11%; }  /* Nombres */
+    th:nth-child(4), td:nth-child(4) { width: 16%; }  /* Email */
+    th:nth-child(5), td:nth-child(5) { width: 14%; }  /* Carrera */
+    th:nth-child(6), td:nth-child(6) { width: 8%; }   /* Ciclo */
+    th:nth-child(7), td:nth-child(7) { width: 8%; }   /* Estado */
+    th:nth-child(8), td:nth-child(8) { width: 7%; }   /* Ingresos */
+    th:nth-child(9), td:nth-child(9) { width: 7%; }   /* Egresos */
+    th:nth-child(10), td:nth-child(10) { width: 7%; } /* Balance */
+    th:nth-child(11), td:nth-child(11) { width: 12%; }/* Nivel Económico */
 
     tbody tr:hover {
       background: rgba(59, 130, 246, 0.05);
-    }
-
-    .section-block {
-      border-left: 4px solid #1d4ed8;
-      padding-left: 18px;
-      margin-bottom: 18px;
-    }
-
-    .section-block p {
-      margin: 8px 0;
-      color: #334155;
-      line-height: 1.6;
     }
 
     .footer {
@@ -262,7 +261,8 @@
 
       table th,
       table td {
-        font-size: 11px;
+        font-size: 8.5px;
+        padding: 4px 3px;
       }
 
       .card-grid,
@@ -386,36 +386,6 @@
           </tbody>
         </table>
       </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">
-        <div class="number">IV</div>
-        <h2>Estructura consolidada</h2>
-      </div>
-      {{#each estructura_agregada}}
-      <div class="section-block">
-        <strong>Sección {{seccion_nombre}}</strong>
-        <p><strong>Pregunta:</strong> {{enunciado}}</p>
-        <p><strong>Tipo de campo:</strong> {{tipo_campo}}</p>
-        {{#if metricas.opciones}}
-        <p><strong>Opciones:</strong></p>
-        <ul>
-          {{#each metricas.opciones}}
-          <li>{{texto}} — {{conteo}} ({{porcentaje}}%)</li>
-          {{/each}}
-        </ul>
-        {{else}}
-        {{#if metricas.promedio}}
-        <p><strong>Promedio:</strong> {{metricas.promedio}}</p>
-        <p><strong>Mínimo:</strong> {{metricas.minimo}}</p>
-        <p><strong>Máximo:</strong> {{metricas.maximo}}</p>
-        {{else}}
-        <p><strong>Total respuestas:</strong> {{metricas.total_respuestas}}</p>
-        {{/if}}
-        {{/if}}
-      </div>
-      {{/each}}
     </div>
 
     <div class="footer">
