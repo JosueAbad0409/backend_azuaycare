@@ -11,6 +11,17 @@ type ChatMessage = {
   tool_calls?: any[];
 };
 
+export type IaChatResult = {
+  response: string;
+  fuentes: Array<{
+    tool: string;
+    args?: any;
+    filas?: number;
+    consultado_en: string;
+  }>;
+};
+
+
 @Injectable()
 export class IaService {
   private readonly logger = new Logger(IaService.name);
@@ -368,99 +379,109 @@ export class IaService {
 
   // ===================== ORQUESTACIÓN CON GROQ =====================
 
-  async procesarMensaje(prompt: string): Promise<string> {
-    const apiKey = this.configService.get<string>('GROQ_API_KEY');
-    if (!apiKey) {
-      throw new InternalServerErrorException('GROQ_API_KEY no configurada');
-    }
+  async procesarMensaje(prompt: string): Promise<IaChatResult> {
+  const apiKey = this.configService.get<string>('GROQ_API_KEY');
+  if (!apiKey) {
+    throw new InternalServerErrorException('GROQ_API_KEY no configurada');
+  }
 
-    const headers = {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    };
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  };
 
-    const messages: ChatMessage[] = [
+  const fuentes: IaChatResult['fuentes'] = [];
 
-      {
-        role: 'system',
-        content: `Eres el asistente de Bienestar Estudiantil de AzuayCare (Instituto Superior Tecnológico del Azuay).
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: `Eres el asistente interno de Bienestar Estudiantil de AzuayCare (IST del Azuay).
 
-OBLIGATORIO:
-- Para CUALQUIER pregunta sobre números, fichas, alertas, estudiantes, estados, reportes o estadísticas, DEBES usar las herramientas (tools).
-- NUNCA inventes servicios médicos, telemedicina, clínicas ni datos.
-- Si una tool devuelve vacío o 0, dilo con claridad.
-- Responde solo con información obtenida de las tools o con orientación de uso del sistema.
-- Español, breve y profesional.
-- No muestres UUIDs salvo que te los pidan.
+Reglas:
+- Para cualquier dato del sistema USA las herramientas.
+- No inventes cifras ni nombres.
+- Si no hay datos, dilo.
+- Cuando uses datos de tools, puedes decir que provienen de los registros actuales del sistema.
+- Español, claro y profesional.
+- No expongas UUIDs salvo que te los pidan.`,
+    },
+    { role: 'user', content: prompt },
+  ];
 
-Herramientas disponibles:
-- resumen_general
-- fichas_por_estado
-- fichas_con_alertas
-- buscar_estudiante
-- detalle_alertas_ficha
-- alertas_por_pregunta`,
-      },
-      { role: 'user', content: prompt },
-    ];
+  try {
+    for (let i = 0; i < 3; i++) {
+      const payload = {
+        model: this.model,
+        messages,
+        tools: this.tools,
+        tool_choice: 'auto',
+        temperature: 0.2,
+      };
 
-    try {
-      // Hasta 3 rondas de tools (evita loops infinitos)
-      for (let i = 0; i < 3; i++) {
-        const payload = {
-          model: this.model,
-          messages,
-          tools: this.tools,
-          tool_choice: 'auto',
-          temperature: 0.2,
+      const response = await firstValueFrom(
+        this.httpService.post(this.url, payload, { headers }),
+      );
+
+      const choice = response.data.choices[0];
+      const msg = choice.message;
+
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        return {
+          response: msg.content || 'No pude generar una respuesta.',
+          fuentes,
         };
-
-        const response = await firstValueFrom(
-          this.httpService.post(this.url, payload, { headers }),
-        );
-
-        const choice = response.data.choices[0];
-        const msg = choice.message;
-
-        // Si no hay tool calls → respuesta final
-        if (!msg.tool_calls || msg.tool_calls.length === 0) {
-          return msg.content || 'No pude generar una respuesta.';
-        }
-
-        // Guardar el mensaje del assistant con tool_calls
-        messages.push({
-          role: 'assistant',
-          content: msg.content || null,
-          tool_calls: msg.tool_calls,
-        });
-
-        // Ejecutar cada tool y devolver resultado
-        for (const tc of msg.tool_calls) {
-          const name = tc.function.name;
-          let args = {};
-          try {
-            args = JSON.parse(tc.function.arguments || '{}');
-          } catch {
-            args = {};
-          }
-
-          this.logger.log(`Tool: ${name} | args: ${JSON.stringify(args)}`);
-          const result = await this.ejecutarTool(name, args);
-
-          messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: JSON.stringify(result),
-          });
-        }
       }
 
-      return 'Se alcanzó el límite de consultas internas. Reformula la pregunta de forma más específica.';
-    } catch (error: any) {
-      this.logger.error('Error Groq:', error?.response?.data || error);
-      throw new InternalServerErrorException('Fallo al procesar la solicitud con la IA');
+      messages.push({
+        role: 'assistant',
+        content: msg.content || null,
+        tool_calls: msg.tool_calls,
+      });
+
+      for (const tc of msg.tool_calls) {
+        const name = tc.function.name;
+        let args = {};
+        try {
+          args = JSON.parse(tc.function.arguments || '{}');
+        } catch {
+          args = {};
+        }
+
+        this.logger.log(`Tool: ${name} | args: ${JSON.stringify(args)}`);
+        const result = await this.ejecutarTool(name, args);
+
+        // Contar filas si es array
+        const filas = Array.isArray(result)
+          ? result.length
+          : result && typeof result === 'object'
+            ? 1
+            : 0;
+
+        fuentes.push({
+          tool: name,
+          args,
+          filas,
+          consultado_en: new Date().toISOString(),
+        });
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
+        });
+      }
     }
+
+    return {
+      response:
+        'Se alcanzó el límite de consultas internas. Reformula la pregunta de forma más específica.',
+      fuentes,
+    };
+  } catch (error: any) {
+    this.logger.error('Error Groq:', error?.response?.data || error);
+    throw new InternalServerErrorException('Fallo al procesar la solicitud con la IA');
   }
+}
 
   private async toolFichasPorCarrera() {
   return this.dataSource.query(`

@@ -8,14 +8,14 @@ import { Roles } from '../auth/decorators/roles.decorator'; // ajusta si existe
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('COORDINADOR_BIENESTAR')
 export class IaController {
-  constructor(private readonly iaService: IaService) {}
+  constructor(private readonly iaService: IaService) { }
 
   @Post('chat')
   async chat(@Body('prompt') prompt: string) {
     if (!prompt?.trim()) {
       return { error: 'El prompt es requerido' };
     }
-    const respuesta = await this.iaService.procesarMensaje(prompt.trim());
-    return { response: respuesta };
+    return this.iaService.procesarMensaje(prompt.trim());
+    // → { response, fuentes }
   }
 }
