@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
   <title>Reporte Consolidado</title>
@@ -11,56 +12,267 @@
       background: #ffffff;
     }
 
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 24px; background: #f4f6f8; }
-    .page { max-width: 1080px; margin: 0 auto; background: #fff; padding: 32px; border-radius: 14px; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08); }
-    .brand-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 16px; }
-    .brand-bar .brand { display: flex; align-items: center; gap: 14px; }
-    .brand-bar .brand img { width: 72px; height: auto; border-radius: 8px; }
-    .brand-bar .brand h1 { margin: 0; font-size: 24px; letter-spacing: 0.02em; color: #10375c; }
-    .brand-bar .brand small { color: #475569; display: block; margin-top: 4px; }
-    .document-meta { text-align: right; color: #475569; font-size: 12px; }
-    .document-meta strong { color: #0f172a; }
+    * {
+      box-sizing: border-box;
+    }
 
-    .banner-signature { margin: 24px 0; padding: 18px 20px; background: #eff6ff; border-left: 6px solid #1d4ed8; border-radius: 10px; }
-    .banner-signature p { margin: 0; line-height: 1.5; font-size: 13px; color: #1e293b; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f4f6f8;
+    }
 
-    .section { margin-top: 28px; }
-    .section-title { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
-    .section-title .number { color: #1d4ed8; font-size: 18px; font-weight: 700; }
-    .section-title h2 { margin: 0; font-size: 18px; letter-spacing: 0.01em; color: #0f172a; }
+    .page {
+      max-width: 1080px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 32px;
+      border-radius: 14px;
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+    }
 
-    .card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; background: #fbfdff; }
-    .card strong { display: block; font-size: 12px; color: #475569; margin-bottom: 6px; }
-    .card span { font-size: 18px; font-weight: 700; color: #0f172a; }
+    .brand-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
 
-    .label-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-    .label-item { border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 14px; background: #ffffff; }
-    .label-item strong { display: block; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #334155; margin-bottom: 8px; }
-    .label-item span { display: block; font-size: 14px; color: #0f172a; font-weight: 600; }
+    .brand-bar .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
 
-    .table-wrapper { overflow-x: auto; }
-    table { width: 100%; border-spacing: 0; border-collapse: collapse; margin-top: 12px; }
-    th, td { padding: 12px 10px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
-    th { background: #1d4ed8; color: #ffffff; font-weight: 700; }
-    tbody tr:hover { background: rgba(59, 130, 246, 0.05); }
+    .brand-bar .brand img {
+      width: 72px;
+      height: auto;
+      border-radius: 8px;
+    }
 
-    .section-block { border-left: 4px solid #1d4ed8; padding-left: 18px; margin-bottom: 18px; }
-    .section-block p { margin: 8px 0; color: #334155; line-height: 1.6; }
+    .brand-bar .brand .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #1d4ed8, #10375c);
+      color: #fff;
+      font-weight: 800;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      letter-spacing: 0.04em;
+    }
 
-    .footer { margin-top: 32px; display: flex; justify-content: space-between; align-items: center; gap: 16px; color: #475569; font-size: 12px; }
-    .signature-block { width: 320px; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: center; color: #0f172a; font-weight: 600; }
+    .brand-bar .brand h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0.02em;
+      color: #10375c;
+    }
+
+    .brand-bar .brand small {
+      color: #475569;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .document-meta {
+      text-align: right;
+      color: #475569;
+      font-size: 12px;
+    }
+
+    .document-meta strong {
+      color: #0f172a;
+    }
+
+    .banner-signature {
+      margin: 24px 0;
+      padding: 18px 20px;
+      background: #eff6ff;
+      border-left: 6px solid #1d4ed8;
+      border-radius: 10px;
+    }
+
+    .banner-signature p {
+      margin: 0;
+      line-height: 1.5;
+      font-size: 13px;
+      color: #1e293b;
+    }
+
+    .section {
+      margin-top: 28px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .section-title .number {
+      color: #1d4ed8;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0.01em;
+      color: #0f172a;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      background: #fbfdff;
+    }
+
+    .card strong {
+      display: block;
+      font-size: 12px;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+
+    .card span {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .label-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .label-item {
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: #ffffff;
+    }
+
+    .label-item strong {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+
+    .label-item span {
+      display: block;
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-spacing: 0;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th,
+    td {
+      padding: 12px 10px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12px;
+    }
+
+    th {
+      background: #1d4ed8;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    tbody tr:hover {
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .section-block {
+      border-left: 4px solid #1d4ed8;
+      padding-left: 18px;
+      margin-bottom: 18px;
+    }
+
+    .section-block p {
+      margin: 8px 0;
+      color: #334155;
+      line-height: 1.6;
+    }
+
+    .footer {
+      margin-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      color: #475569;
+      font-size: 12px;
+    }
+
+    .signature-block {
+      width: 320px;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #0f172a;
+      font-weight: 600;
+    }
 
     @media print {
-      body { background: #fff; }
-      .page { box-shadow: none; border-radius: 0; margin: 0; padding: 16px; }
-      .brand-bar, .banner-signature, .footer { page-break-inside: avoid; }
-      table th, table td { font-size: 11px; }
-      .card-grid, .label-grid { gap: 8px; }
+      body {
+        background: #fff;
+      }
+
+      .page {
+        box-shadow: none;
+        border-radius: 0;
+        margin: 0;
+        padding: 16px;
+      }
+
+      .brand-bar,
+      .banner-signature,
+      .footer {
+        page-break-inside: avoid;
+      }
+
+      table th,
+      table td {
+        font-size: 11px;
+      }
+
+      .card-grid,
+      .label-grid {
+        gap: 8px;
+      }
     }
   </style>
 </head>
+
 <body>
   <div class="page">
     <div class="brand-bar">
@@ -78,7 +290,9 @@
     </div>
 
     <div class="banner-signature">
-      <p><strong>Firma Digital y Consentimiento:</strong> Documento de uso oficial. El contenido presentado en este reporte representa el estado de la ficha socioeconómica y puede ser validado mediante firma digital institucional.</p>
+      <p><strong>Firma Digital y Consentimiento:</strong> Documento de uso oficial. El contenido presentado en este
+        reporte representa el estado de la ficha socioeconómica y puede ser validado mediante firma digital
+        institucional.</p>
     </div>
 
     <div class="section">
@@ -114,15 +328,15 @@
         </div>
         <div class="label-item">
           <strong>Formulario</strong>
-          <span>{{filtros.formulario_id}}</span>
+          <span>{{filtros.formulario_nombre}}</span>
         </div>
         <div class="label-item">
           <strong>Carrera</strong>
-          <span>{{filtros.carrera_id}}</span>
+          <span>{{filtros.carrera_nombre}}</span>
         </div>
         <div class="label-item">
           <strong>Ciclo</strong>
-          <span>{{filtros.ciclo_id}}</span>
+          <span>{{filtros.ciclo_nombre}}</span>
         </div>
         <div class="label-item">
           <strong>Estado ficha</strong>
@@ -155,19 +369,19 @@
           </thead>
           <tbody>
             {{#each dataset}}
-              <tr>
-                <td>{{cedula}}</td>
-                <td>{{apellidos}}</td>
-                <td>{{nombres}}</td>
-                <td>{{email}}</td>
-                <td>{{carrera}}</td>
-                <td>{{ciclo}}</td>
-                <td>{{estado}}</td>
-                <td>{{ingresos}}</td>
-                <td>{{egresos}}</td>
-                <td>{{balance}}</td>
-                <td>{{nivel_economico}}</td>
-              </tr>
+            <tr>
+              <td>{{cedula}}</td>
+              <td>{{apellidos}}</td>
+              <td>{{nombres}}</td>
+              <td>{{email}}</td>
+              <td>{{carrera}}</td>
+              <td>{{ciclo}}</td>
+              <td>{{estado}}</td>
+              <td>{{ingresos}}</td>
+              <td>{{egresos}}</td>
+              <td>{{balance}}</td>
+              <td>{{nivel_economico}}</td>
+            </tr>
             {{/each}}
           </tbody>
         </table>
@@ -180,27 +394,27 @@
         <h2>Estructura consolidada</h2>
       </div>
       {{#each estructura_agregada}}
-        <div class="section-block">
-          <strong>Sección {{seccion_nombre}}</strong>
-          <p><strong>Pregunta:</strong> {{enunciado}}</p>
-          <p><strong>Tipo de campo:</strong> {{tipo_campo}}</p>
-          {{#if metricas.opciones}}
-            <p><strong>Opciones:</strong></p>
-            <ul>
-              {{#each metricas.opciones}}
-                <li>{{texto}} — {{conteo}} ({{porcentaje}}%)</li>
-              {{/each}}
-            </ul>
-          {{else}}
-            {{#if metricas.promedio}}
-              <p><strong>Promedio:</strong> {{metricas.promedio}}</p>
-              <p><strong>Mínimo:</strong> {{metricas.minimo}}</p>
-              <p><strong>Máximo:</strong> {{metricas.maximo}}</p>
-            {{else}}
-              <p><strong>Total respuestas:</strong> {{metricas.total_respuestas}}</p>
-            {{/if}}
-          {{/if}}
-        </div>
+      <div class="section-block">
+        <strong>Sección {{seccion_nombre}}</strong>
+        <p><strong>Pregunta:</strong> {{enunciado}}</p>
+        <p><strong>Tipo de campo:</strong> {{tipo_campo}}</p>
+        {{#if metricas.opciones}}
+        <p><strong>Opciones:</strong></p>
+        <ul>
+          {{#each metricas.opciones}}
+          <li>{{texto}} — {{conteo}} ({{porcentaje}}%)</li>
+          {{/each}}
+        </ul>
+        {{else}}
+        {{#if metricas.promedio}}
+        <p><strong>Promedio:</strong> {{metricas.promedio}}</p>
+        <p><strong>Mínimo:</strong> {{metricas.minimo}}</p>
+        <p><strong>Máximo:</strong> {{metricas.maximo}}</p>
+        {{else}}
+        <p><strong>Total respuestas:</strong> {{metricas.total_respuestas}}</p>
+        {{/if}}
+        {{/if}}
+      </div>
       {{/each}}
     </div>
 
@@ -210,4 +424,5 @@
     </div>
   </div>
 </body>
+
 </html>

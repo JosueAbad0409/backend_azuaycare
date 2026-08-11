@@ -755,31 +755,92 @@ export class ReportesService {
   }
 
   async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
-    const dataset = await this.obtenerDatasetFiltrado(filtros);
-    const agregado = await this.obtenerAgregadoPorPregunta(filtros);
+  const dataset = await this.obtenerDatasetFiltrado(filtros);
+  const agregado = await this.obtenerAgregadoPorPregunta(filtros);
 
-    const templatePath = path.join(
-      process.cwd(),
-      process.env.NODE_ENV === 'production'
-        ? 'dist/common/pdf/templates/reporte-consolidado.hbs'
-        : 'src/common/pdf/templates/reporte-consolidado.hbs',
+  const filtrosParaPdf: Record<string, any> = {
+    estado_ficha: filtros.estado_ficha || null,
+    formulario_nombre: 'Todos',
+    carrera_nombre: 'Todas',
+    ciclo_nombre: 'Todos',
+  };
+
+  if (filtros.formulario_id) {
+    const formRows = await this.dataSource.query(
+      `SELECT titulo FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.formulario_id],
     );
-
-    const source = readFileSync(templatePath, 'utf-8');
-    const template = this.pdfRendererService.compilarTemplate('reporte-consolidado', source);
-
-    const html = template({
-      filtros,
-      periodo: dataset.periodo,
-      total_registros: dataset.total_registros,
-      dataset: dataset.datos.slice(0, 50),
-      total_fichas_respondidas: agregado.total_fichas_respondidas,
-      estructura_agregada: agregado.estructura_agregada,
-      generated_at: new Date().toLocaleString('es-EC'),
-    });
-
-    return this.pdfRendererService.renderizarHtmlAPdf(html);
+    filtrosParaPdf.formulario_nombre = formRows?.[0]?.titulo || filtros.formulario_id;
   }
+
+  if (filtros.carrera_id) {
+    const carreraRows = await this.dataSource.query(
+      `SELECT nombre FROM carreras WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.carrera_id],
+    );
+    filtrosParaPdf.carrera_nombre = carreraRows?.[0]?.nombre || filtros.carrera_id;
+  }
+
+  if (filtros.ciclo_id) {
+    const cicloRows = await this.dataSource.query(
+      `SELECT nombre FROM ciclos WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.ciclo_id],
+    );
+    filtrosParaPdf.ciclo_nombre = cicloRows?.[0]?.nombre || filtros.ciclo_id;
+  }
+
+  // =====================================================
+  // FILTRO: Solo preguntas que realmente tienen respuestas
+  // =====================================================
+  const estructuraFiltrada = (agregado.estructura_agregada || []).filter((item: any) => {
+    const m = item.metricas;
+    if (!m) return false;
+
+    // Preguntas de opción / selección
+    if (m.opciones && Array.isArray(m.opciones)) {
+      return m.opciones.some((o: any) => Number(o.conteo) > 0);
+    }
+
+    // Preguntas numéricas
+    if (m.promedio !== undefined || m.suma !== undefined) {
+      return Number(m.suma || 0) > 0 || Number(m.promedio || 0) > 0;
+    }
+
+    // Texto libre / otros
+    if (m.total_respuestas !== undefined) {
+      return Number(m.total_respuestas) > 0;
+    }
+
+    // Matrices
+    if (m.matriz_respuestas && Array.isArray(m.matriz_respuestas)) {
+      return m.matriz_respuestas.some((r: any) => Number(r.conteo) > 0);
+    }
+
+    return false;
+  });
+
+  const templatePath = path.join(
+    process.cwd(),
+    process.env.NODE_ENV === 'production'
+      ? 'dist/common/pdf/templates/reporte-consolidado.hbs'
+      : 'src/common/pdf/templates/reporte-consolidado.hbs',
+  );
+
+  const source = readFileSync(templatePath, 'utf-8');
+  const template = this.pdfRendererService.compilarTemplate('reporte-consolidado', source);
+
+  const html = template({
+    filtros: filtrosParaPdf,
+    periodo: dataset.periodo,
+    total_registros: dataset.total_registros,
+    dataset: dataset.datos.slice(0, 50),
+    total_fichas_respondidas: agregado.total_fichas_respondidas,
+    estructura_agregada: estructuraFiltrada, // ← solo las que tienen datos
+    generated_at: new Date().toLocaleString('es-EC'),
+  });
+
+  return this.pdfRendererService.renderizarHtmlAPdf(html);
+}
 
   /**
    * @deprecated Use obtenerDatasetFiltrado instead.
