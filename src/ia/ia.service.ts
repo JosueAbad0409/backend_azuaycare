@@ -26,7 +26,7 @@ export type IaChatResult = {
 export class IaService {
   private readonly logger = new Logger(IaService.name);
   private readonly url = 'https://api.groq.com/openai/v1/chat/completions';
-  private readonly model = 'llama-3.3-70b-versatile';
+  private readonly model = 'openai/gpt-oss-120b';
 
   // Más rondas para preguntas complejas que combinan tools
   private readonly MAX_TOOL_ROUNDS = 8;
