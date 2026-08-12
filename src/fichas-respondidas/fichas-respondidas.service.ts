@@ -16,6 +16,7 @@ import { PdfRendererService } from '../common/pdf/pdf-renderer.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordinadores-carrera.entity';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class FichasRespondidasService {
@@ -70,6 +71,28 @@ export class FichasRespondidasService {
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
     }
   }
+
+  async getResumenVulnerabilidad(fichaId: string) {
+  // Consulta directa para extraer solo las alertas activadas por el estudiante
+  const alertas = await this.dataSource.query(`
+    SELECT p.enunciado as pregunta, 
+           COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+    FROM respuestas_formulario r
+    INNER JOIN preguntas p ON p.id = r.pregunta_id
+    LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
+    LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
+    WHERE r.ficha_id = $1
+      AND r.fecha_desactivacion IS NULL
+      AND p.revision_manual_obligatoria = true
+      AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+  `, [fichaId]);
+
+  return {
+    ficha_id: fichaId,
+    total_alertas: alertas.length,
+    detalles: alertas
+  };
+}
 
   /**
    * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
@@ -415,6 +438,68 @@ export class FichasRespondidasService {
   }
   return this.templateFichaCache;
 }
+
+// --- CACHE DE LA NUEVA PLANTILLA ---
+  private templateQrCache: string | null = null;
+
+  private cargarTemplateQr(): string {
+    if (process.env.NODE_ENV !== 'production') {
+      this.templateQrCache = null;
+    }
+    if (!this.templateQrCache) {
+      const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/formularioQR.hbs');
+      const ruta = fs.existsSync(rutaTemplate)
+        ? rutaTemplate
+        : path.join(process.cwd(), 'src/common/pdf/templates/formularioQR.hbs');
+      this.templateQrCache = fs.readFileSync(ruta, 'utf-8');
+    }
+    return this.templateQrCache;
+  }
+
+  // --- NUEVA FUNCIÓN: PDF RESUMEN CON QR ---
+  async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
+    // 1. Obtenemos solo la información básica de la ficha (mucho más rápido que getResumenFicha)
+    const ficha = await this.findOne(id, user);
+
+    // 2. Consultar alertas de vulnerabilidad
+    const alertas = await this.dataSource.query(`
+      SELECT p.enunciado as pregunta, 
+             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+      FROM respuestas_formulario r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
+      WHERE r.ficha_id = $1
+        AND r.fecha_desactivacion IS NULL
+        AND p.revision_manual_obligatoria = true
+        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+    `, [id]);
+
+    // 3. Generar el QR en Base64
+    const baseUrl = process.env.APP_URL || 'http://localhost:4200';
+    const urlBienestar = `${baseUrl}/bienestar/fichas/${id}`;
+    
+    const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, { 
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 200,
+      color: { dark: '#0f172a', light: '#ffffff' }
+    });
+
+    // 4. Compilar la plantilla
+    const templateFuente = this.cargarTemplateQr();
+    const template = this.pdfRenderer.compilarTemplate('formularioQR', templateFuente);
+
+    const html = template({
+      ficha: ficha,
+      alertasVulnerabilidad: alertas,
+      qrCode: qrCodeBase64,
+      fechaGeneracion: new Date().toLocaleDateString('es-EC')
+    });
+
+    // 5. Renderizar usando tu PdfRendererService
+    return this.pdfRenderer.renderizarHtmlAPdf(html);
+  }
 
 
 async generarPdfFicha(id: string, user: any): Promise<Buffer> {
@@ -929,8 +1014,5 @@ if (evidencias.length > 0) {
         );
       }
     }
-
-    this.logger.log(`💾 Respuestas insertadas: ${respuestasInsertadas}`);
-    this.logger.log('✅ --- AUTOCOMPLETADO FINALIZADO ---');
   }
 }

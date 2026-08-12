@@ -66,6 +66,27 @@ export class FichasRespondidasController {
     return this.fichasService.getResumenFicha(id, req.user);
   }
 
+  // 🔥 NUEVO ENDPOINT: Resumen de vulnerabilidad para la pantalla final y QR
+  @Get(':id/resumen-vulnerabilidad')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
+  getResumenVulnerabilidad(@Param('id') id: string) {
+    return this.fichasService.getResumenVulnerabilidad(id);
+  }
+
+  @Get(':id/pdf-resumen')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE','INVITADO')
+  async descargarPdfResumen(@Param('id') id: string, @Req() req: RequestWithUser, @Res() res: Response) {
+    const buffer = await this.fichasService.generarPdfResumenQr(id, req.user);
+    
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="resumen_ficha_${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    
+    res.end(buffer);
+  }
+
   @Get(':id/pdf')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE','INVITADO')
   async descargarPdf(@Param('id') id: string, @Req() req: RequestWithUser, @Res() res: Response) {
