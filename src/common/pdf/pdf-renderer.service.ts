@@ -4,7 +4,7 @@ import * as Handlebars from 'handlebars';
 import { registerHandlebarsHelpers } from './helpers/handlebars-helpers';
 
 const MAX_PAGINAS_CONCURRENTES = 10; 
-const TIMEOUT_RENDER_MS = 45000;
+const TIMEOUT_RENDER_MS = 2500;
 
 @Injectable()
 export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
