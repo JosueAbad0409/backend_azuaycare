@@ -6,8 +6,9 @@ import { firstValueFrom } from 'rxjs';
 
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content?: string | null;
   tool_call_id?: string;
+  name?: string;
   tool_calls?: any[];
 };
 
@@ -27,9 +28,10 @@ export class IaService {
   private readonly url = 'https://api.groq.com/openai/v1/chat/completions';
   private readonly model = 'llama-3.3-70b-versatile';
 
-  // Sube el límite de idas y vueltas con el modelo para permitir preguntas
-  // que requieren encadenar varias tools (ej: comparar carrera + periodo + alertas)
+  // Sube el límite de idas y vueltas con el modelo
   private readonly MAX_TOOL_ROUNDS = 6;
+  // Límite de caracteres para evitar que la BD desborde la memoria de la IA
+  private readonly MAX_JSON_RESPONSE_LENGTH = 8000;
 
   constructor(
     private readonly configService: ConfigService,
@@ -92,7 +94,7 @@ export class IaService {
       type: 'function',
       function: {
         name: 'buscar_estudiante',
-        description: 'Busca estudiante por cédula, nombre, apellido o email y su ficha.',
+        description: 'Busca estudiante por cédula, nombre, apellido o email y su ficha. Úsalo SIEMPRE PRIMERO cuando el usuario pregunte por un estudiante específico.',
         parameters: {
           type: 'object',
           properties: {
@@ -106,7 +108,7 @@ export class IaService {
       type: 'function',
       function: {
         name: 'detalle_alertas_ficha',
-        description: 'Detalle de alertas de una ficha por cédula o ficha_id.',
+        description: 'Detalle de alertas de una ficha por cédula o ficha_id. Úsalo DESPUÉS de buscar_estudiante o si ya tienes la cédula.',
         parameters: {
           type: 'object',
           properties: {
@@ -125,10 +127,7 @@ export class IaService {
         parameters: {
           type: 'object',
           properties: {
-            estado: {
-              type: 'string',
-              description: 'Filtrar por estado (ENVIADA, VALIDADO, RECHAZADA) o TODOS',
-            },
+            estado: { type: 'string', description: 'Filtrar por estado (ENVIADA, VALIDADO, RECHAZADA) o TODOS' },
             limite: { type: 'number', description: 'Default 15, máx 40' },
           },
           required: [],
@@ -167,13 +166,11 @@ export class IaService {
         parameters: { type: 'object', properties: {}, required: [] },
       },
     },
-    // ---------- NUEVAS TOOLS ----------
     {
       type: 'function',
       function: {
         name: 'evolucion_fichas_por_dia',
-        description:
-          'Serie temporal: cuántas fichas se crearon/enviaron por día en un rango de fechas. Útil para ver tendencias.',
+        description: 'Serie temporal: cuántas fichas se crearon/enviaron por día en un rango de fechas. Útil para ver tendencias.',
         parameters: {
           type: 'object',
           properties: {
@@ -187,8 +184,7 @@ export class IaService {
       type: 'function',
       function: {
         name: 'comparar_periodos',
-        description:
-          'Compara totales de fichas (enviadas, validadas, con alertas) entre todos los periodos de matrícula registrados.',
+        description: 'Compara totales de fichas (enviadas, validadas, con alertas) entre todos los periodos de matrícula registrados.',
         parameters: { type: 'object', properties: {}, required: [] },
       },
     },
@@ -204,8 +200,7 @@ export class IaService {
       type: 'function',
       function: {
         name: 'fichas_pendientes_revision',
-        description:
-          'Fichas en estado ENVIADA que llevan más tiempo esperando validación (para priorizar revisión manual).',
+        description: 'Fichas en estado ENVIADA que llevan más tiempo esperando validación (para priorizar revisión manual).',
         parameters: {
           type: 'object',
           properties: {
@@ -219,8 +214,7 @@ export class IaService {
       type: 'function',
       function: {
         name: 'top_egresos_ingresos',
-        description:
-          'Fichas con los ingresos o egresos más altos/bajos, útil para detectar casos económicos extremos.',
+        description: 'Fichas con los ingresos o egresos más altos/bajos, útil para detectar casos económicos extremos.',
         parameters: {
           type: 'object',
           properties: {
@@ -236,57 +230,46 @@ export class IaService {
       type: 'function',
       function: {
         name: 'alertas_por_carrera_y_periodo',
-        description:
-          'Cruce de vulnerabilidad por carrera Y por periodo de matrícula en una sola consulta: cuántas fichas con alertas tiene cada carrera en cada periodo, con porcentaje. Usar SIEMPRE que la pregunta combine "carrera" con "periodo(s) anterior(es)", "comparar periodos", "evolución por carrera", etc. — evita tener que cruzar manualmente alertas_por_carrera con comparar_periodos.',
+        description: 'Cruce de vulnerabilidad por carrera Y por periodo de matrícula en una sola consulta. Usar SIEMPRE que la pregunta combine "carrera" con "periodo(s) anterior(es)", etc.',
         parameters: { type: 'object', properties: {}, required: [] },
       },
     },
   ];
 
-  // ===================== EJECUTORES DE TOOLS =====================
+  // ===================== EJECUTORES DE TOOLS SEGUROS =====================
 
-  private async ejecutarTool(name: string, args: any): Promise<any> {
-    switch (name) {
-      case 'resumen_general':
-        return this.toolResumenGeneral();
-      case 'fichas_por_estado':
-        return this.toolFichasPorEstado();
-      case 'fichas_por_carrera':
-        return this.toolFichasPorCarrera();
-      case 'fichas_con_alertas':
-        return this.toolFichasConAlertas(args);
-      case 'alertas_por_pregunta':
-        return this.toolAlertasPorPregunta();
-      case 'buscar_estudiante':
-        return this.toolBuscarEstudiante(args.termino);
-      case 'detalle_alertas_ficha':
-        return this.toolDetalleAlertas(args);
-      case 'listar_fichas_recientes':
-        return this.toolListarFichasRecientes(args);
-      case 'resumen_economico':
-        return this.toolResumenEconomico();
-      case 'listar_periodos':
-        return this.toolListarPeriodos();
-      case 'listar_formularios':
-        return this.toolListarFormularios();
-      case 'listar_carreras':
-        return this.toolListarCarreras();
-      case 'evolucion_fichas_por_dia':
-        return this.toolEvolucionFichasPorDia(args);
-      case 'comparar_periodos':
-        return this.toolCompararPeriodos();
-      case 'alertas_por_carrera':
-        return this.toolAlertasPorCarrera();
-      case 'fichas_pendientes_revision':
-        return this.toolFichasPendientesRevision(args);
-      case 'top_egresos_ingresos':
-        return this.toolTopEgresosIngresos(args);
-      case 'alertas_por_carrera_y_periodo':
-        return this.toolAlertasPorCarreraYPeriodo();
-      default:
-        return { error: `Tool desconocida: ${name}` };
+  private async ejecutarToolSeguro(name: string, args: any): Promise<any> {
+    try {
+      this.logger.log(`Tool ejecutada: ${name} | args: ${JSON.stringify(args)}`);
+
+      switch (name) {
+        case 'resumen_general': return await this.toolResumenGeneral();
+        case 'fichas_por_estado': return await this.toolFichasPorEstado();
+        case 'fichas_por_carrera': return await this.toolFichasPorCarrera();
+        case 'fichas_con_alertas': return await this.toolFichasConAlertas(args);
+        case 'alertas_por_pregunta': return await this.toolAlertasPorPregunta();
+        case 'buscar_estudiante': return await this.toolBuscarEstudiante(args.termino);
+        case 'detalle_alertas_ficha': return await this.toolDetalleAlertas(args);
+        case 'listar_fichas_recientes': return await this.toolListarFichasRecientes(args);
+        case 'resumen_economico': return await this.toolResumenEconomico();
+        case 'listar_periodos': return await this.toolListarPeriodos();
+        case 'listar_formularios': return await this.toolListarFormularios();
+        case 'listar_carreras': return await this.toolListarCarreras();
+        case 'evolucion_fichas_por_dia': return await this.toolEvolucionFichasPorDia(args);
+        case 'comparar_periodos': return await this.toolCompararPeriodos();
+        case 'alertas_por_carrera': return await this.toolAlertasPorCarrera();
+        case 'fichas_pendientes_revision': return await this.toolFichasPendientesRevision(args);
+        case 'top_egresos_ingresos': return await this.toolTopEgresosIngresos(args);
+        case 'alertas_por_carrera_y_periodo': return await this.toolAlertasPorCarreraYPeriodo();
+        default: return { error: `Tool desconocida: ${name}` };
+      }
+    } catch (error: any) {
+      this.logger.error(`Error en DB al ejecutar tool ${name}:`, error.message);
+      return { error: `Hubo un error en la base de datos al buscar esta información: ${error.message}` };
     }
   }
+
+  // ===================== FUNCIONES DE BASE DE DATOS (SQL) =====================
 
   private async toolResumenGeneral() {
     const [periodo] = await this.dataSource.query(`
@@ -419,9 +402,27 @@ export class IaService {
     );
   }
 
+  // CORREGIDA: Se modificó la consulta para evitar error "invalid input syntax for type uuid" en postgres
   private async toolDetalleAlertas(args: { cedula?: string; ficha_id?: string }) {
     if (!args?.cedula && !args?.ficha_id) {
-      return { error: 'Debes indicar cedula o ficha_id' };
+      return { error: 'Debes indicar cedula o ficha_id para ejecutar esta acción.' };
+    }
+
+    let whereClause = `
+      r.fecha_desactivacion IS NULL
+      AND p.fecha_desactivacion IS NULL
+      AND p.revision_manual_obligatoria = true
+      AND f.fecha_desactivacion IS NULL
+      AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+    `;
+    
+    const queryParams: any[] = [];
+    if (args.cedula) {
+      whereClause += ` AND u.cedula = $1`;
+      queryParams.push(args.cedula);
+    } else if (args.ficha_id) {
+      whereClause += ` AND f.id = $1::uuid`;
+      queryParams.push(args.ficha_id);
     }
 
     return this.dataSource.query(
@@ -437,19 +438,10 @@ export class IaService {
       INNER JOIN usuarios u ON u.id = f.usuario_id
       LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
       LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
-      WHERE r.fecha_desactivacion IS NULL
-        AND p.fecha_desactivacion IS NULL
-        AND p.revision_manual_obligatoria = true
-        AND f.fecha_desactivacion IS NULL
-        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''))
-            NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-        AND (
-          ($1::text IS NOT NULL AND u.cedula = $1)
-          OR ($2::uuid IS NOT NULL AND f.id = $2::uuid)
-        )
+      WHERE ${whereClause}
       ORDER BY p.enunciado
     `,
-      [args.cedula || null, args.ficha_id || null],
+      queryParams,
     );
   }
 
@@ -588,8 +580,6 @@ export class IaService {
       ORDER BY nombre ASC
     `);
   }
-
-  // ---------- NUEVOS EJECUTORES ----------
 
   private async toolEvolucionFichasPorDia(args: { dias?: number }) {
     const dias = Math.min(Number(args?.dias) || 30, 180);
@@ -780,23 +770,12 @@ export class IaService {
         role: 'system',
         content: `Eres el asistente interno de Bienestar Estudiantil de AzuayCare (IST del Azuay).
 
-Reglas de datos:
-- Para cualquier dato del sistema USA las herramientas disponibles. Nunca inventes cifras, nombres o UUIDs.
-- Cada pregunta debe resolverse COMPLETA en este mismo turno: si necesitas combinar información (ej: carrera + alertas + periodo, o estudiante + detalle de alertas), llama TODAS las tools necesarias en secuencia antes de responder. No entregues una respuesta parcial esperando que te pregunten el resto.
-- REGLA CLAVE: cuando tu respuesta mencione a una persona/ficha específica (por prioridad, alerta, búsqueda, etc.), SIEMPRE complementa con sus datos completos llamando a 'buscar_estudiante' y/o 'detalle_alertas_ficha' en el mismo turno, aunque el usuario no lo haya pedido explícitamente. No dejes una respuesta con solo el nombre y una frase genérica.
-- Si la pregunta compara periodos o pide evolución, usa 'alertas_por_carrera_y_periodo' o 'comparar_periodos' según corresponda, en vez de intentar deducirlo con datos parciales de una sola tool.
-- Si una tool no devuelve filas o el dato no existe, dilo explícitamente en vez de omitirlo.
-- No expongas UUIDs salvo que te los pidan explícitamente.
-
-Reglas de respuesta (IMPORTANTE, sé exhaustivo):
-- Responde siempre en español, con tono claro y profesional, pero desarrollado y completo.
-- Cuando hables de una persona específica, incluye: nombre completo, cédula, carrera, estado de la ficha, y el detalle de CADA pregunta/alerta con su respuesta exacta (no solo "tiene una condición que requiere revisión" — di CUÁL condición, según los datos de detalle_alertas_ficha).
-- Cuando haya varias filas de resultados, organízalas en una lista o tabla markdown legible, no en un párrafo denso.
-- Cuando compares cifras (carreras, periodos, estados), señala explícitamente cuál es mayor/menor y por cuánto, y si la tendencia sube o baja entre periodos.
-- Si detectas algo que amerite atención (ej: muchas fichas pendientes hace días, muchas alertas en una carrera), menciónalo aunque no te lo hayan preguntado directamente.
-- Cierra respuestas de análisis con una breve conclusión o recomendación práctica de 1-2 líneas.
-- Indica que los datos provienen de los registros actuales del sistema cuando uses resultados de tools.
-- Nunca respondas "no tengo información sobre AzuayCare": tú ERES el asistente de AzuayCare; si falta un dato puntual, dilo específicamente ("no encontré esa ficha con ese criterio"), pero no niegues conocer el sistema.`,
+REGLAS DE ORO:
+1. NUNCA inventes datos, nombres o cifras. Usa siempre tus herramientas de consulta.
+2. Si te preguntan por un estudiante específico, usa PRIMERO 'buscar_estudiante'. Luego si el sistema te retorna un ID, usa 'detalle_alertas_ficha'.
+3. Cada pregunta debe resolverse COMPLETA en este mismo turno.
+4. Presenta los datos de forma limpia (markdown, tablas o listas) y responde siempre en español.
+5. Si una herramienta devuelve un error, informa al usuario amablemente que hubo un problema técnico o de sistema.`,
       },
       { role: 'user', content: prompt },
     ];
@@ -808,40 +787,44 @@ Reglas de respuesta (IMPORTANTE, sé exhaustivo):
           messages,
           tools: this.tools,
           tool_choice: 'auto',
-          temperature: 0.2,
+          temperature: 0.1,
         };
 
         const response = await firstValueFrom(this.httpService.post(this.url, payload, { headers }));
-
         const choice = response.data.choices[0];
         const msg = choice.message;
 
+        // Si la IA ya no necesita herramientas, devolvemos su respuesta final
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           return {
-            response: msg.content || 'No pude generar una respuesta.',
+            response: msg.content || 'Proceso completado sin respuesta generada en texto.',
             fuentes,
           };
         }
 
-        messages.push({
-          role: 'assistant',
-          content: msg.content || null,
-          tool_calls: msg.tool_calls,
-        });
+        // Manejo estricto y seguro del mensaje del Asistente
+        const assistantMessage: ChatMessage = { 
+          role: 'assistant', 
+          tool_calls: msg.tool_calls 
+        };
+        if (msg.content) {
+          assistantMessage.content = msg.content; 
+        }
+        messages.push(assistantMessage);
 
         for (const tc of msg.tool_calls) {
           const name = tc.function.name;
           let args = {};
+          
           try {
             args = JSON.parse(tc.function.arguments || '{}');
           } catch {
+            this.logger.warn(`El modelo generó un JSON inválido para la tool ${name}`);
             args = {};
           }
 
-          this.logger.log(`Tool: ${name} | args: ${JSON.stringify(args)}`);
-          const result = await this.ejecutarTool(name, args);
-
-          const filas = Array.isArray(result) ? result.length : result && typeof result === 'object' ? 1 : 0;
+          const result = await this.ejecutarToolSeguro(name, args);
+          const filas = Array.isArray(result) ? result.length : (result && typeof result === 'object' && !result.error ? 1 : 0);
 
           fuentes.push({
             tool: name,
@@ -850,21 +833,32 @@ Reglas de respuesta (IMPORTANTE, sé exhaustivo):
             consultado_en: new Date().toISOString(),
           });
 
+          // Control de memoria y desbordamiento de tokens (Context Overflow)
+          let resultString = JSON.stringify(result);
+          if (resultString.length > this.MAX_JSON_RESPONSE_LENGTH) {
+            this.logger.warn(`Respuesta de DB demasiado larga (${resultString.length} char). Truncando para enviar a IA.`);
+            resultString = JSON.stringify({
+              advertencia: "Los resultados en la DB son demasiado grandes para analizarlos completos. Muestra estos primeros resultados y dile al usuario que la búsqueda fue limitada, pídele que sea más específico.",
+              datos: Array.isArray(result) ? result.slice(0, 15) : result
+            });
+          }
+
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
-            content: JSON.stringify(result),
+            name: name, // Identificador clave para que Groq asocie la tool
+            content: resultString,
           });
         }
       }
 
       return {
-        response: 'Se alcanzó el límite de consultas internas. Reformula la pregunta de forma más específica.',
+        response: 'Se alcanzó el límite de búsquedas internas. Por favor, reformula tu pregunta para hacerla más específica o simple.',
         fuentes,
       };
     } catch (error: any) {
-      this.logger.error('Error Groq:', error?.response?.data || error);
-      throw new InternalServerErrorException('Fallo al procesar la solicitud con la IA');
+      this.logger.error('Error procesando respuesta con IA:', error?.response?.data || error);
+      throw new InternalServerErrorException('Fallo al conectar con el servicio de IA de AzuayCare.');
     }
   }
 }
