@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Inject } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger, Inject, InternalServerErrorException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -439,66 +439,78 @@ export class FichasRespondidasService {
   return this.templateFichaCache;
 }
 
-// --- CACHE DE LA NUEVA PLANTILLA ---
-  private templateQrCache: string | null = null;
+private templateQrCache: string | null = null;
 
   private cargarTemplateQr(): string {
     if (process.env.NODE_ENV !== 'production') {
       this.templateQrCache = null;
     }
+    
     if (!this.templateQrCache) {
-      const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/formularioQR.hbs');
-      const ruta = fs.existsSync(rutaTemplate)
-        ? rutaTemplate
-        : path.join(process.cwd(), 'src/common/pdf/templates/formularioQR.hbs');
+      const rutaDist = path.join(process.cwd(), 'dist/common/pdf/templates/formularioQR.hbs');
+      const rutaSrc = path.join(process.cwd(), 'src/common/pdf/templates/formularioQR.hbs');
+      
+      let ruta = '';
+      if (fs.existsSync(rutaDist)) {
+        ruta = rutaDist;
+      } else if (fs.existsSync(rutaSrc)) {
+        ruta = rutaSrc;
+      } else {
+        // 🔥 ESTO EVITA EL ERROR 500 SILENCIOSO Y TE DICE QUÉ PASA
+        throw new BadRequestException(`No se encontró la plantilla HBS. Rutas buscadas: ${rutaDist}`);
+      }
+      
       this.templateQrCache = fs.readFileSync(ruta, 'utf-8');
     }
     return this.templateQrCache;
   }
 
-  // --- NUEVA FUNCIÓN: PDF RESUMEN CON QR ---
   async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
-    // 1. Obtenemos solo la información básica de la ficha (mucho más rápido que getResumenFicha)
-    const ficha = await this.findOne(id, user);
+    try {
+      this.logger.log(`Generando PDF Resumen para la ficha: ${id}`);
+      
+      const ficha = await this.findOne(id, user);
 
-    // 2. Consultar alertas de vulnerabilidad
-    const alertas = await this.dataSource.query(`
-      SELECT p.enunciado as pregunta, 
-             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
-      FROM respuestas_formulario r
-      INNER JOIN preguntas p ON p.id = r.pregunta_id
-      LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
-      LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
-      WHERE r.ficha_id = $1
-        AND r.fecha_desactivacion IS NULL
-        AND p.revision_manual_obligatoria = true
-        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-    `, [id]);
+      const alertas = await this.dataSource.query(`
+        SELECT p.enunciado as pregunta, 
+               COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+        FROM respuestas_formulario r
+        INNER JOIN preguntas p ON p.id = r.pregunta_id
+        LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
+        LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
+        WHERE r.ficha_id = $1
+          AND r.fecha_desactivacion IS NULL
+          AND p.revision_manual_obligatoria = true
+          AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+      `, [id]);
 
-    // 3. Generar el QR en Base64
-    const baseUrl = process.env.APP_URL || 'http://localhost:4200';
-    const urlBienestar = `${baseUrl}/bienestar/fichas/${id}`;
-    
-    const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, { 
-      errorCorrectionLevel: 'M',
-      margin: 2,
-      width: 200,
-      color: { dark: '#0f172a', light: '#ffffff' }
-    });
+      const baseUrl = process.env.APP_URL || 'https://azuaycare-backend.onrender.com'; // O la URL de tu frontend
+      const urlBienestar = `${baseUrl}/bienestar/fichas/${id}`;
+      
+      const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, { 
+        errorCorrectionLevel: 'M',
+        margin: 2,
+        width: 200,
+        color: { dark: '#0f172a', light: '#ffffff' }
+      });
 
-    // 4. Compilar la plantilla
-    const templateFuente = this.cargarTemplateQr();
-    const template = this.pdfRenderer.compilarTemplate('formularioQR', templateFuente);
+      const templateFuente = this.cargarTemplateQr();
+      const template = this.pdfRenderer.compilarTemplate('formularioQR', templateFuente);
 
-    const html = template({
-      ficha: ficha,
-      alertasVulnerabilidad: alertas,
-      qrCode: qrCodeBase64,
-      fechaGeneracion: new Date().toLocaleDateString('es-EC')
-    });
+      const html = template({
+        ficha: ficha,
+        alertasVulnerabilidad: alertas,
+        qrCode: qrCodeBase64,
+        fechaGeneracion: new Date().toLocaleDateString('es-EC')
+      });
 
-    // 5. Renderizar usando tu PdfRendererService
-    return this.pdfRenderer.renderizarHtmlAPdf(html);
+      return await this.pdfRenderer.renderizarHtmlAPdf(html);
+      
+    } catch (error: any) {
+      // 🔥 ESTO IMPRIMIRÁ EL ERROR REAL EN TUS LOGS DE RENDER
+      this.logger.error(`Error crítico generando PDF Resumen: ${error.message}`, error.stack);
+      throw new InternalServerErrorException(`Error interno al generar el PDF: ${error.message}`);
+    }
   }
 
 
