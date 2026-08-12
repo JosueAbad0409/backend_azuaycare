@@ -8,7 +8,7 @@
       font-family: 'Helvetica', Arial, sans-serif;
       color: #1e293b;
       margin: 0;
-      padding: 28px 32px 48px;
+      padding: 28px 32px 56px;
       font-size: 12px;
       line-height: 1.45;
     }
@@ -23,22 +23,9 @@
       color: {{plantilla.color_primario}};
       font-size: 20px;
       margin: 0 0 4px;
-      letter-spacing: -0.02em;
     }
     .form-titulo { font-size: 14px; color: #475569; margin: 0; font-weight: 600; }
     .form-descripcion { font-size: 11px; color: #94a3b8; margin-top: 4px; }
-
-    h2 {
-      color: {{plantilla.color_primario}};
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      border-left: 4px solid {{plantilla.color_primario}};
-      padding: 6px 0 6px 10px;
-      margin: 28px 0 14px;
-      background: #f8fafc;
-      border-radius: 0 6px 6px 0;
-    }
 
     .info-box {
       background: #f8fafc;
@@ -60,11 +47,38 @@
       color: #991b1b;
     }
 
+    /* CAJA DE SECCIÓN */
+    .seccion-box {
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      page-break-inside: avoid;
+      overflow: hidden;
+      background: #fff;
+    }
+    .seccion-header {
+      background: {{plantilla.color_primario}};
+      color: #fff;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .seccion-header span {
+      opacity: 0.85;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .seccion-body {
+      padding: 12px 14px 6px;
+    }
+
     .pregunta {
       margin-bottom: 12px;
       page-break-inside: avoid;
     }
-    .pregunta b {
+    .pregunta-label {
       display: block;
       color: #64748b;
       font-size: 10px;
@@ -85,6 +99,34 @@
     .respuesta img {
       page-break-inside: avoid;
       margin-top: 6px;
+      max-width: 320px;
+      max-height: 240px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      display: block;
+    }
+
+    /* SUBPREGUNTA (solo si se activó) */
+    .subpregunta {
+      margin: 10px 0 10px 12px;
+      padding: 10px 12px;
+      border-left: 3px solid #10b981;
+      background: #ecfdf5;
+      border-radius: 0 8px 8px 0;
+      page-break-inside: avoid;
+    }
+    .subpregunta-tag {
+      font-size: 9px;
+      font-weight: 800;
+      color: #047857;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .subpregunta .pregunta-label { color: #475569; }
+    .subpregunta .respuesta {
+      background: #fff;
+      border-color: #a7f3d0;
     }
 
     .footer {
@@ -135,13 +177,27 @@
   {{/if}}
 
   {{#each secciones}}
-  <h2>{{this.nombre}}</h2>
-  {{#each this.preguntas}}
-    <div class="pregunta">
-      <b>{{this.enunciado}}</b>
-      <div class="respuesta">{{{this.respuestaHtml}}}</div>
+  <div class="seccion-box">
+    <div class="seccion-header">
+      <span>{{this.numero}}.</span> {{this.nombre}}
     </div>
-  {{/each}}
+    <div class="seccion-body">
+      {{#each this.preguntas}}
+        <div class="pregunta">
+          <span class="pregunta-label">{{this.enunciado}}</span>
+          <div class="respuesta">{{{this.respuestaHtml}}}</div>
+
+          {{#each this.subpreguntas}}
+          <div class="subpregunta">
+            <div class="subpregunta-tag">↳ Subpregunta</div>
+            <span class="pregunta-label">{{this.enunciado}}</span>
+            <div class="respuesta">{{{this.respuestaHtml}}}</div>
+          </div>
+          {{/each}}
+        </div>
+      {{/each}}
+    </div>
+  </div>
   {{/each}}
 
   <div class="footer">{{plantilla.pie_pagina}}</div>

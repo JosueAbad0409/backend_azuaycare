@@ -417,150 +417,230 @@ export class FichasRespondidasService {
 }
 
 
-    async generarPdfFicha(id: string, user: any): Promise<Buffer> {
-    const data = await this.getResumenFicha(id, user);
+async generarPdfFicha(id: string, user: any): Promise<Buffer> {
+  const data = await this.getResumenFicha(id, user);
 
-    let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
-      where: { formulario_id: data.ficha.formulario_id },
-    });
+  let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
+    where: { formulario_id: data.ficha.formulario_id },
+  });
 
-    if (!plantilla) {
-      plantilla = {
-        color_primario: '#003366',
-        color_secundario: '#666666',
-        encabezado: 'Sistema de Bienestar Estudiantil',
-        pie_pagina: 'Ficha generada automáticamente',
-        mostrar_tabla_rango: true,
-        logo_url: '',
-      };
-    }
-
-    // Totales desde la ficha (pueden venir en 0 si el listener no corrió)
-    let totalIngresos = Number(data.ficha.total_ingresos) || 0;
-    let totalEgresos = Number(data.ficha.total_egresos) || 0;
-    let balanceFinal = Number(data.ficha.balance_final);
-    let estatusNombre = data.ficha.rangoResultado?.nombre || null;
-
-    // Si no hay totales guardados, recalcular desde respuestas (solo para el PDF)
-        // Si no hay totales guardados, recalcular desde respuestas
-    if (totalIngresos === 0 && totalEgresos === 0) {
-      const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
-      totalIngresos = recalc.totalIngresos;
-      totalEgresos = recalc.totalEgresos;
-      balanceFinal = recalc.balance;
-      if (recalc.rangoNombre) {
-        estatusNombre = recalc.rangoNombre;
-      }
-    }
-
-    if (Number.isNaN(balanceFinal)) {
-      balanceFinal = totalIngresos - totalEgresos;
-    }
-
-    // 🔥 Siempre resolver clasificación si aún no hay rango asignado
-    if (!estatusNombre) {
-      const rango = await this.dataSource.manager
-        .createQueryBuilder()
-        .select('rvc.nombre', 'nombre')
-        .from('rangos_variable_calculada', 'rvc')
-        .where('rvc.formulario_id = :formId', { formId: data.ficha.formulario_id })
-        .andWhere("rvc.variable_calculo = 'BALANCE'")
-        .andWhere('CAST(rvc.valor_min AS numeric) <= :balance', { balance: balanceFinal })
-        .andWhere('(rvc.valor_max IS NULL OR CAST(rvc.valor_max AS numeric) >= :balance)', {
-          balance: balanceFinal,
-        })
-        .andWhere('rvc.fecha_desactivacion IS NULL')
-        .orderBy('rvc.orden', 'ASC')
-        .getRawOne();
-
-      if (rango?.nombre) {
-        estatusNombre = rango.nombre;
-      }
-    }
-
-    // Mostrar bloque económico si hay plantilla, rango o cualquier monto
-    const esFichaFinanciera =
-      plantilla.mostrar_tabla_rango === true ||
-      data.ficha.rangoResultado != null ||
-      totalIngresos > 0 ||
-      totalEgresos > 0 ||
-      balanceFinal !== 0;
-
-    const fichaParaPdf = {
-      ...data.ficha,
-      total_ingresos: totalIngresos,
-      total_egresos: totalEgresos,
-      balance_final: balanceFinal,
-      rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
+  if (!plantilla) {
+    plantilla = {
+      color_primario: '#003366',
+      color_secundario: '#666666',
+      encabezado: 'Sistema de Bienestar Estudiantil',
+      pie_pagina: 'Ficha generada automáticamente',
+      mostrar_tabla_rango: true,
+      logo_url: '',
     };
+  }
 
-    const secciones = (data.formulario_estructurado?.secciones || []).map((sec: any) => ({
-  nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
-  preguntas: (sec.preguntas || []).map((preg: any) => ({
-    enunciado: preg.enunciado,
-    respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante), // ← aquí se incluye la evidencia
-  })),
-}));
+  let totalIngresos = Number(data.ficha.total_ingresos) || 0;
+  let totalEgresos = Number(data.ficha.total_egresos) || 0;
+  let balanceFinal = Number(data.ficha.balance_final);
+  let estatusNombre = data.ficha.rangoResultado?.nombre || null;
 
-    // Salud / NEE
-    let tieneDiscapacidad = false;
-    let usaLentes = false;
-    let enfermedadCronica = '';
+  if (totalIngresos === 0 && totalEgresos === 0) {
+    const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
+    totalIngresos = recalc.totalIngresos;
+    totalEgresos = recalc.totalEgresos;
+    balanceFinal = recalc.balance;
+    if (recalc.rangoNombre) {
+      estatusNombre = recalc.rangoNombre;
+    }
+  }
 
-    if (data.formulario_estructurado?.secciones) {
-      for (const sec of data.formulario_estructurado.secciones) {
-        for (const preg of sec.preguntas || []) {
-          const resp = preg.respuesta_estudiante;
-          if (!resp) continue;
+  if (Number.isNaN(balanceFinal)) {
+    balanceFinal = totalIngresos - totalEgresos;
+  }
 
-          let valorTexto = resp.valor_texto || '';
-          if (resp.opcionesSeleccionadas?.length > 0) {
-            valorTexto = resp.opcionesSeleccionadas
-              .map((o: any) => o.opcion?.texto_opcion)
-              .join(', ');
-          }
+  if (!estatusNombre) {
+    const rango = await this.dataSource.manager
+      .createQueryBuilder()
+      .select('rvc.nombre', 'nombre')
+      .from('rangos_variable_calculada', 'rvc')
+      .where('rvc.formulario_id = :formId', { formId: data.ficha.formulario_id })
+      .andWhere("rvc.variable_calculo = 'BALANCE'")
+      .andWhere('CAST(rvc.valor_min AS numeric) <= :balance', { balance: balanceFinal })
+      .andWhere('(rvc.valor_max IS NULL OR CAST(rvc.valor_max AS numeric) >= :balance)', {
+        balance: balanceFinal,
+      })
+      .andWhere('rvc.fecha_desactivacion IS NULL')
+      .orderBy('rvc.orden', 'ASC')
+      .getRawOne();
 
-          const valorNormalizado = valorTexto.toUpperCase().trim();
+    if (rango?.nombre) {
+      estatusNombre = rango.nombre;
+    }
+  }
 
-          if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
-            tieneDiscapacidad = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
-          } else if (preg.codigo_sistema === 'SALUD_LENTES_BOOL') {
-            usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
-          } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
-            enfermedadCronica = valorTexto;
-            if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
-              enfermedadCronica = '';
-            }
+  const esFichaFinanciera =
+    plantilla.mostrar_tabla_rango === true ||
+    data.ficha.rangoResultado != null ||
+    totalIngresos > 0 ||
+    totalEgresos > 0 ||
+    balanceFinal !== 0;
+
+  const fichaParaPdf = {
+    ...data.ficha,
+    total_ingresos: totalIngresos,
+    total_egresos: totalEgresos,
+    balance_final: balanceFinal,
+    rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
+  };
+
+  // ——— Dependencias (mismo criterio que el estudiante) ———
+  const dependencias: any[] = await this.dataSource.query(
+    `SELECT id, pregunta_id, pregunta_disparadora_id, opcion_disparadora_id, valor_disparador
+     FROM preguntas_dependencias
+     WHERE fecha_desactivacion IS NULL
+       AND pregunta_id IN (
+         SELECT p.id FROM preguntas p
+         INNER JOIN secciones s ON s.id = p.seccion_id
+         WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL
+       )`,
+    [data.ficha.formulario_id],
+  );
+
+  const mapaRespuestas = new Map<string, any>();
+  for (const sec of data.formulario_estructurado?.secciones || []) {
+    for (const preg of sec.preguntas || []) {
+      if (preg.respuesta_estudiante) {
+        mapaRespuestas.set(preg.id, preg.respuesta_estudiante);
+      }
+    }
+  }
+
+  const esPreguntaVisiblePdf = (preguntaId: string): boolean => {
+    const dep = dependencias.find((d: any) => d.pregunta_id === preguntaId);
+    if (!dep) return true;
+
+    const respPadre = mapaRespuestas.get(dep.pregunta_disparadora_id);
+    if (!respPadre) return false;
+
+    if (dep.opcion_disparadora_id) {
+      const ids = (respPadre.opcionesSeleccionadas || []).map(
+        (o: any) => o.opcion_id || o.opcion?.id,
+      );
+      if (ids.includes(dep.opcion_disparadora_id)) return true;
+      if (respPadre.valor_texto === dep.opcion_disparadora_id) return true;
+      return false;
+    }
+
+    if (dep.valor_disparador != null && dep.valor_disparador !== '') {
+      let valorActual = '';
+      if (respPadre.opcionesSeleccionadas?.length) {
+        valorActual = respPadre.opcionesSeleccionadas
+          .map((o: any) => o.opcion?.texto_opcion || '')
+          .join(', ');
+      } else {
+        valorActual = String(respPadre.valor_texto ?? respPadre.valor_numerico ?? '');
+      }
+      valorActual = valorActual.replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
+      return valorActual.toLowerCase() === String(dep.valor_disparador).toLowerCase();
+    }
+
+    return true;
+  };
+
+  const esPreguntaDependiente = (preguntaId: string): boolean =>
+    dependencias.some((d: any) => d.pregunta_id === preguntaId);
+
+  // ——— Secciones: solo preguntas raíz visibles + subpreguntas activadas ———
+  const secciones = (data.formulario_estructurado?.secciones || []).map(
+    (sec: any, idx: number) => {
+      const preguntasRaiz = (sec.preguntas || []).filter(
+        (preg: any) =>
+          !esPreguntaDependiente(preg.id) && esPreguntaVisiblePdf(preg.id),
+      );
+
+      const preguntas = preguntasRaiz.map((preg: any) => {
+        const subIds = dependencias
+          .filter((d: any) => d.pregunta_disparadora_id === preg.id)
+          .map((d: any) => d.pregunta_id)
+          .filter((sid: string) => esPreguntaVisiblePdf(sid));
+
+        const subpreguntas = (sec.preguntas || [])
+          .filter((p: any) => subIds.includes(p.id))
+          .map((sub: any) => ({
+            enunciado: sub.enunciado,
+            respuestaHtml: this.construirRespuestaHtml(sub.respuesta_estudiante),
+          }));
+
+        return {
+          enunciado: preg.enunciado,
+          respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante),
+          subpreguntas,
+        };
+      });
+
+      return {
+        nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
+        numero: idx + 1,
+        preguntas,
+      };
+    },
+  );
+
+  // Salud / NEE
+  let tieneDiscapacidad = false;
+  let usaLentes = false;
+  let enfermedadCronica = '';
+
+  if (data.formulario_estructurado?.secciones) {
+    for (const sec of data.formulario_estructurado.secciones) {
+      for (const preg of sec.preguntas || []) {
+        if (!esPreguntaVisiblePdf(preg.id)) continue;
+
+        const resp = preg.respuesta_estudiante;
+        if (!resp) continue;
+
+        let valorTexto = resp.valor_texto || '';
+        if (resp.opcionesSeleccionadas?.length > 0) {
+          valorTexto = resp.opcionesSeleccionadas
+            .map((o: any) => o.opcion?.texto_opcion)
+            .join(', ');
+        }
+        valorTexto = String(valorTexto).replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
+        const valorNormalizado = valorTexto.toUpperCase().trim();
+
+        if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
+          tieneDiscapacidad = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+        } else if (preg.codigo_sistema === 'SALUD_LENTES_BOOL') {
+          usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+        } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
+          enfermedadCronica = valorTexto;
+          if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
+            enfermedadCronica = '';
           }
         }
       }
     }
-
-    const requiereAtencionSalud =
-      tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
-
-    const templateFuente = this.cargarTemplateFicha();
-    const template = this.pdfRenderer.compilarTemplate(
-      'ficha-socioeconomica',
-      templateFuente,
-    );
-
-    const html = template({
-      plantilla,
-      formulario: data.formulario_estructurado,
-      ficha: fichaParaPdf,
-      esFichaFinanciera,
-      secciones,
-      requiereAtencionSalud,
-      tieneDiscapacidad,
-      usaLentes,
-      enfermedadCronica,
-    });
-
-    return this.pdfRenderer.renderizarHtmlAPdf(html);
   }
 
-  
+  const requiereAtencionSalud =
+    tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
+
+  const templateFuente = this.cargarTemplateFicha();
+  const template = this.pdfRenderer.compilarTemplate(
+    'ficha-socioeconomica',
+    templateFuente,
+  );
+
+  const html = template({
+    plantilla,
+    formulario: data.formulario_estructurado,
+    ficha: fichaParaPdf,
+    esFichaFinanciera,
+    secciones,
+    requiereAtencionSalud,
+    tieneDiscapacidad,
+    usaLentes,
+    enfermedadCronica,
+  });
+
+  return this.pdfRenderer.renderizarHtmlAPdf(html);
+}
 
   /** Recalcula ingresos/egresos/balance/rango solo para el PDF (no escribe en BD). */
   private async recalcularTotalesParaPdf(fichaId: string, formularioId: string) {
