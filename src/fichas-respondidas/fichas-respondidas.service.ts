@@ -490,12 +490,12 @@ export class FichasRespondidasService {
     };
 
     const secciones = (data.formulario_estructurado?.secciones || []).map((sec: any) => ({
-      nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
-      preguntas: (sec.preguntas || []).map((preg: any) => ({
-        enunciado: preg.enunciado,
-        respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante),
-      })),
-    }));
+  nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
+  preguntas: (sec.preguntas || []).map((preg: any) => ({
+    enunciado: preg.enunciado,
+    respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante), // ← aquí se incluye la evidencia
+  })),
+}));
 
     // Salud / NEE
     let tieneDiscapacidad = false;
@@ -612,14 +612,17 @@ export class FichasRespondidasService {
   const escapar = (txt: string) =>
     String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  if (resp.valor_texto) return escapar(resp.valor_texto);
-  if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) return escapar(resp.valor_numerico.toString());
+  let contenido = '';
 
-  if (resp.opcionesSeleccionadas?.length > 0) {
-    return escapar(resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '));
-  }
-
-  if (resp.respuestasMatriz?.length > 0) {
+  if (resp.valor_texto) {
+    contenido = escapar(resp.valor_texto);
+  } else if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) {
+    contenido = escapar(resp.valor_numerico.toString());
+  } else if (resp.opcionesSeleccionadas?.length > 0) {
+    contenido = escapar(
+      resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '),
+    );
+  } else if (resp.respuestasMatriz?.length > 0) {
     const filasAgrupadas = new Map<string, string[]>();
     resp.respuestasMatriz.forEach((rm: any) => {
       const fila = rm.fila?.texto_fila || 'Criterio';
@@ -649,10 +652,48 @@ export class FichasRespondidasService {
     html += `
         </tbody>
       </table>`;
-    return html;
+    contenido = html;
   }
 
-  return '<i>Sin responder</i>';
+  // Evidencias / documentos de respaldo asociados a la respuesta
+  const documentos = (resp.documentos || []).filter(
+    (d: any) => !d.fecha_desactivacion,
+  );
+
+  if (documentos.length > 0) {
+    let evidenciasHtml = `
+      <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
+        <div style="font-size: 11px; font-weight: bold; color: #555; margin-bottom: 4px;">
+          📎 Evidencia adjunta (${documentos.length}):
+        </div>`;
+
+    for (const doc of documentos) {
+      const esImagen =
+        doc.mime_type && String(doc.mime_type).toLowerCase().startsWith('image/');
+      const nombre = escapar(doc.nombre_original || 'Archivo');
+
+      if (esImagen && doc.ruta_archivo) {
+        evidenciasHtml += `
+          <div style="margin: 6px 0;">
+            <div style="font-size: 10px; color: #666; margin-bottom: 2px;">${nombre}</div>
+            <img src="${escapar(doc.ruta_archivo)}"
+                 alt="${nombre}"
+                 style="max-width: 280px; max-height: 200px; border: 1px solid #ddd; border-radius: 4px; display: block;" />
+          </div>`;
+      } else {
+        evidenciasHtml += `
+          <div style="font-size: 11px; color: #333; margin: 3px 0; padding: 4px 6px; background: #f5f5f5; border-radius: 3px;">
+            📄 ${nombre}
+            ${doc.mime_type ? `<span style="color:#888; font-size:10px;"> (${escapar(doc.mime_type)})</span>` : ''}
+          </div>`;
+      }
+    }
+
+    evidenciasHtml += `</div>`;
+    contenido = (contenido || '<i>Sin texto de respuesta</i>') + evidenciasHtml;
+  }
+
+  return contenido || '<i>Sin responder</i>';
 }
 
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
