@@ -472,17 +472,17 @@ private templateQrCache: string | null = null;
       const ficha = await this.findOne(id, user);
 
       const alertas = await this.dataSource.query(`
-        SELECT p.enunciado as pregunta, 
-               COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
-        FROM respuestas_formulario r
-        INNER JOIN preguntas p ON p.id = r.pregunta_id
-        LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
-        LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
-        WHERE r.ficha_id = $1
-          AND r.fecha_desactivacion IS NULL
-          AND p.revision_manual_obligatoria = true
-          AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-      `, [id]);
+      SELECT p.enunciado as pregunta, 
+             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+      FROM respuestas r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+      WHERE r.ficha_id = $1
+        AND r.fecha_desactivacion IS NULL
+        AND p.revision_manual_obligatoria = true
+        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+    `, [id]);
 
       const baseUrl = process.env.APP_URL || 'https://azuaycare-backend.onrender.com'; // O la URL de tu frontend
       const urlBienestar = `${baseUrl}/bienestar/fichas/${id}`;
