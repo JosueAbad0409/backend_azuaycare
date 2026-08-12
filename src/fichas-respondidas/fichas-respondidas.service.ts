@@ -402,15 +402,20 @@ export class FichasRespondidasService {
   private templateFichaCache: string | null = null;
 
   private cargarTemplateFicha(): string {
-    if (!this.templateFichaCache) {
-      const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
-      const ruta = fs.existsSync(rutaTemplate)
-        ? rutaTemplate
-        : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
-      this.templateFichaCache = fs.readFileSync(ruta, 'utf-8');
-    }
-    return this.templateFichaCache;
+  // En desarrollo siempre releer el archivo
+  if (process.env.NODE_ENV !== 'production') {
+    this.templateFichaCache = null;
   }
+  if (!this.templateFichaCache) {
+    const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
+    const ruta = fs.existsSync(rutaTemplate)
+      ? rutaTemplate
+      : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
+    this.templateFichaCache = fs.readFileSync(ruta, 'utf-8');
+  }
+  return this.templateFichaCache;
+}
+
 
     async generarPdfFicha(id: string, user: any): Promise<Buffer> {
     const data = await this.getResumenFicha(id, user);
@@ -555,6 +560,8 @@ export class FichasRespondidasService {
     return this.pdfRenderer.renderizarHtmlAPdf(html);
   }
 
+  
+
   /** Recalcula ingresos/egresos/balance/rango solo para el PDF (no escribe en BD). */
   private async recalcularTotalesParaPdf(fichaId: string, formularioId: string) {
     const ingresosDb = await this.dataSource.manager
@@ -682,46 +689,47 @@ export class FichasRespondidasService {
   }
 
   if (evidenciaUrlDesdeTexto && !evidencias.some(e => e.url === evidenciaUrlDesdeTexto)) {
-    const esImg = /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(evidenciaUrlDesdeTexto);
-    evidencias.push({
-      url: evidenciaUrlDesdeTexto,
-      nombre: 'Evidencia adjunta',
-      mime: esImg ? 'image/jpeg' : 'application/octet-stream',
-    });
-  }
+  evidencias.push({
+    url: evidenciaUrlDesdeTexto,
+    nombre: 'Evidencia adjunta',
+    mime: 'image/*', // forzar intento de imagen
+  });
+}
 
-  if (evidencias.length > 0) {
-    let evidenciasHtml = `
-      <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
-        <div style="font-size: 11px; font-weight: bold; color: #555; margin-bottom: 4px;">
-          📎 Evidencia adjunta (${evidencias.length}):
+if (evidencias.length > 0) {
+  let evidenciasHtml = `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
+      <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">
+        📎 Evidencia adjunta (${evidencias.length})
+      </div>`;
+
+  for (const ev of evidencias) {
+    const esImagen =
+      (ev.mime && ev.mime.toLowerCase().startsWith('image')) ||
+      /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(ev.url) ||
+      /^https?:\/\//i.test(ev.url); // Supabase sin extensión → intentar imagen
+
+    const nombre = escapar(ev.nombre);
+
+    if (esImagen && ev.url) {
+      evidenciasHtml += `
+        <div style="margin:8px 0;">
+          <div style="font-size:10px;color:#64748b;margin-bottom:4px;">${nombre}</div>
+          <img src="${escapar(ev.url)}"
+               alt="${nombre}"
+               style="max-width:320px;max-height:240px;border:1px solid #e2e8f0;border-radius:8px;display:block;object-fit:contain;background:#fff;" />
         </div>`;
-
-    for (const ev of evidencias) {
-      const esImagen =
-        (ev.mime && ev.mime.toLowerCase().startsWith('image/')) ||
-        /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(ev.url);
-      const nombre = escapar(ev.nombre);
-
-      if (esImagen && ev.url) {
-        evidenciasHtml += `
-          <div style="margin: 6px 0;">
-            <div style="font-size: 10px; color: #666; margin-bottom: 2px;">${nombre}</div>
-            <img src="${escapar(ev.url)}"
-                 alt="${nombre}"
-                 style="max-width: 280px; max-height: 200px; border: 1px solid #ddd; border-radius: 4px; display: block;" />
-          </div>`;
-      } else {
-        evidenciasHtml += `
-          <div style="font-size: 11px; color: #333; margin: 3px 0; padding: 4px 6px; background: #f5f5f5; border-radius: 3px;">
-            📄 ${nombre}
-          </div>`;
-      }
+    } else {
+      evidenciasHtml += `
+        <div style="font-size:11px;color:#334155;margin:4px 0;padding:6px 8px;background:#f1f5f9;border-radius:6px;">
+          📄 ${nombre}
+        </div>`;
     }
-
-    evidenciasHtml += `</div>`;
-    contenido = (contenido || '<i>Sin texto de respuesta</i>') + evidenciasHtml;
   }
+
+  evidenciasHtml += `</div>`;
+  contenido = (contenido || '<i>Sin texto de respuesta</i>') + evidenciasHtml;
+}
 
   return contenido || '<i>Sin responder</i>';
 }

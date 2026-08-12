@@ -3,20 +3,101 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    .pregunta, .info-box, h2 { page-break-inside: avoid; }
-    body { font-family: 'Helvetica', sans-serif; color: #333; margin: 0; padding: 20px; }
-    .header { text-align: center; border-bottom: 3px solid {{plantilla.color_primario}}; padding-bottom: 10px; margin-bottom: 20px; }
-    .header img { max-height: 60px; }
-    h1 { color: {{plantilla.color_primario}}; font-size: 20px; margin-bottom: 5px; }
-    .form-titulo { font-size: 16px; color: #555; margin-top: 0; }
-    .form-descripcion { font-size: 12px; color: #777; margin-bottom: 15px; }
-    h2 { color: {{plantilla.color_secundario}}; font-size: 16px; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
-    .info-box { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid {{plantilla.color_primario}}; font-size: 13px; }
-    .alert-box { background-color: #fff3f3; padding: 15px; border-radius: 5px; margin-bottom: 20px; border-left: 5px solid #d9534f; font-size: 13px; color: #a94442; }
-    .pregunta { margin-bottom: 10px; font-size: 12px; }
-    .pregunta b { display: block; color: #444; }
-    .respuesta { margin-top: 3px; color: #111; background: #eee; padding: 5px; border-radius: 3px; }
-    .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica', Arial, sans-serif;
+      color: #1e293b;
+      margin: 0;
+      padding: 28px 32px 48px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 3px solid {{plantilla.color_primario}};
+      padding-bottom: 14px;
+      margin-bottom: 22px;
+    }
+    .header img { max-height: 56px; margin-bottom: 8px; }
+    h1 {
+      color: {{plantilla.color_primario}};
+      font-size: 20px;
+      margin: 0 0 4px;
+      letter-spacing: -0.02em;
+    }
+    .form-titulo { font-size: 14px; color: #475569; margin: 0; font-weight: 600; }
+    .form-descripcion { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+    h2 {
+      color: {{plantilla.color_primario}};
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-left: 4px solid {{plantilla.color_primario}};
+      padding: 6px 0 6px 10px;
+      margin: 28px 0 14px;
+      background: #f8fafc;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .info-box {
+      background: #f8fafc;
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      border-left: 4px solid {{plantilla.color_primario}};
+      font-size: 12px;
+    }
+    .info-box strong { color: #0f172a; }
+
+    .alert-box {
+      background: #fef2f2;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border-left: 4px solid #dc2626;
+      font-size: 12px;
+      color: #991b1b;
+    }
+
+    .pregunta {
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+    .pregunta b {
+      display: block;
+      color: #64748b;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+    .respuesta {
+      color: #0f172a;
+      background: #f1f5f9;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .respuesta img {
+      page-break-inside: avoid;
+      margin-top: 6px;
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 9px;
+      color: #94a3b8;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+    }
   </style>
 </head>
 <body>
