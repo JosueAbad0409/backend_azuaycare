@@ -28,10 +28,34 @@ export class IaService {
   private readonly url = 'https://api.groq.com/openai/v1/chat/completions';
   private readonly model = 'llama-3.3-70b-versatile';
 
-  // Sube el límite de idas y vueltas con el modelo
-  private readonly MAX_TOOL_ROUNDS = 6;
+  // Más rondas para preguntas complejas que combinan tools
+  private readonly MAX_TOOL_ROUNDS = 8;
   // Límite de caracteres para evitar que la BD desborde la memoria de la IA
   private readonly MAX_JSON_RESPONSE_LENGTH = 8000;
+  // Límite duro de filas para la tool SQL genérica
+  private readonly MAX_SQL_ROWS = 80;
+
+  // Tablas permitidas en la tool SQL genérica (whitelist estricta)
+  private readonly ALLOWED_TABLES = new Set([
+    'usuarios',
+    'fichas_respondidas',
+    'carreras',
+    'periodos_matricula',
+    'formularios',
+    'preguntas',
+    'respuestas',
+    'respuestas_opciones_seleccionadas',
+    'opciones_pregunta',
+  ]);
+
+  // Palabras prohibidas (cualquier aparición → rechazo)
+  private readonly FORBIDDEN_SQL = [
+    'insert', 'update', 'delete', 'drop', 'alter', 'create', 'truncate',
+    'grant', 'revoke', 'execute', 'call', 'copy', 'vacuum', 'analyze',
+    'pg_', 'information_schema', 'pg_catalog', 'set ', 'reset ',
+    'into ', 'outfile', 'load_file', 'sleep(', 'benchmark(',
+    ';', '--', '/*', '*/', 'xp_', 'sp_',
+  ];
 
   constructor(
     private readonly configService: ConfigService,
@@ -39,9 +63,10 @@ export class IaService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // ===================== TOOLS (lo que la IA puede pedir) =====================
+  // ===================== TOOLS =====================
 
   private readonly tools = [
+    // ---- Tools de alto nivel (rápidas y confiables) ----
     {
       type: 'function',
       function: {
@@ -234,9 +259,74 @@ export class IaService {
         parameters: { type: 'object', properties: {}, required: [] },
       },
     },
+
+    // ---- Tools nuevas de alto nivel ----
+    {
+      type: 'function',
+      function: {
+        name: 'estudiantes_sin_ficha',
+        description: 'Estudiantes activos que NO tienen ninguna ficha respondida (o solo tienen borrador). Úsalo para "quiénes no han llenado el formulario", "estudiantes sin ficha", etc.',
+        parameters: {
+          type: 'object',
+          properties: {
+            solo_conteo: { type: 'boolean', description: 'Solo el número total' },
+            limite: { type: 'number', description: 'Máx. filas a listar (default 30, máx 100)' },
+            carrera: { type: 'string', description: 'Filtrar por nombre (o parte) de carrera' },
+          },
+          required: [],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'estudiantes_prioridad_atencion',
+        description: 'Lista priorizada de estudiantes que necesitan atención prioritaria. Combina: alertas de vulnerabilidad + fichas ENVIADA antiguas + balances económicos muy negativos. Úsalo para "quién necesita prioridad", "casos urgentes", "atención prioritaria".',
+        parameters: {
+          type: 'object',
+          properties: {
+            limite: { type: 'number', description: 'Default 25, máx 50' },
+            carrera: { type: 'string' },
+            solo_con_alertas: { type: 'boolean', description: 'Solo los que tienen alertas de vulnerabilidad' },
+          },
+          required: [],
+        },
+      },
+    },
+
+    // ---- Tool SQL genérica (solo lectura, con validaciones) ----
+    {
+      type: 'function',
+      function: {
+        name: 'consultar_sql',
+        description: `Ejecuta una consulta SQL de SOLO LECTURA (SELECT o WITH ... SELECT) contra la base de datos.
+Úsala SOLO cuando ninguna de las otras tools pueda responder la pregunta.
+Reglas obligatorias:
+- Solo SELECT / WITH ... SELECT
+- Debe incluir LIMIT (máximo ${this.MAX_SQL_ROWS})
+- Solo tablas permitidas: usuarios, fichas_respondidas, carreras, periodos_matricula, formularios, preguntas, respuestas, respuestas_opciones_seleccionadas, opciones_pregunta
+- Usa siempre fecha_desactivacion IS NULL para registros activos
+- No uses columnas sensibles (contraseñas, tokens, etc.)
+Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usuarios u LEFT JOIN carreras c ON c.id = u.carrera_id WHERE u.fecha_desactivacion IS NULL LIMIT 20`,
+        parameters: {
+          type: 'object',
+          properties: {
+            sql: {
+              type: 'string',
+              description: 'Consulta SQL completa (solo SELECT). Debe incluir LIMIT.',
+            },
+            explicacion: {
+              type: 'string',
+              description: 'Breve explicación de por qué esta consulta responde la pregunta del usuario.',
+            },
+          },
+          required: ['sql'],
+        },
+      },
+    },
   ];
 
-  // ===================== EJECUTORES DE TOOLS SEGUROS =====================
+  // ===================== EJECUTORES =====================
 
   private async ejecutarToolSeguro(name: string, args: any): Promise<any> {
     try {
@@ -261,6 +351,9 @@ export class IaService {
         case 'fichas_pendientes_revision': return await this.toolFichasPendientesRevision(args);
         case 'top_egresos_ingresos': return await this.toolTopEgresosIngresos(args);
         case 'alertas_por_carrera_y_periodo': return await this.toolAlertasPorCarreraYPeriodo();
+        case 'estudiantes_sin_ficha': return await this.toolEstudiantesSinFicha(args);
+        case 'estudiantes_prioridad_atencion': return await this.toolEstudiantesPrioridadAtencion(args);
+        case 'consultar_sql': return await this.toolConsultarSql(args);
         default: return { error: `Tool desconocida: ${name}` };
       }
     } catch (error: any) {
@@ -269,7 +362,112 @@ export class IaService {
     }
   }
 
-  // ===================== FUNCIONES DE BASE DE DATOS (SQL) =====================
+  // ===================== SQL GENÉRICA SEGURA =====================
+
+  private validarSqlSeguro(sql: string): { ok: boolean; error?: string; sqlLimpio?: string } {
+    if (!sql || typeof sql !== 'string') {
+      return { ok: false, error: 'SQL vacío o inválido' };
+    }
+
+    let limpio = sql.trim().replace(/\s+/g, ' ');
+
+    // Quitar punto y coma final si existe
+    if (limpio.endsWith(';')) {
+      limpio = limpio.slice(0, -1).trim();
+    }
+
+    const lower = limpio.toLowerCase();
+
+    // Debe empezar con SELECT o WITH
+    if (!lower.startsWith('select') && !lower.startsWith('with')) {
+      return { ok: false, error: 'Solo se permiten consultas SELECT o WITH ... SELECT' };
+    }
+
+    // Prohibir múltiples statements
+    if (limpio.includes(';')) {
+      return { ok: false, error: 'No se permiten múltiples statements (punto y coma)' };
+    }
+
+    // Prohibir palabras peligrosas
+    for (const palabra of this.FORBIDDEN_SQL) {
+      if (lower.includes(palabra)) {
+        return { ok: false, error: `Consulta rechazada: contiene "${palabra.trim()}" que no está permitido` };
+      }
+    }
+
+    // Debe tener LIMIT
+    if (!/\blimit\s+\d+/i.test(limpio)) {
+      // Auto-añadir LIMIT si no lo tiene
+      limpio = `${limpio} LIMIT ${this.MAX_SQL_ROWS}`;
+    } else {
+      // Forzar que el LIMIT no exceda el máximo
+      limpio = limpio.replace(/\blimit\s+(\d+)/i, (_, n) => {
+        const num = Math.min(parseInt(n, 10) || this.MAX_SQL_ROWS, this.MAX_SQL_ROWS);
+        return `LIMIT ${num}`;
+      });
+    }
+
+    // Verificar que solo use tablas de la whitelist
+    // Buscamos FROM y JOIN seguidos de identificador
+    const tableRegex = /(?:from|join)\s+([a-z_][a-z0-9_]*)/gi;
+    let match: RegExpExecArray | null;
+    const tablasUsadas = new Set<string>();
+    while ((match = tableRegex.exec(limpio)) !== null) {
+      tablasUsadas.add(match[1].toLowerCase());
+    }
+
+    for (const t of tablasUsadas) {
+      if (!this.ALLOWED_TABLES.has(t)) {
+        return {
+          ok: false,
+          error: `Tabla no permitida: "${t}". Solo puedes usar: ${[...this.ALLOWED_TABLES].join(', ')}`,
+        };
+      }
+    }
+
+    if (tablasUsadas.size === 0) {
+      return { ok: false, error: 'No se detectó ninguna tabla en la consulta (FROM/JOIN)' };
+    }
+
+    return { ok: true, sqlLimpio: limpio };
+  }
+
+  private async toolConsultarSql(args: { sql?: string; explicacion?: string }) {
+    const validacion = this.validarSqlSeguro(args?.sql || '');
+    if (!validacion.ok) {
+      this.logger.warn(`SQL rechazado: ${validacion.error} | original: ${args?.sql}`);
+      return { error: validacion.error, sql_recibido: args?.sql };
+    }
+
+    this.logger.log(`SQL aprobado: ${validacion.sqlLimpio}`);
+
+    try {
+      // Timeout de 8 segundos a nivel de statement (Postgres)
+      await this.dataSource.query(`SET LOCAL statement_timeout = '8000'`);
+      const rows = await this.dataSource.query(validacion.sqlLimpio!);
+
+      // Restaurar (aunque SET LOCAL es por transaction, por si acaso)
+      try {
+        await this.dataSource.query(`SET LOCAL statement_timeout = '0'`);
+      } catch {
+        // ignore
+      }
+
+      return {
+        explicacion: args?.explicacion || null,
+        filas: Array.isArray(rows) ? rows.length : 0,
+        datos: rows,
+      };
+    } catch (error: any) {
+      this.logger.error(`Error ejecutando SQL genérico: ${error.message}`);
+      return {
+        error: `Error al ejecutar la consulta: ${error.message}`,
+        sql_intentado: validacion.sqlLimpio,
+      };
+    }
+  }
+
+  // ===================== FUNCIONES DE BASE DE DATOS =====================
 
   private async toolResumenGeneral() {
     const [periodo] = await this.dataSource.query(`
@@ -402,7 +600,6 @@ export class IaService {
     );
   }
 
-  // CORREGIDA: Se modificó la consulta para evitar error "invalid input syntax for type uuid" en postgres
   private async toolDetalleAlertas(args: { cedula?: string; ficha_id?: string }) {
     if (!args?.cedula && !args?.ficha_id) {
       return { error: 'Debes indicar cedula o ficha_id para ejecutar esta acción.' };
@@ -415,7 +612,7 @@ export class IaService {
       AND f.fecha_desactivacion IS NULL
       AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
     `;
-    
+
     const queryParams: any[] = [];
     if (args.cedula) {
       whereClause += ` AND u.cedula = $1`;
@@ -750,6 +947,108 @@ export class IaService {
     `);
   }
 
+  private async toolEstudiantesSinFicha(args: { solo_conteo?: boolean; limite?: number; carrera?: string }) {
+    const limite = Math.min(Number(args?.limite) || 30, 100);
+    const carreraFiltro = args?.carrera ? `%${String(args.carrera).trim().toLowerCase()}%` : null;
+
+    if (args?.solo_conteo) {
+      const [row] = await this.dataSource.query(
+        `
+        SELECT COUNT(*)::int AS total_sin_ficha
+        FROM usuarios u
+        LEFT JOIN carreras c ON c.id = u.carrera_id
+        LEFT JOIN fichas_respondidas f
+          ON f.usuario_id = u.id
+          AND f.fecha_desactivacion IS NULL
+          AND f.estado_ficha != 'BORRADOR'
+        WHERE u.fecha_desactivacion IS NULL
+          AND f.id IS NULL
+          AND ($1::text IS NULL OR LOWER(c.nombre) LIKE $1)
+      `,
+        [carreraFiltro],
+      );
+      return row;
+    }
+
+    return this.dataSource.query(
+      `
+      SELECT
+        u.cedula,
+        u.primer_nombre || ' ' || COALESCE(u.segundo_nombre, '') || ' ' || u.primer_apellido AS nombre,
+        c.nombre AS carrera,
+        u.email_institucional
+      FROM usuarios u
+      LEFT JOIN carreras c ON c.id = u.carrera_id
+      LEFT JOIN fichas_respondidas f
+        ON f.usuario_id = u.id
+        AND f.fecha_desactivacion IS NULL
+        AND f.estado_ficha != 'BORRADOR'
+      WHERE u.fecha_desactivacion IS NULL
+        AND f.id IS NULL
+        AND ($1::text IS NULL OR LOWER(c.nombre) LIKE $1)
+      ORDER BY c.nombre NULLS LAST, u.primer_apellido
+      LIMIT $2
+    `,
+      [carreraFiltro, limite],
+    );
+  }
+
+  private async toolEstudiantesPrioridadAtencion(args: {
+    limite?: number;
+    carrera?: string;
+    solo_con_alertas?: boolean;
+  }) {
+    const limite = Math.min(Number(args?.limite) || 25, 50);
+    const carreraFiltro = args?.carrera ? `%${String(args.carrera).trim().toLowerCase()}%` : null;
+
+    return this.dataSource.query(
+      `
+      WITH Alertas AS (
+        SELECT r.ficha_id, COUNT(*)::int AS total_alertas
+        FROM respuestas r
+        INNER JOIN preguntas p ON p.id = r.pregunta_id
+        LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+        LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+        WHERE r.fecha_desactivacion IS NULL
+          AND p.fecha_desactivacion IS NULL
+          AND p.revision_manual_obligatoria = true
+          AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''))
+              NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+        GROUP BY r.ficha_id
+      )
+      SELECT
+        u.cedula,
+        u.primer_nombre || ' ' || u.primer_apellido AS estudiante,
+        c.nombre AS carrera,
+        f.estado_ficha,
+        COALESCE(a.total_alertas, 0) AS alertas,
+        EXTRACT(DAY FROM NOW() - f.created_at)::int AS dias_esperando,
+        f.balance_final,
+        f.total_ingresos,
+        f.total_egresos,
+        (
+          COALESCE(a.total_alertas, 0) * 10
+          + CASE WHEN f.estado_ficha IN ('ENVIADA','ENVIADO')
+                 THEN EXTRACT(DAY FROM NOW() - f.created_at)::int ELSE 0 END
+          + CASE WHEN f.balance_final < -500 THEN 15
+                 WHEN f.balance_final < 0 THEN 5
+                 ELSE 0 END
+        ) AS score_prioridad
+      FROM fichas_respondidas f
+      INNER JOIN usuarios u ON u.id = f.usuario_id
+      LEFT JOIN carreras c ON c.id = u.carrera_id
+      LEFT JOIN Alertas a ON a.ficha_id = f.id
+      WHERE f.fecha_desactivacion IS NULL
+        AND f.estado_ficha != 'BORRADOR'
+        AND ($1::text IS NULL OR LOWER(c.nombre) LIKE $1)
+        AND ($2::boolean IS FALSE OR a.ficha_id IS NOT NULL)
+      ORDER BY score_prioridad DESC, dias_esperando DESC
+      LIMIT $3
+    `,
+      [carreraFiltro, !!args?.solo_con_alertas, limite],
+    );
+  }
+
   // ===================== ORQUESTACIÓN CON GROQ =====================
 
   async procesarMensaje(prompt: string): Promise<IaChatResult> {
@@ -770,12 +1069,34 @@ export class IaService {
         role: 'system',
         content: `Eres el asistente interno de Bienestar Estudiantil de AzuayCare (IST del Azuay).
 
-REGLAS DE ORO:
-1. NUNCA inventes datos, nombres o cifras. Usa siempre tus herramientas de consulta.
-2. Si te preguntan por un estudiante específico, usa PRIMERO 'buscar_estudiante'. Luego si el sistema te retorna un ID, usa 'detalle_alertas_ficha'.
-3. Cada pregunta debe resolverse COMPLETA en este mismo turno.
-4. Presenta los datos de forma limpia (markdown, tablas o listas) y responde siempre en español.
-5. Si una herramienta devuelve un error, informa al usuario amablemente que hubo un problema técnico o de sistema.`,
+REGLAS DE ORO (OBLIGATORIAS):
+1. NUNCA inventes datos, nombres, cédulas ni cifras. Si no tienes la información de una tool, dilo claramente.
+2. Prefiere siempre las tools de alto nivel (estudiantes_sin_ficha, estudiantes_prioridad_atencion, fichas_con_alertas, etc.) antes que consultar_sql.
+3. Si preguntan por un estudiante concreto → usa PRIMERO buscar_estudiante. Luego detalle_alertas_ficha si hace falta.
+4. Si preguntan "quiénes no han llenado el formulario / no tienen ficha" → usa estudiantes_sin_ficha.
+5. Si preguntan "quién necesita prioridad / atención urgente / casos prioritarios" → usa estudiantes_prioridad_atencion.
+6. Usa consultar_sql SOLO cuando ninguna otra tool pueda responder la pregunta.
+7. Responde siempre en español, claro, con tablas markdown cuando haya listas.
+8. Si una tool devuelve error o datos vacíos, dilo amablemente y sugiere cómo reformular.
+9. Cuando los resultados estén truncados, avisa al usuario y pide que refine.
+
+ESQUEMA DE LA BASE DE DATOS (solo tablas y columnas relevantes):
+
+- usuarios: id (uuid), cedula, primer_nombre, segundo_nombre, primer_apellido, email_institucional, carrera_id, fecha_desactivacion
+- fichas_respondidas: id (uuid), usuario_id, formulario_id, estado_ficha ('BORRADOR'|'ENVIADA'|'ENVIADO'|'VALIDADO'|'RECHAZADA'), total_ingresos, total_egresos, balance_final, created_at, updated_at, fecha_desactivacion
+- carreras: id, nombre, fecha_desactivacion
+- periodos_matricula: id, nombre, fecha_inicio, fecha_fin, activo (bool), fecha_desactivacion
+- formularios: id, titulo, publicado, periodo_id, created_at, fecha_desactivacion
+- preguntas: id, enunciado, revision_manual_obligatoria (bool), fecha_desactivacion
+- respuestas: id, ficha_id, pregunta_id, valor_texto, valor_numerico, fecha_desactivacion
+- respuestas_opciones_seleccionadas: respuesta_id, opcion_id
+- opciones_pregunta: id, texto_opcion
+
+Convenciones importantes:
+- Un registro activo tiene fecha_desactivacion IS NULL.
+- "Ficha enviada" = estado_ficha IN ('ENVIADA','ENVIADO').
+- "Con alertas" = tiene al menos una respuesta a pregunta con revision_manual_obligatoria=true cuyo valor NO es 'NO','NINGUNA','N/A','NINGUNO','FALSO' ni vacío.
+- Siempre filtra por fecha_desactivacion IS NULL en consultas propias.`,
       },
       { role: 'user', content: prompt },
     ];
@@ -794,7 +1115,6 @@ REGLAS DE ORO:
         const choice = response.data.choices[0];
         const msg = choice.message;
 
-        // Si la IA ya no necesita herramientas, devolvemos su respuesta final
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           return {
             response: msg.content || 'Proceso completado sin respuesta generada en texto.',
@@ -802,20 +1122,19 @@ REGLAS DE ORO:
           };
         }
 
-        // Manejo estricto y seguro del mensaje del Asistente
-        const assistantMessage: ChatMessage = { 
-          role: 'assistant', 
-          tool_calls: msg.tool_calls 
+        const assistantMessage: ChatMessage = {
+          role: 'assistant',
+          tool_calls: msg.tool_calls,
         };
         if (msg.content) {
-          assistantMessage.content = msg.content; 
+          assistantMessage.content = msg.content;
         }
         messages.push(assistantMessage);
 
         for (const tc of msg.tool_calls) {
           const name = tc.function.name;
           let args = {};
-          
+
           try {
             args = JSON.parse(tc.function.arguments || '{}');
           } catch {
@@ -824,7 +1143,11 @@ REGLAS DE ORO:
           }
 
           const result = await this.ejecutarToolSeguro(name, args);
-          const filas = Array.isArray(result) ? result.length : (result && typeof result === 'object' && !result.error ? 1 : 0);
+          const filas = Array.isArray(result)
+            ? result.length
+            : result && typeof result === 'object' && !result.error
+              ? (result.filas ?? 1)
+              : 0;
 
           fuentes.push({
             tool: name,
@@ -833,27 +1156,34 @@ REGLAS DE ORO:
             consultado_en: new Date().toISOString(),
           });
 
-          // Control de memoria y desbordamiento de tokens (Context Overflow)
           let resultString = JSON.stringify(result);
           if (resultString.length > this.MAX_JSON_RESPONSE_LENGTH) {
-            this.logger.warn(`Respuesta de DB demasiado larga (${resultString.length} char). Truncando para enviar a IA.`);
+            this.logger.warn(`Respuesta de DB demasiado larga (${resultString.length} char). Truncando.`);
             resultString = JSON.stringify({
-              advertencia: "Los resultados en la DB son demasiado grandes para analizarlos completos. Muestra estos primeros resultados y dile al usuario que la búsqueda fue limitada, pídele que sea más específico.",
-              datos: Array.isArray(result) ? result.slice(0, 15) : result
+              advertencia:
+                'Los resultados son demasiado grandes. Se muestran solo los primeros 15. Pídele al usuario que sea más específico.',
+              datos: Array.isArray(result)
+                ? result.slice(0, 15)
+                : result?.datos
+                  ? Array.isArray(result.datos)
+                    ? result.datos.slice(0, 15)
+                    : result.datos
+                  : result,
             });
           }
 
           messages.push({
             role: 'tool',
             tool_call_id: tc.id,
-            name: name, // Identificador clave para que Groq asocie la tool
+            name,
             content: resultString,
           });
         }
       }
 
       return {
-        response: 'Se alcanzó el límite de búsquedas internas. Por favor, reformula tu pregunta para hacerla más específica o simple.',
+        response:
+          'Se alcanzó el límite de búsquedas internas. Por favor, reformula tu pregunta para hacerla más específica o simple.',
         fuentes,
       };
     } catch (error: any) {
