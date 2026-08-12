@@ -606,6 +606,7 @@ export class FichasRespondidasService {
     };
   }
 
+  
   private construirRespuestaHtml(resp: any): string {
   if (!resp) return '<i>Sin responder</i>';
 
@@ -613,9 +614,20 @@ export class FichasRespondidasService {
     String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   let contenido = '';
+  let evidenciaUrlDesdeTexto: string | null = null;
 
-  if (resp.valor_texto) {
-    contenido = escapar(resp.valor_texto);
+  // Extraer evidencia embebida en valor_texto
+  let valorTextoLimpio = resp.valor_texto ? String(resp.valor_texto) : '';
+  if (valorTextoLimpio.includes('[EVIDENCIA_URL:')) {
+    const match = valorTextoLimpio.match(/\[EVIDENCIA_URL:(.*?)\]/);
+    if (match?.[1]) {
+      evidenciaUrlDesdeTexto = match[1].trim();
+      valorTextoLimpio = valorTextoLimpio.replace(match[0], '').trim();
+    }
+  }
+
+  if (valorTextoLimpio) {
+    contenido = escapar(valorTextoLimpio);
   } else if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) {
     contenido = escapar(resp.valor_numerico.toString());
   } else if (resp.opcionesSeleccionadas?.length > 0) {
@@ -656,27 +668,46 @@ export class FichasRespondidasService {
   }
 
   // Evidencias / documentos de respaldo asociados a la respuesta
-  const documentos = (resp.documentos || []).filter(
-    (d: any) => !d.fecha_desactivacion,
-  );
+  const documentos = (resp.documentos || []).filter((d: any) => !d.fecha_desactivacion);
 
-  if (documentos.length > 0) {
+  type Ev = { url: string; nombre: string; mime: string };
+  const evidencias: Ev[] = [];
+
+  for (const doc of documentos) {
+    evidencias.push({
+      url: doc.ruta_archivo,
+      nombre: doc.nombre_original || 'Archivo',
+      mime: doc.mime_type || '',
+    });
+  }
+
+  if (evidenciaUrlDesdeTexto && !evidencias.some(e => e.url === evidenciaUrlDesdeTexto)) {
+    const esImg = /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(evidenciaUrlDesdeTexto);
+    evidencias.push({
+      url: evidenciaUrlDesdeTexto,
+      nombre: 'Evidencia adjunta',
+      mime: esImg ? 'image/jpeg' : 'application/octet-stream',
+    });
+  }
+
+  if (evidencias.length > 0) {
     let evidenciasHtml = `
       <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
         <div style="font-size: 11px; font-weight: bold; color: #555; margin-bottom: 4px;">
-          📎 Evidencia adjunta (${documentos.length}):
+          📎 Evidencia adjunta (${evidencias.length}):
         </div>`;
 
-    for (const doc of documentos) {
+    for (const ev of evidencias) {
       const esImagen =
-        doc.mime_type && String(doc.mime_type).toLowerCase().startsWith('image/');
-      const nombre = escapar(doc.nombre_original || 'Archivo');
+        (ev.mime && ev.mime.toLowerCase().startsWith('image/')) ||
+        /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(ev.url);
+      const nombre = escapar(ev.nombre);
 
-      if (esImagen && doc.ruta_archivo) {
+      if (esImagen && ev.url) {
         evidenciasHtml += `
           <div style="margin: 6px 0;">
             <div style="font-size: 10px; color: #666; margin-bottom: 2px;">${nombre}</div>
-            <img src="${escapar(doc.ruta_archivo)}"
+            <img src="${escapar(ev.url)}"
                  alt="${nombre}"
                  style="max-width: 280px; max-height: 200px; border: 1px solid #ddd; border-radius: 4px; display: block;" />
           </div>`;
@@ -684,7 +715,6 @@ export class FichasRespondidasService {
         evidenciasHtml += `
           <div style="font-size: 11px; color: #333; margin: 3px 0; padding: 4px 6px; background: #f5f5f5; border-radius: 3px;">
             📄 ${nombre}
-            ${doc.mime_type ? `<span style="color:#888; font-size:10px;"> (${escapar(doc.mime_type)})</span>` : ''}
           </div>`;
       }
     }

@@ -36,9 +36,12 @@ export class ReportesService {
     const totalFormularios = await this.dataSource.query(
       `SELECT COUNT(*)::int AS total FROM formularios WHERE fecha_desactivacion IS NULL`
     );
-    const totalFichas = await this.dataSource.query(
-      `SELECT COUNT(*)::int AS total FROM fichas_respondidas WHERE fecha_desactivacion IS NULL`
-    );
+    const totalFichasEvaluadas = await this.dataSource.query(
+  `SELECT COUNT(*)::int AS total
+   FROM fichas_respondidas
+   WHERE fecha_desactivacion IS NULL
+     AND estado_ficha IN ('ENVIADA', 'ENVIADO', 'VALIDADO')`
+);
 
     // 3. Gráfico de Pastel (Rangos de Vulnerabilidad / Niveles) - Corregido a rangos_variable_calculada
     const nivelesData = await this.dataSource.query(
@@ -89,7 +92,7 @@ export class ReportesService {
     return {
       totalCarreras: totalCarreras[0]?.total || 0,
       totalFormularios: totalFormularios[0]?.total || 0,
-      totalFichasEvaluadas: totalFichas[0]?.total || 0,
+      totalFichasEvaluadas: totalFichasEvaluadas[0]?.total || 0,
       periodoActivo: periodo,
       graficos: {
         nivelesEconomicos: {
