@@ -61,7 +61,7 @@ export class IaService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   // ===================== TOOLS =====================
 
@@ -101,7 +101,7 @@ export class IaService {
           properties: {
             solo_conteo: { type: 'boolean', description: 'Solo número total' },
             limite: { type: 'number', description: 'Máx. filas a listar (default 20)' },
-            carrera: { type: 'string', description: 'Filtrar por nombre (o parte del nombre) de carrera' },
+            carrera: { type: ['string', 'null'], description: 'Filtrar por nombre (o parte del nombre) de carrera. Null u omitir = sin filtro' },
           },
           required: [],
         },
@@ -137,8 +137,8 @@ export class IaService {
         parameters: {
           type: 'object',
           properties: {
-            cedula: { type: 'string' },
-            ficha_id: { type: 'string' },
+            cedula: { type: ['string', 'null'], description: 'Cédula del estudiante. Null u omitir si usas ficha_id' },
+            ficha_id: { type: ['string', 'null'], description: 'ID de la ficha. Null u omitir si usas cedula' },
           },
           required: [],
         },
@@ -152,7 +152,7 @@ export class IaService {
         parameters: {
           type: 'object',
           properties: {
-            estado: { type: 'string', description: 'Filtrar por estado (ENVIADA, VALIDADO, RECHAZADA) o TODOS' },
+            estado: { type: ['string', 'null'], description: 'Filtrar por estado (ENVIADA, VALIDADO, RECHAZADA) o TODOS. Null u omitir = TODOS' },
             limite: { type: 'number', description: 'Default 15, máx 40' },
           },
           required: [],
@@ -244,7 +244,7 @@ export class IaService {
           type: 'object',
           properties: {
             campo: { type: 'string', description: "'ingresos' o 'egresos'" },
-            orden: { type: 'string', description: "'mayor' o 'menor'" },
+            orden: { type: ['string', 'null'], description: "'mayor' o 'menor'. Null u omitir = mayor" },
             limite: { type: 'number', description: 'Default 10, máx 30' },
           },
           required: ['campo'],
@@ -271,7 +271,7 @@ export class IaService {
           properties: {
             solo_conteo: { type: 'boolean', description: 'Solo el número total' },
             limite: { type: 'number', description: 'Máx. filas a listar (default 30, máx 100)' },
-            carrera: { type: 'string', description: 'Filtrar por nombre (o parte) de carrera' },
+            carrera: { type: ['string', 'null'], description: 'Filtrar por nombre (o parte) de carrera. Null u omitir = sin filtro' },
           },
           required: [],
         },
@@ -286,7 +286,7 @@ export class IaService {
           type: 'object',
           properties: {
             limite: { type: 'number', description: 'Default 25, máx 50' },
-            carrera: { type: 'string' },
+            carrera: { type: ['string', 'null'], description: 'Filtrar por carrera. Null u omitir = todas' },
             solo_con_alertas: { type: 'boolean', description: 'Solo los que tienen alertas de vulnerabilidad' },
           },
           required: [],
@@ -316,8 +316,8 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
               description: 'Consulta SQL completa (solo SELECT). Debe incluir LIMIT.',
             },
             explicacion: {
-              type: 'string',
-              description: 'Breve explicación de por qué esta consulta responde la pregunta del usuario.',
+              type: ['string', 'null'],
+              description: 'Breve explicación de por qué esta consulta responde la pregunta del usuario. Null u omitir si no aplica.',
             },
           },
           required: ['sql'],
@@ -501,7 +501,11 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
 
   private async toolFichasConAlertas(args: { solo_conteo?: boolean; limite?: number; carrera?: string }) {
     const limite = Math.min(Number(args?.limite) || 20, 50);
-    const carreraFiltro = args?.carrera ? `%${String(args.carrera).trim().toLowerCase()}%` : null;
+    const carreraRaw = args?.carrera;
+    const carreraFiltro =
+      carreraRaw && typeof carreraRaw === 'string' && carreraRaw.trim()
+        ? `%${carreraRaw.trim().toLowerCase()}%`
+        : null;
 
     if (args?.solo_conteo) {
       const [row] = await this.dataSource.query(
@@ -600,8 +604,11 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
     );
   }
 
-  private async toolDetalleAlertas(args: { cedula?: string; ficha_id?: string }) {
-    if (!args?.cedula && !args?.ficha_id) {
+  private async toolDetalleAlertas(args: { cedula?: string | null; ficha_id?: string | null }) {
+    const cedula = args?.cedula && typeof args.cedula === 'string' ? args.cedula.trim() : null;
+    const fichaId = args?.ficha_id && typeof args.ficha_id === 'string' ? args.ficha_id.trim() : null;
+
+    if (!cedula && !fichaId) {
       return { error: 'Debes indicar cedula o ficha_id para ejecutar esta acción.' };
     }
 
@@ -614,12 +621,12 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
     `;
 
     const queryParams: any[] = [];
-    if (args.cedula) {
+    if (cedula) {
       whereClause += ` AND u.cedula = $1`;
-      queryParams.push(args.cedula);
-    } else if (args.ficha_id) {
+      queryParams.push(cedula);
+    } else if (fichaId) {
       whereClause += ` AND f.id = $1::uuid`;
-      queryParams.push(args.ficha_id);
+      queryParams.push(fichaId);
     }
 
     return this.dataSource.query(
@@ -682,7 +689,8 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
 
   private async toolListarFichasRecientes(args: { estado?: string; limite?: number }) {
     const limite = Math.min(Number(args?.limite) || 15, 40);
-    const estado = (args?.estado || 'TODOS').toUpperCase();
+    const estadoRaw = args?.estado && typeof args.estado === 'string' ? args.estado.trim() : null;
+    const estado = (estadoRaw || 'TODOS').toUpperCase();
 
     if (estado && estado !== 'TODOS') {
       return this.dataSource.query(
@@ -885,7 +893,8 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
 
   private async toolTopEgresosIngresos(args: { campo?: string; orden?: string; limite?: number }) {
     const campo = args?.campo === 'egresos' ? 'total_egresos' : 'total_ingresos';
-    const orden = args?.orden === 'menor' ? 'ASC' : 'DESC';
+    const ordenRaw = args?.orden && typeof args.orden === 'string' ? args.orden.trim().toLowerCase() : null;
+    const orden = ordenRaw === 'menor' ? 'ASC' : 'DESC';
     const limite = Math.min(Number(args?.limite) || 10, 30);
 
     return this.dataSource.query(
@@ -947,9 +956,13 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
     `);
   }
 
-  private async toolEstudiantesSinFicha(args: { solo_conteo?: boolean; limite?: number; carrera?: string }) {
+  private async toolEstudiantesSinFicha(args: { solo_conteo?: boolean; limite?: number; carrera?: string | null }) {
     const limite = Math.min(Number(args?.limite) || 30, 100);
-    const carreraFiltro = args?.carrera ? `%${String(args.carrera).trim().toLowerCase()}%` : null;
+    const carreraRaw = args?.carrera;
+    const carreraFiltro =
+      carreraRaw && typeof carreraRaw === 'string' && carreraRaw.trim()
+        ? `%${carreraRaw.trim().toLowerCase()}%`
+        : null;
 
     if (args?.solo_conteo) {
       const [row] = await this.dataSource.query(
@@ -995,11 +1008,15 @@ Ejemplo válido: SELECT u.cedula, u.primer_nombre, c.nombre AS carrera FROM usua
 
   private async toolEstudiantesPrioridadAtencion(args: {
     limite?: number;
-    carrera?: string;
+    carrera?: string | null;
     solo_con_alertas?: boolean;
   }) {
     const limite = Math.min(Number(args?.limite) || 25, 50);
-    const carreraFiltro = args?.carrera ? `%${String(args.carrera).trim().toLowerCase()}%` : null;
+    const carreraRaw = args?.carrera;
+    const carreraFiltro =
+      carreraRaw && typeof carreraRaw === 'string' && carreraRaw.trim()
+        ? `%${carreraRaw.trim().toLowerCase()}%`
+        : null;
 
     return this.dataSource.query(
       `
@@ -1079,6 +1096,8 @@ REGLAS DE ORO (OBLIGATORIAS):
 7. Responde siempre en español, claro, con tablas markdown cuando haya listas.
 8. Si una tool devuelve error o datos vacíos, dilo amablemente y sugiere cómo reformular.
 9. Cuando los resultados estén truncados, avisa al usuario y pide que refine.
+10. Cuando llames a una tool, NUNCA envíes null en parámetros opcionales de tipo string.
+    Si no quieres filtrar por un campo, OMITE la propiedad por completo (no la pongas en el JSON).
 
 ESQUEMA DE LA BASE DE DATOS (solo tablas y columnas relevantes):
 
