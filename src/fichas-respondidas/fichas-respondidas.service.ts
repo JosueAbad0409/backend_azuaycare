@@ -486,8 +486,9 @@ private templateQrCache: string | null = null;
 
       // 🔥 Reemplaza el string con la URL real de tu plataforma en Angular (Frontend)
 // Si la tienes en Vercel, Netlify, etc., pon esa URL. Si estás probando local, usa localhost.
-const baseUrl = process.env.FRONTEND_URL || 'https://azuaycarev1.netlify.app'; 
-const urlBienestar = `${baseUrl}/bienestar/fichas/${id}`;
+// Reemplaza las líneas del baseUrl y urlBienestar por esto:
+const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com'; 
+const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
       
       const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, { 
         errorCorrectionLevel: 'M',

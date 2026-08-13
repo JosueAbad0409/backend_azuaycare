@@ -39,9 +39,8 @@ export class FichasRespondidasController {
     @Query('take') take = 1000,
     @Query('search') search = '',
     @Query('estado') estado = 'TODOS',
-    @Req() req: RequestWithUser // <-- 1. Añadimos el Request
+    @Req() req: RequestWithUser
   ) {
-    // 2. Pasamos req.user al servicio
     return this.fichasService.getFichasPaginadasYFiltradas(+skip, +take, search, estado, req.user);
   }
 
@@ -66,7 +65,6 @@ export class FichasRespondidasController {
     return this.fichasService.getResumenFicha(id, req.user);
   }
 
-  // 🔥 NUEVO ENDPOINT: Resumen de vulnerabilidad para la pantalla final y QR
   @Get(':id/resumen-vulnerabilidad')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   getResumenVulnerabilidad(@Param('id') id: string) {
@@ -107,7 +105,6 @@ export class FichasRespondidasController {
     return this.fichasService.findOne(id, req.user);
   }
 
-  // 🔥 NUEVO ENDPOINT: Exclusivo para Bienestar Estudiantil
   @Get('prioridad-atencion')
   @Roles('COORDINADOR_BIENESTAR')
   getFichasPorPrioridad(
@@ -154,5 +151,30 @@ export class FichasRespondidasController {
   @Roles('COORDINADOR_BIENESTAR', 'ESTUDIANTE', 'INVITADO')
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.fichasService.remove(id, req.user);
+  }
+} // <-- AQUÍ SE CIERRA FichasRespondidasController
+
+
+// 👇 AQUÍ EMPIEZA LA NUEVA CLASE INDEPENDIENTE 👇
+@Controller('qr')
+export class QrController {
+  constructor(private readonly fichasService: FichasRespondidasService) {}
+
+  @Get('ficha/:id')
+  async verFichaQr(@Param('id') id: string, @Res() res: Response) {
+    // 1. Pasamos un usuario "simulado" para engañar a tu función findOne() y pasar la validación
+    const usuarioSimulado = { id: 'qr-scanner', rol: 'COORDINADOR' }; 
+    
+    // 2. Generamos el PDF de la ficha COMPLETA (no el resumen)
+    const buffer = await this.fichasService.generarPdfFicha(id, usuarioSimulado);
+    
+    res.set({
+      'Content-Type': 'application/pdf',
+      // 🔥 LA MAGIA AQUÍ: 'inline' hace que el celular MUESTRE el PDF en el navegador en vez de descargarlo
+      'Content-Disposition': `inline; filename="ficha_completa_${id}.pdf"`,
+      'Content-Length': buffer.length.toString(),
+    });
+    
+    res.end(buffer);
   }
 }
