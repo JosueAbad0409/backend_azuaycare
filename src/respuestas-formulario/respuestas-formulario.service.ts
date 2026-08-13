@@ -322,66 +322,144 @@ export class RespuestasFormularioService {
   };
 }
 
+// Reemplaza este método en RespuestasFormularioService (respuestas-formulario.service.ts)
   async ejecutarPrecarga(periodoNuevoId: string, usuarioId: string) {
-  // 1. Reutilizamos el cálculo que ya existe
-  const preview = await this.obtenerPrecarga(periodoNuevoId, usuarioId);
-
-  if (!preview.es_precargable || preview.respuestas_precargadas.length === 0) {
-    return { respuestas_transferidas: false, ...preview };
-  }
-
-  // 2. Buscamos el formulario nuevo
-  const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
-    where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
-  });
-  if (!formularioNuevo) {
-    throw new NotFoundException('No existe un formulario publicado para este periodo.');
-  }
-
-  // 3. Buscamos LA FICHA ACTUAL del estudiante
-  const fichaActual = await this.dataSource.getRepository(FichaRespondida).findOne({
-    where: { usuario_id: usuarioId, formulario_id: formularioNuevo.id, fecha_desactivacion: IsNull() },
-  });
-  if (!fichaActual) {
-    throw new NotFoundException('No tienes una ficha creada para este periodo todavía.');
-  }
-
-  // 4. Candado de seguridad: si ya tiene respuestas, NO volvemos a insertar
-  const yaTieneRespuestas = await this.respuestasRepository.count({
-    where: { ficha_id: fichaActual.id, fecha_desactivacion: IsNull() },
-  });
-  if (yaTieneRespuestas > 0) {
-    return { respuestas_transferidas: false, message: 'La ficha ya tiene respuestas guardadas.' };
-  }
-
-  // 5. Insertamos las respuestas base
-  const entidades = preview.respuestas_precargadas.map(r =>
-    this.respuestasRepository.create({
-      ficha_id: fichaActual.id,
-      pregunta_id: r.pregunta_id,
-      valor_texto: r.valor_texto,
-      valor_numerico: r.valor_numerico,
-    }),
-  );
-  const guardadas = await this.respuestasRepository.save(entidades);
-
-  // 6. Insertamos las opciones seleccionadas
-  const opciones: { respuesta_id: string; opcion_id: string }[] = [];
-  preview.respuestas_precargadas.forEach((r, i) => {
-    r.opciones_seleccionadas.forEach(opcionId => {
-      opciones.push({ respuesta_id: guardadas[i].id, opcion_id: opcionId });
+    // 1. Buscamos el formulario nuevo
+    const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
+      where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
     });
-  });
-  if (opciones.length > 0) {
-    await this.dataSource.createQueryBuilder().insert()
-      .into('respuestas_opciones_seleccionadas').values(opciones).execute();
+    if (!formularioNuevo) {
+      throw new NotFoundException('No existe un formulario publicado para este periodo.');
+    }
+
+    // 2. Buscamos LA FICHA ACTUAL del estudiante (la que acaba de crear en blanco)
+    const fichaActual = await this.dataSource.getRepository(FichaRespondida).findOne({
+      where: { usuario_id: usuarioId, formulario_id: formularioNuevo.id, fecha_desactivacion: IsNull() },
+    });
+    if (!fichaActual) {
+      throw new NotFoundException('No tienes una ficha creada para este periodo todavía.');
+    }
+
+    // 3. Candado de seguridad: si ya tiene respuestas, NO volvemos a insertar
+    const yaTieneRespuestas = await this.respuestasRepository.count({
+      where: { ficha_id: fichaActual.id, fecha_desactivacion: IsNull() },
+    });
+    if (yaTieneRespuestas > 0) {
+      return { respuestas_transferidas: false, message: 'La ficha ya tiene respuestas guardadas.' };
+    }
+
+    // 4. Buscamos la ficha ANTERIOR completada
+    const fichaAnterior = await this.dataSource.getRepository(FichaRespondida).findOne({
+      where: [
+        { usuario_id: usuarioId, estado_ficha: 'ENVIADA', fecha_desactivacion: IsNull() } as any,
+        { usuario_id: usuarioId, estado_ficha: 'VALIDADO', fecha_desactivacion: IsNull() } as any,
+      ],
+      order: { created_at: 'DESC' },
+    });
+
+    if (!fichaAnterior) {
+      return { respuestas_transferidas: false, message: 'No hay una ficha anterior completada para clonar.' };
+    }
+
+    // 5. INICIAMOS EL PROCESO DE CLONACIÓN PROFUNDA (SQL ROBUSTO)
+    const formViejoId = fichaAnterior.formulario_id;
+    const nuevoFormularioId = formularioNuevo.id;
+    const nuevaFichaId = fichaActual.id;
+
+    const preguntasViejas = await this.dataSource.query(
+      `SELECT p.id, p.enunciado FROM preguntas p 
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [formViejoId]
+    );
+
+    const preguntasNuevas = await this.dataSource.query(
+      `SELECT p.id, p.enunciado FROM preguntas p 
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [nuevoFormularioId]
+    );
+
+    if (preguntasNuevas.length === 0) return { respuestas_transferidas: false, message: 'Formulario nuevo sin preguntas.' };
+
+    const mapaPreguntas = new Map<string, string>();
+    for (const pv of preguntasViejas) {
+      const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
+      if (pn) mapaPreguntas.set(pv.id, pn.id);
+    }
+
+    const opcionesViejas = await this.dataSource.query(
+      `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
+       INNER JOIN preguntas p ON p.id = o.pregunta_id
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND o.fecha_desactivacion IS NULL`, [formViejoId]
+    );
+
+    const opcionesNuevas = await this.dataSource.query(
+      `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
+       INNER JOIN preguntas p ON p.id = o.pregunta_id
+       INNER JOIN secciones s ON s.id = p.seccion_id 
+       WHERE s.formulario_id = $1 AND o.fecha_desactivacion IS NULL`, [nuevoFormularioId]
+    );
+
+    const mapaOpciones = new Map<string, string>();
+    for (const ov of opcionesViejas) {
+      const pNuevaId = mapaPreguntas.get(ov.pregunta_id);
+      if (pNuevaId) {
+        const on = opcionesNuevas.find((n: any) => n.pregunta_id === pNuevaId && n.texto_opcion.trim().toLowerCase() === ov.texto_opcion.trim().toLowerCase());
+        if (on) mapaOpciones.set(ov.id, on.id);
+      }
+    }
+
+    const respuestasAnteriores = await this.dataSource.query(
+      `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas 
+       WHERE ficha_id = $1 AND fecha_desactivacion IS NULL`, [fichaAnterior.id]
+    );
+
+    let respuestasInsertadas = 0;
+
+    for (const respVieja of respuestasAnteriores) {
+      const nuevaPreguntaId = mapaPreguntas.get(respVieja.pregunta_id);
+      if (!nuevaPreguntaId) continue;
+
+      const insertRespuesta = await this.dataSource.query(
+        `INSERT INTO respuestas (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [nuevaFichaId, nuevaPreguntaId, respVieja.valor_texto, respVieja.valor_numerico, usuarioId]
+      );
+      const nuevaRespuestaId = insertRespuesta[0].id;
+      respuestasInsertadas++;
+
+      // Clonar opciones múltiples
+      const seleccionadas = await this.dataSource.query(
+        `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
+      );
+      for (const sel of seleccionadas) {
+        const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
+        if (nuevaOpcionId) {
+          await this.dataSource.query(
+            `INSERT INTO respuestas_opciones_seleccionadas (respuesta_id, opcion_id) VALUES ($1, $2)`,
+            [nuevaRespuestaId, nuevaOpcionId]
+          );
+        }
+      }
+
+      // Clonar evidencias
+      const documentos = await this.dataSource.query(
+        `SELECT ruta_archivo, nombre_original, mime_type, tamanio_bytes FROM documentos_respaldo WHERE respuesta_id = $1 AND fecha_desactivacion IS NULL`,
+        [respVieja.id]
+      );
+      for (const doc of documentos) {
+        await this.dataSource.query(
+          `INSERT INTO documentos_respaldo (respuesta_id, ruta_archivo, nombre_original, mime_type, tamanio_bytes, creado_por) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [nuevaRespuestaId, doc.ruta_archivo, doc.nombre_original, doc.mime_type, doc.tamanio_bytes, usuarioId]
+        );
+      }
+    }
+
+    this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId: fichaActual.id });
+
+    return { respuestas_transferidas: true, total: respuestasInsertadas };
   }
-
-  // 7. Evento
-  this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId: fichaActual.id });
-
-  return { respuestas_transferidas: true, total: guardadas.length };
-}
 
   async findByFicha(fichaId: string) {
   return this.respuestasRepository.find({

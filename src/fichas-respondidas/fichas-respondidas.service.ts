@@ -65,7 +65,6 @@ export class FichasRespondidasService {
 
     try {
       const fichaGuardada = await this.fichasRepository.save(nuevaFicha);
-      await this.heredarRespuestasAnteriores(fichaGuardada.id, usuarioId, createDto.formulario_id);
       return fichaGuardada;
     } catch (error: any) {
       throw new BadRequestException(`ERROR BD: ${error.message || JSON.stringify(error)}`);
