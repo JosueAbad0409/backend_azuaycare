@@ -20,7 +20,7 @@ export class FormulariosService {
     @InjectRepository(TipoFormulario)
     private readonly tiposFormularioRepository: Repository<TipoFormulario>,
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async create(createFormularioDto: CreateFormularioDto, usuarioId: string) {
     if (!createFormularioDto.tipo_formulario_id) {
@@ -79,7 +79,7 @@ export class FormulariosService {
     });
   }
 
-    async findOne(id: string) {
+  async findOne(id: string) {
     const formulario = await this.formulariosRepository
       .createQueryBuilder('f')
       .leftJoinAndSelect('f.periodo', 'periodo')
@@ -129,7 +129,7 @@ export class FormulariosService {
     return formulario;
   }
 
-    async publicarFormulario(id: string) {
+  async publicarFormulario(id: string) {
     const formulario = await this.findOne(id); // ya filtra desactivados
 
     if (formulario.bloqueado) {
@@ -270,7 +270,9 @@ export class FormulariosService {
       if (versionesExistentes.length >= 2) {
         const aEliminar = versionesExistentes.slice(0, versionesExistentes.length - 1);
         for (const formularioViejo of aEliminar) {
-          await queryRunner.manager.delete(Formulario, formularioViejo.id);
+          await queryRunner.manager.update(Formulario, formularioViejo.id, {
+            fecha_desactivacion: new Date(),
+          });
         }
       }
 
