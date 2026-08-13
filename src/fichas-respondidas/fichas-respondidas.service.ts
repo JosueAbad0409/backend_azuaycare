@@ -998,8 +998,8 @@ if (evidencias.length > 0) {
 
       // 🔥 CORRECCIÓN 3: De opciones_seleccionadas a respuestas_opciones_seleccionadas
       const seleccionadas = await this.dataSource.query(
-        `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
-      );
+  `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
+);
       
       for (const sel of seleccionadas) {
         const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
