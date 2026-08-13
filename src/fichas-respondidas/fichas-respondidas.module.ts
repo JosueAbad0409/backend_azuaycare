@@ -12,7 +12,7 @@ import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordi
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FichaRespondida, CoordinadoresCarrera, QrController]),
+    TypeOrmModule.forFeature([FichaRespondida, CoordinadoresCarrera]),
     CacheModule.register({
       ttl: 43200000, // 12 horas de retención en RAM (en milisegundos)
       max: 100,      // Máximo 100 estructuras de formularios en memoria a la vez
@@ -21,7 +21,7 @@ import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordi
     MailModule,
     PdfModule,
   ],
-  controllers: [FichasRespondidasController],
+  controllers: [FichasRespondidasController, QrController],
   providers: [
     FichasRespondidasService, 
     FichaRespuestasListener,
