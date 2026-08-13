@@ -32,14 +32,14 @@ export class RespuestasFormularioController {
     return this.respuestasService.guardarMuchas(createDtos, req.user.id, archivos, esFinal);
   }
 
-  @Get('precarga/:periodoNuevoId')
-  @Roles('ESTUDIANTE', 'INVITADO')
-  obtenerPrecarga(
-    @Param('periodoNuevoId') periodoNuevoId: string,
-    @Req() req: RequestWithUser,
-  ) {
-    return this.respuestasService.obtenerPrecarga(periodoNuevoId, req.user.id);
-  }
+  @Post('precarga/:periodoNuevoId')
+@Roles('ESTUDIANTE', 'INVITADO')
+ejecutarPrecarga(
+  @Param('periodoNuevoId') periodoNuevoId: string,
+  @Req() req: RequestWithUser,
+) {
+  return this.respuestasService.ejecutarPrecarga(periodoNuevoId, req.user.id);
+}
 
   @Get('ficha/:fichaId')
   @Roles('ESTUDIANTE', 'INVITADO', 'COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')

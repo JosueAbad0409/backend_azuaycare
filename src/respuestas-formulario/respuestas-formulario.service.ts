@@ -18,6 +18,14 @@ export interface RespuestaPrecargadaItem {
   opciones_seleccionadas: string[];
 }
 
+export interface ResultadoPrecarga {
+  es_precargable: boolean;
+  message?: string;
+  ficha_origen_id?: string;
+  respuestas_precargadas: RespuestaPrecargadaItem[];
+  preguntas_nuevas_pendientes: string[];
+}
+
 @Injectable()
 export class RespuestasFormularioService {
   constructor(
@@ -241,78 +249,139 @@ export class RespuestasFormularioService {
     }
   }
 
-  async obtenerPrecarga(periodoNuevoId: string, usuarioId: string) {
-    const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
-      where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
-      relations: { secciones: { preguntas: true } },
-    });
+  async obtenerPrecarga(periodoNuevoId: string, usuarioId: string): Promise<ResultadoPrecarga> {
+  const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
+    where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
+    relations: { secciones: { preguntas: true } },
+  });
 
-    if (!formularioNuevo) {
-      throw new NotFoundException('No existe un formulario publicado para el nuevo periodo.');
-    }
+  if (!formularioNuevo) {
+    throw new NotFoundException('No existe un formulario publicado para el nuevo periodo.');
+  }
 
-    if (!formularioNuevo.periodo_origen_id) {
-      return {
-        es_precargable: false,
-        message: 'El formulario no proviene de una clonación previa.',
-        respuestas_precargadas: [],
-        preguntas_nuevas_pendientes: [],
-      };
-    }
-
-    const fichaAnterior = await this.dataSource.getRepository(FichaRespondida).findOne({
-      where: { 
-        usuario_id: usuarioId, 
-        formulario_id: formularioNuevo.periodo_origen_id,
-        fecha_desactivacion: IsNull() 
-      } as any,
-      order: { created_at: 'DESC' } as any,
-      relations: {
-        respuestas: {
-          opcionesSeleccionadas: true,
-          pregunta: true,
-        },
-      } as any,
-    });
-
-    if (!fichaAnterior) {
-      return {
-        es_precargable: false,
-        message: 'No se encontró una ficha respondida en el periodo anterior.',
-        respuestas_precargadas: [],
-        preguntas_nuevas_pendientes: [],
-      };
-    }
-
-    const preguntasFormularioNuevo = (formularioNuevo.secciones || []).flatMap(s => s.preguntas || []);
-    const respuestasPrecargadas: RespuestaPrecargadaItem[] = [];
-    const preguntasNuevasPendientes: string[] = [];
-    const respuestasAnteriores = (fichaAnterior as any).respuestas || [];
-
-    for (const preguntaNueva of preguntasFormularioNuevo) {
-      const respuestaCoincidente = respuestasAnteriores.find(
-        (r: any) => r.pregunta?.enunciado === preguntaNueva.enunciado || r.pregunta_id === preguntaNueva.id
-      );
-
-      if (respuestaCoincidente) {
-        respuestasPrecargadas.push({
-          pregunta_id: preguntaNueva.id,
-          valor_texto: respuestaCoincidente.valor_texto,
-          valor_numerico: respuestaCoincidente.valor_numerico,
-          opciones_seleccionadas: respuestaCoincidente.opcionesSeleccionadas?.map((o: any) => o.opcion_id) || [],
-        });
-      } else {
-        preguntasNuevasPendientes.push(preguntaNueva.id);
-      }
-    }
-
+  if (!formularioNuevo.periodo_origen_id) {
     return {
-      es_precargable: true,
-      ficha_origen_id: fichaAnterior.id,
-      respuestas_precargadas: respuestasPrecargadas,
-      preguntas_nuevas_pendientes: preguntasNuevasPendientes,
+      es_precargable: false,
+      message: 'El formulario no proviene de una clonación previa.',
+      respuestas_precargadas: [],
+      preguntas_nuevas_pendientes: [],
     };
   }
+
+  const fichaAnterior = await this.dataSource.getRepository(FichaRespondida).findOne({
+    where: { 
+      usuario_id: usuarioId, 
+      periodo_id: formularioNuevo.periodo_origen_id,  
+      fecha_desactivacion: IsNull() 
+    } as any,
+    order: { created_at: 'DESC' } as any,
+    relations: {
+      respuestas: {
+        opcionesSeleccionadas: true,
+        pregunta: true,
+      },
+    } as any,
+  });
+
+  if (!fichaAnterior) {
+    return {
+      es_precargable: false,
+      message: 'No se encontró una ficha respondida en el periodo anterior.',
+      respuestas_precargadas: [],
+      preguntas_nuevas_pendientes: [],
+    };
+  }
+
+  const preguntasFormularioNuevo = (formularioNuevo.secciones || []).flatMap(s => s.preguntas || []);
+  const respuestasPrecargadas: RespuestaPrecargadaItem[] = [];
+  const preguntasNuevasPendientes: string[] = [];
+  const respuestasAnteriores = (fichaAnterior as any).respuestas || [];
+
+  for (const preguntaNueva of preguntasFormularioNuevo) {
+    const respuestaCoincidente = respuestasAnteriores.find(
+      (r: any) => r.pregunta?.enunciado === preguntaNueva.enunciado || r.pregunta_id === preguntaNueva.id
+    );
+
+    if (respuestaCoincidente) {
+      respuestasPrecargadas.push({
+        pregunta_id: preguntaNueva.id,
+        valor_texto: respuestaCoincidente.valor_texto,
+        valor_numerico: respuestaCoincidente.valor_numerico,
+        opciones_seleccionadas: respuestaCoincidente.opcionesSeleccionadas?.map((o: any) => o.opcion_id) || [],
+      });
+    } else {
+      preguntasNuevasPendientes.push(preguntaNueva.id);
+    }
+  }
+
+  return {
+    es_precargable: true,
+    ficha_origen_id: fichaAnterior.id,
+    respuestas_precargadas: respuestasPrecargadas,
+    preguntas_nuevas_pendientes: preguntasNuevasPendientes,
+  };
+}
+
+  async ejecutarPrecarga(periodoNuevoId: string, usuarioId: string) {
+  // 1. Reutilizamos el cálculo que ya existe
+  const preview = await this.obtenerPrecarga(periodoNuevoId, usuarioId);
+
+  if (!preview.es_precargable || preview.respuestas_precargadas.length === 0) {
+    return { respuestas_transferidas: false, ...preview };
+  }
+
+  // 2. Buscamos el formulario nuevo
+  const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({
+    where: { periodo_id: periodoNuevoId, publicado: true, fecha_desactivacion: IsNull() },
+  });
+  if (!formularioNuevo) {
+    throw new NotFoundException('No existe un formulario publicado para este periodo.');
+  }
+
+  // 3. Buscamos LA FICHA ACTUAL del estudiante
+  const fichaActual = await this.dataSource.getRepository(FichaRespondida).findOne({
+    where: { usuario_id: usuarioId, formulario_id: formularioNuevo.id, fecha_desactivacion: IsNull() },
+  });
+  if (!fichaActual) {
+    throw new NotFoundException('No tienes una ficha creada para este periodo todavía.');
+  }
+
+  // 4. Candado de seguridad: si ya tiene respuestas, NO volvemos a insertar
+  const yaTieneRespuestas = await this.respuestasRepository.count({
+    where: { ficha_id: fichaActual.id, fecha_desactivacion: IsNull() },
+  });
+  if (yaTieneRespuestas > 0) {
+    return { respuestas_transferidas: false, message: 'La ficha ya tiene respuestas guardadas.' };
+  }
+
+  // 5. Insertamos las respuestas base
+  const entidades = preview.respuestas_precargadas.map(r =>
+    this.respuestasRepository.create({
+      ficha_id: fichaActual.id,
+      pregunta_id: r.pregunta_id,
+      valor_texto: r.valor_texto,
+      valor_numerico: r.valor_numerico,
+    }),
+  );
+  const guardadas = await this.respuestasRepository.save(entidades);
+
+  // 6. Insertamos las opciones seleccionadas
+  const opciones: { respuesta_id: string; opcion_id: string }[] = [];
+  preview.respuestas_precargadas.forEach((r, i) => {
+    r.opciones_seleccionadas.forEach(opcionId => {
+      opciones.push({ respuesta_id: guardadas[i].id, opcion_id: opcionId });
+    });
+  });
+  if (opciones.length > 0) {
+    await this.dataSource.createQueryBuilder().insert()
+      .into('respuestas_opciones_seleccionadas').values(opciones).execute();
+  }
+
+  // 7. Evento
+  this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId: fichaActual.id });
+
+  return { respuestas_transferidas: true, total: guardadas.length };
+}
 
   async findByFicha(fichaId: string) {
   return this.respuestasRepository.find({

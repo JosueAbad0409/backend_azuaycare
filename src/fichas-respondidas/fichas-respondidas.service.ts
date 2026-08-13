@@ -262,6 +262,7 @@ export class FichasRespondidasService {
     let formularioCompleto: any = await this.cacheManager.get(cacheKey);
 
     if (!formularioCompleto) {
+
       formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
         where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
         relations: {
