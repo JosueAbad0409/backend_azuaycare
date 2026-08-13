@@ -262,7 +262,6 @@ export class FichasRespondidasService {
     let formularioCompleto: any = await this.cacheManager.get(cacheKey);
 
     if (!formularioCompleto) {
-      this.logger.log(`Caché miss. Consultando DB para formulario ${ficha.formulario_id}`);
       formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
         where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
         relations: {
@@ -467,7 +466,6 @@ private templateQrCache: string | null = null;
 
   async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
     try {
-      this.logger.log(`Generando PDF Resumen para la ficha: ${id}`);
       
       const ficha = await this.findOne(id, user);
 
@@ -915,7 +913,6 @@ if (evidencias.length > 0) {
 }
 
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
-    this.logger.log('🔄 --- INICIANDO AUTOCOMPLETADO DE FICHA ---');
 
     const fichaAnterior = await this.fichasRepository.findOne({
       where: [
@@ -929,8 +926,6 @@ if (evidencias.length > 0) {
       this.logger.warn('❌ El estudiante es nuevo o no tiene fichas enviadas. Se cancela autocompletado.');
       return;
     }
-
-    this.logger.log(`✅ Ficha anterior encontrada: ${fichaAnterior.id}`);
 
     const formViejoId = fichaAnterior.formulario_id;
 
@@ -946,12 +941,9 @@ if (evidencias.length > 0) {
        WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL`, [nuevoFormularioId]
     );
 
-    this.logger.log(`📎 Formulario viejo ID: ${formViejoId} | Formulario nuevo ID: ${nuevoFormularioId}`);
-    this.logger.log(`📋 Preguntas viejas encontradas: ${preguntasViejas.length}`);
-    this.logger.log(`📋 Preguntas nuevas encontradas: ${preguntasNuevas.length}`);
-
     if (preguntasNuevas.length === 0) {
       this.logger.error('🚨 El formulario nuevo no tiene preguntas asociadas. Revisa el proceso de clonado.');
+      return; // Agregado un return para evitar que el código siga si no hay preguntas
     }
 
     const mapaPreguntas = new Map<string, string>();
@@ -959,8 +951,6 @@ if (evidencias.length > 0) {
       const pn = preguntasNuevas.find((n: any) => n.enunciado.trim().toLowerCase() === pv.enunciado.trim().toLowerCase());
       if (pn) mapaPreguntas.set(pv.id, pn.id);
     }
-
-    this.logger.log(`🔗 Preguntas emparejadas con éxito: ${mapaPreguntas.size}`);
 
     const opcionesViejas = await this.dataSource.query(
       `SELECT o.id, o.pregunta_id, o.texto_opcion FROM opciones_pregunta o 
@@ -985,8 +975,9 @@ if (evidencias.length > 0) {
       }
     }
 
+    // 🔥 CORRECCIÓN 1: De respuestas_formulario a respuestas
     const respuestasAnteriores = await this.dataSource.query(
-      `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas_formulario 
+      `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas 
        WHERE ficha_id = $1 AND fecha_desactivacion IS NULL`, [fichaAnterior.id]
     );
 
@@ -996,22 +987,26 @@ if (evidencias.length > 0) {
       const nuevaPreguntaId = mapaPreguntas.get(respVieja.pregunta_id);
       if (!nuevaPreguntaId) continue;
 
+      // 🔥 CORRECCIÓN 2: De respuestas_formulario a respuestas
       const insertRespuesta = await this.dataSource.query(
-        `INSERT INTO respuestas_formulario (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
+        `INSERT INTO respuestas (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [nuevaFichaId, nuevaPreguntaId, respVieja.valor_texto, respVieja.valor_numerico, usuarioId]
       );
       const nuevaRespuestaId = insertRespuesta[0].id;
       respuestasInsertadas++;
 
+      // 🔥 CORRECCIÓN 3: De opciones_seleccionadas a respuestas_opciones_seleccionadas
       const seleccionadas = await this.dataSource.query(
-        `SELECT opcion_id FROM opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
+        `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
       );
+      
       for (const sel of seleccionadas) {
         const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
         if (nuevaOpcionId) {
+          // 🔥 CORRECCIÓN 4: De opciones_seleccionadas a respuestas_opciones_seleccionadas
           await this.dataSource.query(
-            `INSERT INTO opciones_seleccionadas (respuesta_id, opcion_id) VALUES ($1, $2)`,
+            `INSERT INTO respuestas_opciones_seleccionadas (respuesta_id, opcion_id) VALUES ($1, $2)`,
             [nuevaRespuestaId, nuevaOpcionId]
           );
         }
@@ -1029,5 +1024,6 @@ if (evidencias.length > 0) {
         );
       }
     }
+
   }
 }
