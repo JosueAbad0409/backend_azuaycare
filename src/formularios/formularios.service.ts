@@ -11,6 +11,7 @@ import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
 import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
 import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
 import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity';
+import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
 
 @Injectable()
 export class FormulariosService {
@@ -244,6 +245,21 @@ export class FormulariosService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
+    // Cargar periodo destino para usarlo en el título
+    const periodoDestino = await queryRunner.manager.findOne(PeriodoMatricula, {
+      where: { id: nuevoPeriodoId },
+    });
+    if (!periodoDestino) {
+      throw new NotFoundException('El periodo destino no existe.');
+    }
+
+    // Quitar posibles "(v2)", "(v3)" viejos del título
+    const tituloBase = formularioOrigen.titulo
+      .replace(/\s*\(v\d+\)\s*$/i, '')
+      .trim();
+
+    const nuevoTitulo = `${tituloBase} - ${periodoDestino.nombre}`;
+
     try {
       if (versionesExistentes.length >= 2) {
         const aDesactivar = versionesExistentes.slice(0, versionesExistentes.length - 1);
@@ -255,7 +271,7 @@ export class FormulariosService {
       }
 
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
-        titulo: `${formularioOrigen.titulo} (v${nuevaVersionNumero})`,
+        titulo: nuevoTitulo,
         descripcion: formularioOrigen.descripcion,
         tipo_formulario_id: formularioOrigen.tipo_formulario_id,
         periodo_id: nuevoPeriodoId,
