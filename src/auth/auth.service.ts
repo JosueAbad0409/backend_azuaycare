@@ -190,6 +190,7 @@ export class AuthService implements OnModuleInit {
         rol: usuario.rol?.nombre ?? nombreRolAsignado,
         carrera_id: usuario.carrera_id ?? null,
         nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
+        foto_url: usuario.foto_url ?? null,
       });
 
       const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
