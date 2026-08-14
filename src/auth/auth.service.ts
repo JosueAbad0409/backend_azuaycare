@@ -52,7 +52,6 @@ export class AuthService implements OnModuleInit {
     try {
       let email = '';
       let googleId = '';
-
       let primerNombre = 'Usuario';
       let segundoNombre: string | null = null;
       let primerApellido = 'Azuay';
@@ -154,10 +153,15 @@ export class AuthService implements OnModuleInit {
           primer_apellido: primerApellido,
           segundo_apellido: segundoApellido,
           foto_url: fotoGoogle,
-          rol: rolDb,
+          // 👇 CORRECCIÓN: Romper la referencia directa en memoria pasando solo el ID.
+          // Esto evita que TypeORM recorra la caché entera y provoque cuellos de botella/timeouts.
+          rol: { id: rolDb.id } as Role, 
         });
 
         await this.usuariosRepository.save(usuario);
+        
+        // Asignamos manualmente el rol cargado para que el JWT pueda firmarse correctamente
+        usuario.rol = rolDb;
       } else {
         let necesitaActualizar = false;
 
@@ -219,14 +223,19 @@ export class AuthService implements OnModuleInit {
         perfilCompleto,
       };
     } catch (error) {
+      // 👇 CORRECCIÓN: Separar errores controlados de los errores inesperados (ej: fallos de base de datos)
       if (
         error instanceof UnauthorizedException ||
         error instanceof InternalServerErrorException
       ) {
         throw error;
       }
-      console.error('Error de Google:', error);
-      throw new UnauthorizedException(`Error de autenticación. Verifique sus credenciales o contacte a soporte.`);
+      
+      // Si el error llega hasta aquí, suele ser de Base de Datos (Constraint de TypeORM, timeout, etc.)
+      console.error('CRÍTICO - Error en loginWithGoogle:', error);
+      throw new InternalServerErrorException(
+        'Ocurrió un error interno al intentar registrar o autenticar al usuario. Revise los logs.',
+      );
     }
   }
 }
