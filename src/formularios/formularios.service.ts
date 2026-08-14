@@ -132,10 +132,6 @@ export class FormulariosService {
   async publicarFormulario(id: string) {
     const formulario = await this.findOne(id); // ya filtra desactivados
 
-    if (formulario.bloqueado) {
-      throw new BadRequestException('Este formulario es una versión anterior bloqueada; no puede publicarse.');
-    }
-
     if (formulario.publicado) {
       throw new BadRequestException('Este formulario ya se encuentra publicado.');
     }
@@ -169,10 +165,6 @@ export class FormulariosService {
       throw new NotFoundException('El formulario no existe o está inactivo.');
     }
 
-    if (formulario.bloqueado) {
-      throw new BadRequestException('Este formulario es una versión anterior bloqueada; no puede despublicarse.');
-    }
-
     if (!formulario.publicado) {
       throw new BadRequestException('El formulario ya se encuentra en borrador.');
     }
@@ -184,11 +176,6 @@ export class FormulariosService {
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
     const formulario = await this.findOne(id);
 
-    if (formulario.bloqueado) {
-      throw new BadRequestException(
-        'Este formulario pertenece a un periodo anterior y quedó bloqueado al clonarse. Solo puede visualizarse, no editarse.',
-      );
-    }
 
     if (formulario.publicado) {
       throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
@@ -205,9 +192,6 @@ export class FormulariosService {
   async remove(id: string) {
     const formulario = await this.findOne(id);
 
-    if (formulario.bloqueado) {
-      throw new BadRequestException('No se puede eliminar un formulario bloqueado (versión anterior de solo lectura).');
-    }
 
     if (formulario.publicado) {
       throw new BadRequestException('No se puede eliminar un formulario que ya ha sido publicado formalmente.');
@@ -236,12 +220,6 @@ export class FormulariosService {
       throw new BadRequestException('El formulario de origen no tiene asignado un tipo válido.');
     }
 
-    if (formularioOrigen.bloqueado) {
-      throw new BadRequestException(
-        'Este formulario es una versión anterior bloqueada. Solo se puede clonar la versión actual (activa) de cada tipo de formulario.',
-      );
-    }
-
     const colisionDestino = await this.formulariosRepository.findOne({
       where: {
         tipo_formulario_id: formularioOrigen.tipo_formulario_id,
@@ -268,18 +246,13 @@ export class FormulariosService {
 
     try {
       if (versionesExistentes.length >= 2) {
-        const aEliminar = versionesExistentes.slice(0, versionesExistentes.length - 1);
-        for (const formularioViejo of aEliminar) {
+        const aDesactivar = versionesExistentes.slice(0, versionesExistentes.length - 1);
+        for (const formularioViejo of aDesactivar) {
           await queryRunner.manager.update(Formulario, formularioViejo.id, {
             fecha_desactivacion: new Date(),
           });
         }
       }
-
-      await queryRunner.manager.update(Formulario, formularioOrigen.id, {
-        bloqueado: true,
-        fecha_bloqueo: new Date(),
-      });
 
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
         titulo: `${formularioOrigen.titulo} (v${nuevaVersionNumero})`,
