@@ -38,12 +38,10 @@ import { FilaMatriz } from './matrices-form/entities/fila-matriz.entity';
 import { ColumnaMatriz } from './matrices-form/entities/columna-matriz.entity';
 import { DocumentosRespaldoModule } from './documentos-respaldo/documentos-respaldo.module';
 import { DocumentoRespaldo } from './documentos-respaldo/entities/documentos-respaldo.entity';
-import { AuditoriaModule } from './auditoria/auditoria.module';
 import { CoordinadoresCarrerasModule } from './coordinadores-carreras/coordinadores-carreras.module';
 import { HistorialEstadosFichaModule } from './historial-estados-ficha/historial-estados-ficha.module';
 import { HistorialRespuestasModule } from './historial-respuestas/historial-respuestas.module';
 import { RespuestasMatrizModule } from './respuestas-matriz/respuestas-matriz.module';
-import { Auditoria } from './auditoria/entities/auditoria.entity';
 import { CoordinadoresCarrera } from './coordinadores-carreras/entities/coordinadores-carrera.entity';
 import { HistorialEstadosFicha } from './historial-estados-ficha/entities/historial-estados-ficha.entity';
 import { HistorialRespuesta } from './historial-respuestas/entities/historial-respuesta.entity';
@@ -58,13 +56,13 @@ import { MailModule } from './mail/mail.module';
 import { IaModule } from './ia/ia.module';
 import { RangosVariableCalculadaModule } from './rangos-variable-calculada/rangos-variable-calculada.module';
 import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
-import { PdfModule } from './common/pdf/pdf.module'; // 👈 Importación agregada
+import { PdfModule } from './common/pdf/pdf.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
-    CacheModule.register({isGlobal: true }),
+    CacheModule.register({ isGlobal: true }),
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
@@ -100,7 +98,6 @@ import { PdfModule } from './common/pdf/pdf.module'; // 👈 Importación agrega
     PreguntasDependenciasModule,
     MatricesFormModule,
     DocumentosRespaldoModule,
-    AuditoriaModule,
     CoordinadoresCarrerasModule,
     HistorialEstadosFichaModule,
     HistorialRespuestasModule,
@@ -110,9 +107,9 @@ import { PdfModule } from './common/pdf/pdf.module'; // 👈 Importación agrega
     IaModule,
     RangosVariableCalculadaModule,
     PlantillasPdfModule,
-    PdfModule, // 👈 Módulo agregado
+    PdfModule,
   ],
-  providers:[
+  providers: [
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
