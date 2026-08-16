@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordinadores-carrera.entity';
 import * as QRCode from 'qrcode';
+import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class FichasRespondidasService {
@@ -30,6 +31,7 @@ export class FichasRespondidasService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     @InjectRepository(CoordinadoresCarrera)
     private readonly coordinadoresRepository: Repository<CoordinadoresCarrera>,
+    private readonly mailService: MailService,
   ) { }
 
   async create(createDto: CreateFichaRespondidaDto, usuarioId: string) {
@@ -350,6 +352,8 @@ export class FichasRespondidasService {
         cambiado_por: user.id
       });
       datosUpdate.estado_ficha = estado_ficha;
+
+      this.notificarEstudiantePorCorreo(fichaExistente, estado_ficha, comentario);
     }
 
     if (datosUpdate.total_ingresos !== undefined || datosUpdate.total_egresos !== undefined) {
@@ -377,6 +381,8 @@ export class FichasRespondidasService {
         cambiado_por: usuarioId
       });
       await this.fichasRepository.update(id, { estado_ficha: estadoNuevo });
+
+      this.notificarEstudiantePorCorreo(fichaExistente, estadoNuevo, comentario);
     }
 
     return this.findOne(id);
@@ -912,6 +918,21 @@ if (evidencias.length > 0) {
   return contenido || '<i>Sin responder</i>';
 }
 
+private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string, comentario?: string) {
+    const estadosNotificables = ['VALIDADO', 'RECHAZADO', 'RECHAZADA', 'BORRADOR'];
+    if (!estadosNotificables.includes(estadoNuevo.toUpperCase()) || !ficha.usuario) return;
+
+    const emailDestino = ficha.usuario.email_institucional || ficha.usuario.email_personal;
+    if (!emailDestino) return;
+
+    const nombreCompleto = `${ficha.usuario.primer_nombre} ${ficha.usuario.primer_apellido}`;
+
+    this.mailService.enviarNotificacionEstadoFicha(
+      emailDestino, nombreCompleto, estadoNuevo, comentario || ''
+    ).catch(e => this.logger.error(`Fallo correo a ${emailDestino}`));
+  }
+
+
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
 
     const fichaAnterior = await this.fichasRepository.findOne({
@@ -1024,6 +1045,7 @@ if (evidencias.length > 0) {
         );
       }
     }
-
   }
+
+  
 }
