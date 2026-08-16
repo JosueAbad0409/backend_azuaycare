@@ -129,6 +129,7 @@ export class DocumentosRespaldoService {
   async findByUsuario(usuarioId: string) {
     return await this.documentosRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
+      order: { created_at: 'DESC' } // 🔥 Ordenamos del más reciente al más antiguo para la galería
     });
   }
 
@@ -177,17 +178,22 @@ export class DocumentosRespaldoService {
     const documento = await this.documentosRepository.findOne({ where: { id } });
     
     if (!documento) {
-      throw new NotFoundException('El documento de respaldo no existe.');
+      throw new NotFoundException('El documento de respaldo no existe o ya fue eliminado.');
     }
 
-    if (documento.respuesta_id) {
-      await this.validarPropiedadDocumento(documento.respuesta_id, usuarioId, rol);
-    } else if (documento.ficha_id) {
-      await this.validarPropiedadFicha(documento.ficha_id, usuarioId, rol);
-    } else if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
+    // 1. Validar propiedad: Si no es coordinador, debe ser el dueño del archivo
+    if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
       throw new ForbiddenException('No tienes permiso para eliminar este documento.');
     }
 
+    // 🔥 2. REGLA DE PROTECCIÓN: Bloquear si es evidencia de un formulario
+    if (documento.respuesta_id !== null || documento.ficha_id !== null) {
+      throw new ForbiddenException(
+        'Acción denegada: No puedes eliminar este documento directamente porque está vinculado a una ficha institucional como evidencia. Debes actualizarlo o eliminarlo desde el formulario correspondiente.'
+      );
+    }
+
+    // 3. Si es un archivo libre/suelto, procedemos con la eliminación física de Supabase
     try {
       const nombreArchivo = documento.ruta_archivo.split('/').pop();
       
@@ -204,9 +210,10 @@ export class DocumentosRespaldoService {
       console.error('Error al intentar eliminar archivo de Supabase:', error);
     }
 
+    // 4. Eliminación física de la base de datos
     await this.documentosRepository.delete(id);
 
-    return { message: 'Documento eliminado físicamente del sistema y del almacenamiento.' };
+    return { message: 'Documento independiente eliminado físicamente del sistema y del almacenamiento.' };
   }
 
   async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
