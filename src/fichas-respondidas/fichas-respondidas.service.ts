@@ -754,7 +754,7 @@ async generarPdfFicha(id: string, user: any): Promise<Buffer> {
       .createQueryBuilder()
       .select('r.valor_numerico', 'num')
       .addSelect('r.valor_texto', 'txt')
-      .from('respuestas_formulario', 'r')
+      .from('respuestas', 'r') // 🔥 CORREGIDO: 'respuestas' en lugar de 'respuestas_formulario'
       .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
       .where('r.ficha_id = :fichaId', { fichaId })
       .andWhere("p.categoria_financiera = 'INGRESO'")
@@ -765,7 +765,7 @@ async generarPdfFicha(id: string, user: any): Promise<Buffer> {
       .createQueryBuilder()
       .select('r.valor_numerico', 'num')
       .addSelect('r.valor_texto', 'txt')
-      .from('respuestas_formulario', 'r')
+      .from('respuestas', 'r') // 🔥 CORREGIDO: 'respuestas' en lugar de 'respuestas_formulario'
       .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
       .where('r.ficha_id = :fichaId', { fichaId })
       .andWhere("p.categoria_financiera = 'EGRESO'")

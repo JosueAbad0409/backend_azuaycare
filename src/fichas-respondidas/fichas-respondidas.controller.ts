@@ -59,6 +59,16 @@ export class FichasRespondidasController {
     return this.fichasService.findByUsuario(req.user.id);
   }
 
+  @Get('prioridad-atencion')
+  @Roles('COORDINADOR_BIENESTAR')
+  getFichasPorPrioridad(
+    @Query('skip') skip = 0,
+    @Query('take') take = 50,
+    @Query('nivel') nivel = 'TODOS',
+  ) {
+    return this.fichasService.getFichasPorPrioridadVulnerabilidad(+skip, +take, nivel);
+  }
+  
   @Get(':id/resumen')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   getResumenFicha(@Param('id') id: string, @Req() req: RequestWithUser) {
@@ -105,15 +115,7 @@ export class FichasRespondidasController {
     return this.fichasService.findOne(id, req.user);
   }
 
-  @Get('prioridad-atencion')
-  @Roles('COORDINADOR_BIENESTAR')
-  getFichasPorPrioridad(
-    @Query('skip') skip = 0,
-    @Query('take') take = 50,
-    @Query('nivel') nivel = 'TODOS',
-  ) {
-    return this.fichasService.getFichasPorPrioridadVulnerabilidad(+skip, +take, nivel);
-  }
+  
   
   @Patch(':id/cerrar-manual')
   @Roles('COORDINADOR_BIENESTAR')
