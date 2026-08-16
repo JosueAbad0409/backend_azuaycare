@@ -74,26 +74,28 @@ export class FichasRespondidasService {
   }
 
   async getResumenVulnerabilidad(fichaId: string) {
-  // Consulta directa para extraer solo las alertas activadas por el estudiante
-  const alertas = await this.dataSource.query(`
-    SELECT p.enunciado as pregunta, 
-           COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
-    FROM respuestas_formulario r
-    INNER JOIN preguntas p ON p.id = r.pregunta_id
-    LEFT JOIN opciones_seleccionadas os ON os.respuesta_id = r.id
-    LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
-    WHERE r.ficha_id = $1
-      AND r.fecha_desactivacion IS NULL
-      AND p.revision_manual_obligatoria = true
-      AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-  `, [fichaId]);
+    // Consulta corregida con los nombres reales de tus tablas: 
+    // 'respuestas' en lugar de 'respuestas_formulario'
+    // 'respuestas_opciones_seleccionadas' en lugar de 'opciones_seleccionadas'
+    const alertas = await this.dataSource.query(`
+      SELECT p.enunciado as pregunta, 
+             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+      FROM respuestas r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN respuestas_opciones_seleccionadas os ON os.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
+      WHERE r.ficha_id = $1
+        AND r.fecha_desactivacion IS NULL
+        AND p.revision_manual_obligatoria = true
+        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+    `, [fichaId]);
 
-  return {
-    ficha_id: fichaId,
-    total_alertas: alertas.length,
-    detalles: alertas
-  };
-}
+    return {
+      ficha_id: fichaId,
+      total_alertas: alertas.length,
+      detalles: alertas
+    };
+  }
 
   /**
    * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
