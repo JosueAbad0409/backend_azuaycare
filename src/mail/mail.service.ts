@@ -10,7 +10,7 @@ export class MailService {
     // Configuramos Nodemailer para usar el SMTP de Brevo
     this.transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
-      port: 587,
+      port: 2525,
       secure: false, // Usamos false para el puerto 587
       auth: {
         user: this.configService.get<string>('BREVO_SMTP_LOGIN'),
@@ -99,5 +99,5 @@ export class MailService {
       return false; 
     }
   }
-  
+
 }
