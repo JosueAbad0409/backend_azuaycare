@@ -14,7 +14,7 @@ async function bootstrap() {
   app.enableCors({ 
     origin: [
       'http://localhost:8087', 
-      'https://azuaycarev1.netlify.app'
+      'https://azuaycarev2.netlify.app'
     ], 
     credentials: true 
   });
