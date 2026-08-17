@@ -19,7 +19,7 @@ export class PeriodosMatriculaService {
     private readonly periodosRepository: Repository<PeriodoMatricula>,
     @Inject(forwardRef(() => FormulariosService))
     private readonly formulariosService: FormulariosService,
-  ) {}
+  ) { }
 
   // =========================
   // VALIDACIONES PRIVADAS
@@ -80,7 +80,7 @@ export class PeriodosMatriculaService {
 
     if (solapado) {
       throw new BadRequestException(
-        `El periodo se solapa con "${solapado.nombre}" (${solapado.fecha_inicio} → ${solapado.fecha_fin}). Las fechas no pueden solaparse.`,
+        `Las fechas seleccionadas ya se encuentran dentro del período "${solapado.nombre}" (${solapado.fecha_inicio} → ${solapado.fecha_fin}). Verifique las fechas e intente nuevamente.`
       );
     }
   }
