@@ -112,6 +112,7 @@ export class ReportesService {
       }
     };
   }
+
   /**
    * Obtiene el reporte especializado de Necesidades Educativas y Salud
    */
@@ -157,6 +158,7 @@ export class ReportesService {
       u.cedula,
       c.nombre as carrera,
       ci.nombre as ciclo,
+      f.estado_ficha, -- 🔥 LÍNEA AGREGADA: Ahora el backend enviará el estado
       ff.detalles_vulnerabilidad,
       ff.total_alertas
     FROM FichasFiltradas ff
