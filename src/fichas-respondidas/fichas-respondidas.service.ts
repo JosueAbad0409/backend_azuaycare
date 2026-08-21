@@ -23,6 +23,10 @@ import { MailService } from 'src/mail/mail.service';
 export class FichasRespondidasService {
   private readonly logger = new Logger(FichasRespondidasService.name);
 
+  private readonly MAX_CONCURRENT_QR_PDF = 10;
+  private currentQrPdfJobs = 0;
+  private readonly qrPdfWaitQueue: Array<() => void> = [];
+
   constructor(
     @InjectRepository(FichaRespondida)
     private readonly fichasRepository: Repository<FichaRespondida>,
@@ -472,9 +476,41 @@ private templateQrCache: string | null = null;
     return this.templateQrCache;
   }
 
-  async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
+
+  /**
+   * Adquiere un slot de concurrencia.
+   * Si hay menos de MAX_CONCURRENT_QR_PDF trabajos activos → continúa de inmediato.
+   * Si no → se encola y espera a que se libere un slot.
+   */
+  private async acquireQrPdfSlot(): Promise<void> {
+    if (this.currentQrPdfJobs < this.MAX_CONCURRENT_QR_PDF) {
+      this.currentQrPdfJobs++;
+      return;
+    }
+
+    // Encolar: la promesa se resuelve cuando alguien libere un slot
+    await new Promise<void>((resolve) => {
+      this.qrPdfWaitQueue.push(resolve);
+    });
+    this.currentQrPdfJobs++;
+  }
+
+  /**
+   * Libera un slot y despierta al siguiente de la cola (si existe).
+   */
+  private releaseQrPdfSlot(): void {
+    this.currentQrPdfJobs = Math.max(0, this.currentQrPdfJobs - 1);
+
+    const next = this.qrPdfWaitQueue.shift();
+    if (next) {
+      next(); // despierta al siguiente esperando
+    }
+  }
+
+    async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
+    await this.acquireQrPdfSlot();
+
     try {
-      
       const ficha = await this.findOne(id, user);
 
       const alertas = await this.dataSource.query(`
@@ -490,13 +526,10 @@ private templateQrCache: string | null = null;
         AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
     `, [id]);
 
-      // 🔥 Reemplaza el string con la URL real de tu plataforma en Angular (Frontend)
-// Si la tienes en Vercel, Netlify, etc., pon esa URL. Si estás probando local, usa localhost.
-// Reemplaza las líneas del baseUrl y urlBienestar por esto:
-const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com'; 
-const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
-      
-      const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, { 
+      const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com';
+      const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
+
+      const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, {
         errorCorrectionLevel: 'M',
         margin: 2,
         width: 200,
@@ -514,11 +547,13 @@ const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
       });
 
       return await this.pdfRenderer.renderizarHtmlAPdf(html);
-      
+
     } catch (error: any) {
-      // 🔥 ESTO IMPRIMIRÁ EL ERROR REAL EN TUS LOGS DE RENDER
       this.logger.error(`Error crítico generando PDF Resumen: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Error interno al generar el PDF: ${error.message}`);
+    } finally {
+      // Siempre liberar el slot, aunque haya fallado
+      this.releaseQrPdfSlot();
     }
   }
 
