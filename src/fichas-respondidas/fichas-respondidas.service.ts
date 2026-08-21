@@ -23,7 +23,9 @@ import { MailService } from 'src/mail/mail.service';
 export class FichasRespondidasService {
   private readonly logger = new Logger(FichasRespondidasService.name);
 
-  private readonly MAX_CONCURRENT_QR_PDF = 10;
+  private readonly MAX_CONCURRENT_QR_PDF = 3;
+  
+  
   private currentQrPdfJobs = 0;
   private readonly qrPdfWaitQueue: Array<() => void> = [];
 

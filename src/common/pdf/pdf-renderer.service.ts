@@ -3,8 +3,8 @@ import puppeteer, { Browser } from 'puppeteer';
 import * as Handlebars from 'handlebars';
 import { registerHandlebarsHelpers } from './helpers/handlebars-helpers';
 
-const MAX_PAGINAS_CONCURRENTES = 10; 
-const TIMEOUT_RENDER_MS = 2500;
+const MAX_PAGINAS_CONCURRENTES = 3; 
+const TIMEOUT_RENDER_MS = 30000;
 
 @Injectable()
 export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
@@ -81,21 +81,23 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
 
 
   async renderizarHtmlAPdf(html: string): Promise<Buffer> {
-    await this.adquirirSlot();
-    const browser = await this.obtenerBrowser();
-    let page: Awaited<ReturnType<Browser['newPage']>> | null = null;
+  await this.adquirirSlot();
+  const browser = await this.obtenerBrowser();
+  let page: Awaited<ReturnType<Browser['newPage']>> | null = null;
 
-    try {
-      page = await browser.newPage();
+  try {
+    page = await browser.newPage();
 
-      await Promise.race([
-  (async () => {
+    // Timeout global de la página
+    page.setDefaultTimeout(TIMEOUT_RENDER_MS);
+    page.setDefaultNavigationTimeout(TIMEOUT_RENDER_MS);
+
     await page.setContent(html, {
-      waitUntil: 'load', // válido en tus tipos
+      waitUntil: 'domcontentloaded',   // más rápido y estable que 'load'
       timeout: TIMEOUT_RENDER_MS,
     });
 
-    // Esperar imágenes externas (Supabase, etc.)
+    // Esperar imágenes externas (Supabase, etc.) con un tiempo razonable
     await page.evaluate(async () => {
       const imgs = Array.from(document.images);
       await Promise.all(
@@ -104,35 +106,34 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
             img.complete
               ? Promise.resolve()
               : new Promise<void>((resolve) => {
-                  img.onload = () => resolve();
-                  img.onerror = () => resolve(); // no bloquear si falla
+                  const timer = setTimeout(() => resolve(), 8000); // máx 8s por imagen
+                  img.onload = () => {
+                    clearTimeout(timer);
+                    resolve();
+                  };
+                  img.onerror = () => {
+                    clearTimeout(timer);
+                    resolve(); // no bloquear si falla
+                  };
                 }),
         ),
       );
     });
-  })(),
-  new Promise((_, reject) =>
-    setTimeout(
-      () => reject(new Error('Timeout al cargar el contenido del PDF')),
-      TIMEOUT_RENDER_MS,
-    ),
-  ),
-]);
 
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
-        timeout: TIMEOUT_RENDER_MS,
-      });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
+      timeout: TIMEOUT_RENDER_MS,
+    });
 
-      return Buffer.from(pdfBuffer);
-    } catch (error: any) {
-      this.logger.error(`Error generando PDF: ${error.message}`, error.stack);
-      throw new InternalServerErrorException('No se pudo generar el documento PDF. Intenta nuevamente.');
-    } finally {
-      if (page) await page.close().catch(() => undefined);
-      this.liberarSlot();
-    }
+    return Buffer.from(pdfBuffer);
+  } catch (error: any) {
+    this.logger.error(`Error generando PDF: ${error.message}`, error.stack);
+    throw new InternalServerErrorException('No se pudo generar el documento PDF. Intenta nuevamente.');
+  } finally {
+    if (page) await page.close().catch(() => undefined);
+    this.liberarSlot();
   }
+}
 }
