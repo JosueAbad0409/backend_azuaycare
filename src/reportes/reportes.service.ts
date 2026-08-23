@@ -585,11 +585,6 @@ export class ReportesService {
       { header: 'Discapacidad', key: 'tiene_discapacidad', width: 14 },
       { header: 'Carrera', key: 'carrera', width: 28 },
       { header: 'Ciclo', key: 'ciclo', width: 20 },
-      { header: 'Estado', key: 'estado', width: 16 },
-      { header: 'Ingresos', key: 'ingresos', width: 14, style: { numFmt: '$#,##0.00' } },
-      { header: 'Egresos', key: 'egresos', width: 14, style: { numFmt: '$#,##0.00' } },
-      { header: 'Balance', key: 'balance', width: 14, style: { numFmt: '$#,##0.00' } },
-      { header: 'Nivel Económico', key: 'nivel_economico', width: 20 },
       ...Array.from(clavesDinamicas).map((clave) => ({ header: clave, key: clave, width: 22 })),
     ];
 
@@ -611,12 +606,6 @@ export class ReportesService {
         tiene_discapacidad: fila.tiene_discapacidad ? 'Sí' : 'No',
         carrera: fila.carrera,
         ciclo: fila.ciclo || 'N/A',
-        estado: fila.estado,
-        ingresos: Number(fila.ingresos) || 0,
-        egresos: Number(fila.egresos) || 0,
-        balance: Number(fila.balance) || 0,
-        nivel_economico: fila.nivel_economico || 'N/A',
-        ...(fila.respuestas_dinamicas || {}),
       }).commit();
     });
 
@@ -820,9 +809,17 @@ export class ReportesService {
   }
 
 
-    async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
+  async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
     const esVistaPoblacion = filtros.vista === 'poblacion';
     const dataset = await this.obtenerDatasetFiltrado(filtros);
+
+    // 👇 SOLUCIÓN HORA ECUADOR: Forzamos la zona horaria a America/Guayaquil
+    const fechaEcuador = new Intl.DateTimeFormat('es-EC', {
+      timeZone: 'America/Guayaquil',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: true
+    }).format(new Date());
 
     // ---- Vista simplificada: Explorador de Población ----
     if (esVistaPoblacion) {
@@ -840,7 +837,7 @@ export class ReportesService {
         periodo: dataset.periodo,
         total_registros: dataset.total_registros,
         dataset: dataset.datos,
-        generated_at: new Date().toLocaleString('es-EC'),
+        generated_at: fechaEcuador, // Aplicamos la fecha corregida
       });
 
       return this.pdfRendererService.renderizarHtmlAPdf(html);
@@ -896,7 +893,7 @@ export class ReportesService {
       total_registros: dataset.total_registros,
       dataset: dataset.datos,
       total_fichas_respondidas: agregado.total_fichas_respondidas,
-      generated_at: new Date().toLocaleString('es-EC'),
+      generated_at: fechaEcuador, // Aplicamos la fecha corregida también aquí
     });
 
     return this.pdfRendererService.renderizarHtmlAPdf(html);
