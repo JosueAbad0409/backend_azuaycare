@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Explorador de Población - AzuayCare</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    color: #1f2937;
+    font-size: 11px;
+    padding: 24px;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand-logo {
+    width: 42px;
+    height: 42px;
+    background: #003366;
+    color: #fff;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 15px;
+  }
+
+  .brand-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  .brand-subtitle {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 10.5px;
+    color: #374151;
+  }
+
+  .meta strong {
+    color: #111827;
+  }
+
+  .summary-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .summary-box {
+    flex: 1;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+
+  .summary-label {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+
+  .summary-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #003366;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #003366;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    background: #003366;
+    color: #fff;
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 7px 8px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 10px;
+    vertical-align: top;
+  }
+
+  tbody tr:nth-child(even) {
+    background: #f9fafb;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 600;
+  }
+
+  .badge-si { background: #fee2e2; color: #991b1b; }
+  .badge-no { background: #dcfce7; color: #166534; }
+
+  .footer {
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: #6b7280;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 0;
+    color: #6b7280;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <div class="brand-logo">AC</div>
+      <div>
+        <div class="brand-title">AzuayCare</div>
+        <div class="brand-subtitle">Explorador de Población - Reporte Filtrado</div>
+      </div>
+    </div>
+    <div class="meta">
+      <div><strong>Periodo:</strong> {{periodo}}</div>
+      <div><strong>Generado:</strong> {{generated_at}}</div>
+    </div>
+  </div>
+
+  <div class="summary-row">
+    <div class="summary-box">
+      <div class="summary-label">Total de resultados</div>
+      <div class="summary-value">{{total_registros}}</div>
+    </div>
+    <div class="summary-box">
+      <div class="summary-label">Periodo consultado</div>
+      <div class="summary-value" style="font-size:12px;">{{periodo}}</div>
+    </div>
+  </div>
+
+  <div class="section-title">Resultados de la búsqueda</div>
+
+  {{#if dataset.length}}
+  <table>
+    <thead>
+      <tr>
+        <th>Cédula</th>
+        <th>Apellidos</th>
+        <th>Nombres</th>
+        <th>Sexo</th>
+        <th>Etnia</th>
+        <th>Zona</th>
+        <th>Discapacidad</th>
+        <th>Carrera</th>
+        <th>Ciclo</th>
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each dataset}}
+      <tr>
+        <td>{{this.cedula}}</td>
+        <td>{{this.apellidos}}</td>
+        <td>{{this.nombres}}</td>
+        <td>{{this.sexo}}</td>
+        <td>{{this.etnia}}</td>
+        <td>{{this.zona_residencia}}</td>
+        <td>
+          {{#if this.tiene_discapacidad}}
+            <span class="badge badge-si">Sí</span>
+          {{else}}
+            <span class="badge badge-no">No</span>
+          {{/if}}
+        </td>
+        <td>{{this.carrera}}</td>
+        <td>{{this.ciclo}}</td>
+        <td>{{this.estado}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="empty-state">No se encontraron resultados para los filtros seleccionados.</div>
+  {{/if}}
+
+  <div class="footer">
+    <span>Documento generado por la plataforma AzuayCare.</span>
+    <span>Explorador de Población</span>
+  </div>
+
+</body>
+</html>
