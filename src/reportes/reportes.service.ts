@@ -551,31 +551,35 @@ async obtenerDatasetFiltrado(filtros: FiltroReporteDto) {
     }
 
     const resultados = await this.dataSource
-      .createQueryBuilder()
-      .select('u.cedula', 'cedula')
-      .addSelect(
-        "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
-        'apellidos',
-      )
-      .addSelect(
-        "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
-        'nombres',
-      )
-      .addSelect('u.email_institucional', 'email')
-      .addSelect('pup.sexo', 'sexo')
-      .addSelect('pup.etnia', 'etnia')
-      .addSelect('pup.zona_residencia', 'zona_residencia')
-      .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
-      .addSelect('c.nombre', 'carrera')
-      .addSelect('ci.nombre', 'ciclo')
-      .from('usuarios', 'u')
-      .innerJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id')
-      .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-      .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-      .where(condiciones.join(' AND '), parametros)
-      .orderBy('c.nombre', 'ASC')
-      .addOrderBy('u.primer_apellido', 'ASC')
-      .getRawMany();
+  .createQueryBuilder()
+  .select('u.cedula', 'cedula')
+  .addSelect("CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))", 'apellidos')
+  .addSelect("CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))", 'nombres')
+  .addSelect('u.email_institucional', 'email')
+  .addSelect('pup.sexo', 'sexo')
+  .addSelect('pup.etnia', 'etnia')
+  .addSelect('pup.zona_residencia', 'zona_residencia')
+  .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
+  .addSelect('pup.tipo_discapacidad', 'tipo_discapacidad')
+  .addSelect('pup.estado_civil', 'estado_civil')
+  .addSelect('pup.tiene_hijos', 'tiene_hijos')
+  .addSelect('pup.idioma', 'idioma')
+  .addSelect('pup.lugar_nacimiento', 'lugar_nacimiento')
+  .addSelect('pup.fecha_nacimiento', 'fecha_nacimiento')
+  .addSelect('pup.rango_edad', 'rango_edad')
+  .addSelect('pup.nacionalidad', 'nacionalidad')
+  .addSelect('pup.esta_embarazada', 'esta_embarazada')
+  .addSelect('pup.numero_celular', 'numero_celular')
+  .addSelect('c.nombre', 'carrera')
+  .addSelect('ci.nombre', 'ciclo')
+  .from('usuarios', 'u')
+  .innerJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id')
+  .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+  .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+  .where(condiciones.join(' AND '), parametros)
+  .orderBy('c.nombre', 'ASC')
+  .addOrderBy('u.primer_apellido', 'ASC')
+  .getRawMany();
 
     return {
       periodo: nombrePeriodo,
