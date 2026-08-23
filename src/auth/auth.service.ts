@@ -201,6 +201,7 @@ export class AuthService implements OnModuleInit {
         carrera_id: usuario.carrera_id ?? null,
         nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
         foto_url: usuario.foto_url ?? null,
+        cedula: usuario.cedula ?? null, // 🔥 AGREGAMOS LA CÉDULA AL TOKEN
       });
 
       const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;

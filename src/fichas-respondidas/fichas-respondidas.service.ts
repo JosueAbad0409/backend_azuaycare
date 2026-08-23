@@ -259,7 +259,8 @@ export class FichasRespondidasService {
   async findByUsuario(usuarioId: string) {
     return this.fichasRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
-      relations: { periodo: true, formulario: true, rangoResultado: true },
+      // 🔥 AGREGAMOS usuario: true PARA QUE LLEGUE LA CÉDULA AL FRONTEND
+      relations: { usuario: true, periodo: true, formulario: true, rangoResultado: true }, 
       order: { created_at: 'DESC' },
     });
   }
