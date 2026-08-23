@@ -36,20 +36,8 @@ export class FormulariosService {
       throw new NotFoundException('El tipo de formulario indicado no existe o está inactivo.');
     }
 
-    // 2. REGLA CLAVE: un solo formulario vivo por (tipo_formulario_id + periodo_id).
-    const yaExiste = await this.formulariosRepository.findOne({
-      where: {
-        tipo_formulario_id: createFormularioDto.tipo_formulario_id,
-        periodo_id: createFormularioDto.periodo_id,
-        fecha_desactivacion: IsNull(),
-      },
-    });
-    if (yaExiste) {
-      throw new BadRequestException(
-        `Ya existe un formulario de tipo "${tipoFormulario.nombre}" registrado para este periodo. ` +
-        `Solo se permite un formulario por tipo y periodo; usa "Clonar / Nueva versión" si quieres pasarlo a otro periodo.`,
-      );
-    }
+    // SE ELIMINÓ LA REGLA QUE BLOQUEABA MÚLTIPLES FORMULARIOS (yaExiste)
+    // Ahora permite crear todos los que quieras del mismo tipo.
 
     const ultimaVersion = await this.formulariosRepository.findOne({
       where: { tipo_formulario_id: createFormularioDto.tipo_formulario_id, fecha_desactivacion: IsNull() },
