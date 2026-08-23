@@ -19,23 +19,21 @@ export class CiclosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll(
-    @Query('skip') skip = 0,
-    @Query('take') take = 1000,
-  ) {
-    return this.ciclosService.findAll(+skip, +take); // CORRECCIÓN
+  findAll(@Query('skip') skip = 0, @Query('take') take = 1000) {
+    return this.ciclosService.findAll(+skip, +take);
+  }
+
+
+  @Get('carrera/:carreraId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
+  findByCarrera(@Param('carreraId') carreraId: string) {
+    return this.ciclosService.findByCarrera(carreraId);
   }
 
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string) {
     return this.ciclosService.findOne(id);
-  }
-
-  @Get('carrera/:carreraId')
-  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findByCarrera(@Param('carreraId') carreraId: string) {
-    return this.ciclosService.findByCarrera(carreraId);
   }
 
   @Patch(':id')

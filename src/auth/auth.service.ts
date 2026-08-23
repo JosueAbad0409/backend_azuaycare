@@ -7,10 +7,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { OAuth2Client } from 'google-auth-library';
-import { Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
 import { Usuario } from '../usuarios/entities/usuario.entity';
 import { LoginGoogleDto } from './dto/login-google.dto';
+import { Repository, IsNull } from 'typeorm';
+import { PerfilUsuarioPeriodo } from '../usuarios/entities/perfil-usuario-periodo.entity';
+import { PeriodoMatricula } from '../periodos-matricula/entities/periodos-matricula.entity';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -20,6 +22,10 @@ export class AuthService implements OnModuleInit {
   constructor(
     @InjectRepository(Usuario)
     private readonly usuariosRepository: Repository<Usuario>,
+    @InjectRepository(PerfilUsuarioPeriodo)
+    private readonly perfilPeriodoRepository: Repository<PerfilUsuarioPeriodo>,
+    @InjectRepository(PeriodoMatricula)
+    private readonly periodosRepository: Repository<PeriodoMatricula>,
     @InjectRepository(Role)
     private readonly rolesRepository: Repository<Role>,
     private readonly jwtService: JwtService,
@@ -132,7 +138,7 @@ export class AuthService implements OnModuleInit {
             'Tu correo no está registrado como Coordinador autorizado. Un administrador debe crear tu cuenta previamente.'
           );
         }
-        
+
         let rolDb = this.rolesCache.get(nombreRolAsignado);
         if (!rolDb) {
           const rolEncontrado = await this.rolesRepository.findOne({ where: { nombre: nombreRolAsignado } });
@@ -155,11 +161,11 @@ export class AuthService implements OnModuleInit {
           foto_url: fotoGoogle,
           // 👇 CORRECCIÓN: Romper la referencia directa en memoria pasando solo el ID.
           // Esto evita que TypeORM recorra la caché entera y provoque cuellos de botella/timeouts.
-          rol: { id: rolDb.id } as Role, 
+          rol: { id: rolDb.id } as Role,
         });
 
         await this.usuariosRepository.save(usuario);
-        
+
         // Asignamos manualmente el rol cargado para que el JWT pueda firmarse correctamente
         usuario.rol = rolDb;
       } else {
@@ -199,13 +205,30 @@ export class AuthService implements OnModuleInit {
 
       const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
       const rolesQueCompletanPerfil = ['ESTUDIANTE', 'INVITADO'];
-      
-      const perfilCompleto =
-        !rolesQueCompletanPerfil.includes(rolFinal) ||
-        Boolean(
+
+      let perfilCompleto = true;
+      if (rolesQueCompletanPerfil.includes(rolFinal)) {
+        const identidadOk = Boolean(
           usuario.cedula &&
-            (rolFinal !== 'ESTUDIANTE' || (usuario.carrera_id && usuario.ciclo_id)),
+          (rolFinal !== 'ESTUDIANTE' || (usuario.carrera_id && usuario.ciclo_id)),
         );
+
+        let perfilPeriodoOk = false;
+        if (identidadOk) {
+          const periodoActivo = await this.periodosRepository.findOne({
+            where: { activo: true, fecha_desactivacion: IsNull() },
+            order: { fecha_inicio: 'DESC' },
+          });
+          if (periodoActivo) {
+            const perfilPeriodo = await this.perfilPeriodoRepository.findOne({
+              where: { usuario_id: usuario.id, periodo_id: periodoActivo.id },
+              select: { id: true },
+            });
+            perfilPeriodoOk = !!perfilPeriodo;
+          }
+        }
+        perfilCompleto = identidadOk && perfilPeriodoOk;
+      }
 
       return {
         message: 'Autenticación exitosa',
@@ -230,7 +253,7 @@ export class AuthService implements OnModuleInit {
       ) {
         throw error;
       }
-      
+
       // Si el error llega hasta aquí, suele ser de Base de Datos (Constraint de TypeORM, timeout, etc.)
       console.error('CRÍTICO - Error en loginWithGoogle:', error);
       throw new InternalServerErrorException(
