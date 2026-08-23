@@ -37,11 +37,11 @@ export class ReportesService {
       `SELECT COUNT(*)::int AS total FROM formularios WHERE fecha_desactivacion IS NULL`
     );
     const totalFichasEvaluadas = await this.dataSource.query(
-  `SELECT COUNT(*)::int AS total
+      `SELECT COUNT(*)::int AS total
    FROM fichas_respondidas
    WHERE fecha_desactivacion IS NULL
      AND estado_ficha IN ('ENVIADA', 'ENVIADO', 'VALIDADO')`
-);
+    );
 
     // 3. Gráfico de Pastel (Rangos de Vulnerabilidad / Niveles) - Corregido a rangos_variable_calculada
     const nivelesData = await this.dataSource.query(
@@ -99,7 +99,6 @@ export class ReportesService {
           labels: nivelesData.map((n: any) => n.label),
           data: nivelesData.map((n: any) => Number(n.total) || 0)
         },
-        // 🔥 NUEVO GRÁFICO AGREGADO:
         nivelesVulnerabilidad: {
           labels: vulnerabilidadData.map((n: any) => n.label),
           data: vulnerabilidadData.map((n: any) => Number(n.total) || 0)
@@ -117,7 +116,7 @@ export class ReportesService {
    * Obtiene el reporte especializado de Necesidades Educativas y Salud
    */
   async obtenerReporteEspecializadoNee(periodoId: string) {
-  const query = `
+    const query = `
     WITH RespuestasVulnerables AS (
       SELECT
         r.ficha_id,
@@ -130,7 +129,6 @@ export class ReportesService {
         ) THEN true ELSE false END AS tiene_evidencia
       FROM respuestas r
       INNER JOIN preguntas p ON p.id = r.pregunta_id
-      -- Usar el nombre real de la tabla de opciones seleccionadas:
       LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
       LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
       WHERE r.fecha_desactivacion IS NULL
@@ -147,8 +145,6 @@ export class ReportesService {
         COUNT(*) as total_alertas
       FROM RespuestasVulnerables
       WHERE
-        -- Solo se manda a revisión si la respuesta es afirmativa
-        -- (no cuando responde "No", "Ninguna", "N/A", etc.)
         UPPER(COALESCE(respuesta, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
       GROUP BY ficha_id
     )
@@ -158,7 +154,7 @@ export class ReportesService {
       u.cedula,
       c.nombre as carrera,
       ci.nombre as ciclo,
-      f.estado_ficha, -- 🔥 LÍNEA AGREGADA: Ahora el backend enviará el estado
+      f.estado_ficha,
       ff.detalles_vulnerabilidad,
       ff.total_alertas
     FROM FichasFiltradas ff
@@ -171,8 +167,8 @@ export class ReportesService {
       AND f.fecha_desactivacion IS NULL
     ORDER BY ff.total_alertas DESC
   `;
-  return await this.dataSource.query(query, [periodoId]);
-}
+    return await this.dataSource.query(query, [periodoId]);
+  }
 
   /**
    * Genera el JSON estructurado con métricas y agregaciones por cada pregunta
@@ -188,7 +184,6 @@ export class ReportesService {
       throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
     }
 
-    // 1. Obtener Secciones y Preguntas ordenadas
     const estructuraFormulario = await this.dataSource.query(
       `
       SELECT 
@@ -208,7 +203,6 @@ export class ReportesService {
       [formularioId],
     );
 
-    // 2. Total de fichas enviadas para cálculo de porcentajes
     const totalFichasQuery = await this.dataSource.query(
       `SELECT COUNT(id)::int AS total FROM fichas_respondidas WHERE formulario_id = $1 AND fecha_desactivacion IS NULL`,
       [formularioId],
@@ -217,7 +211,6 @@ export class ReportesService {
 
     const reporteEstructurado: any[] = [];
 
-    // 3. Procesar cada pregunta según su tipo
     for (const preg of estructuraFormulario) {
       const tipoCampo = preg.tipo_campo.toUpperCase();
       let metricas: any = null;
@@ -380,9 +373,19 @@ export class ReportesService {
     return filtros;
   }
 
+  /**
+   * Construye el WHERE dinámico según los filtros recibidos.
+   * `periodo_id` es OPCIONAL: si no viene, no se agrega esa condición
+   * (permite filtrar por sexo/etnia/zona/etc. sin tener que elegir un periodo).
+   */
   private construirCondicionesFiltros(filtros: FiltroReporteDto) {
-    const condiciones: string[] = ['f.periodo_id = :periodo_id', 'f.fecha_desactivacion IS NULL'];
-    const parametros: Record<string, any> = { periodo_id: filtros.periodo_id };
+    const condiciones: string[] = ['f.fecha_desactivacion IS NULL'];
+    const parametros: Record<string, any> = {};
+
+    if (filtros.periodo_id) {
+      condiciones.push('f.periodo_id = :periodo_id');
+      parametros.periodo_id = filtros.periodo_id;
+    }
 
     if (filtros.formulario_id) {
       condiciones.push('f.formulario_id = :formulario_id');
@@ -402,6 +405,36 @@ export class ReportesService {
     if (filtros.estado_ficha && filtros.estado_ficha !== 'TODOS') {
       condiciones.push('f.estado_ficha = :estado_ficha');
       parametros.estado_ficha = filtros.estado_ficha;
+    }
+
+    if (filtros.sexo) {
+      condiciones.push('u.sexo = :sexo');
+      parametros.sexo = filtros.sexo;
+    }
+
+    if (filtros.etnia) {
+      condiciones.push('u.etnia = :etnia');
+      parametros.etnia = filtros.etnia;
+    }
+
+    if (filtros.zona_residencia) {
+      condiciones.push('u.zona_residencia = :zona_residencia');
+      parametros.zona_residencia = filtros.zona_residencia;
+    }
+
+    if (filtros.tiene_discapacidad !== undefined) {
+      condiciones.push('u.tiene_discapacidad = :tiene_discapacidad');
+      parametros.tiene_discapacidad = filtros.tiene_discapacidad;
+    }
+
+    if (filtros.busqueda) {
+      condiciones.push(
+        `(u.cedula ILIKE '%' || :busqueda || '%'
+          OR u.primer_nombre ILIKE '%' || :busqueda || '%'
+          OR u.primer_apellido ILIKE '%' || :busqueda || '%'
+          OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
+      );
+      parametros.busqueda = filtros.busqueda;
     }
 
     filtros.preguntas?.forEach((pregunta, index) => {
@@ -448,14 +481,23 @@ export class ReportesService {
     return this.obtenerDatasetFiltrado({ periodo_id: periodoId });
   }
 
+  /**
+   * Dataset filtrado (usado por el explorador de población, Excel y PDF).
+   * `periodo_id` es opcional: si no viene, se buscan fichas de TODOS los periodos.
+   */
   async obtenerDatasetFiltrado(filtros: FiltroReporteDto) {
-    const periodo = await this.dataSource.manager.query(
-      `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
-      [filtros.periodo_id],
-    );
+    let nombrePeriodo = 'Todos los periodos';
 
-    if (!periodo || periodo.length === 0) {
-      throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
+    if (filtros.periodo_id) {
+      const periodo = await this.dataSource.manager.query(
+        `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
+        [filtros.periodo_id],
+      );
+
+      if (!periodo || periodo.length === 0) {
+        throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
+      }
+      nombrePeriodo = periodo[0].nombre;
     }
 
     const filtro = this.construirCondicionesFiltros(filtros);
@@ -466,6 +508,10 @@ export class ReportesService {
       .addSelect("CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))", 'apellidos')
       .addSelect("CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))", 'nombres')
       .addSelect('u.email_institucional', 'email')
+      .addSelect('u.sexo', 'sexo')
+      .addSelect('u.etnia', 'etnia')
+      .addSelect('u.zona_residencia', 'zona_residencia')
+      .addSelect('u.tiene_discapacidad', 'tiene_discapacidad')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
       .addSelect('f.estado_ficha', 'estado')
@@ -496,7 +542,7 @@ export class ReportesService {
       .getRawMany();
 
     return {
-      periodo: periodo[0].nombre,
+      periodo: nombrePeriodo,
       total_registros: resultados.length,
       datos: resultados,
     };
@@ -532,6 +578,10 @@ export class ReportesService {
       { header: 'Apellidos', key: 'apellidos', width: 25 },
       { header: 'Nombres', key: 'nombres', width: 25 },
       { header: 'Email', key: 'email', width: 30 },
+      { header: 'Sexo', key: 'sexo', width: 12 },
+      { header: 'Etnia', key: 'etnia', width: 18 },
+      { header: 'Zona', key: 'zona_residencia', width: 12 },
+      { header: 'Discapacidad', key: 'tiene_discapacidad', width: 14 },
       { header: 'Carrera', key: 'carrera', width: 28 },
       { header: 'Ciclo', key: 'ciclo', width: 20 },
       { header: 'Estado', key: 'estado', width: 16 },
@@ -554,6 +604,10 @@ export class ReportesService {
         apellidos: fila.apellidos?.trim(),
         nombres: fila.nombres?.trim(),
         email: fila.email,
+        sexo: fila.sexo || 'N/A',
+        etnia: fila.etnia || 'N/A',
+        zona_residencia: fila.zona_residencia || 'N/A',
+        tiene_discapacidad: fila.tiene_discapacidad ? 'Sí' : 'No',
         carrera: fila.carrera,
         ciclo: fila.ciclo || 'N/A',
         estado: fila.estado,
@@ -761,62 +815,61 @@ export class ReportesService {
 
 
   async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
-  const dataset = await this.obtenerDatasetFiltrado(filtros);
-  const agregado = await this.obtenerAgregadoPorPregunta(filtros);
+    const dataset = await this.obtenerDatasetFiltrado(filtros);
+    const agregado = await this.obtenerAgregadoPorPregunta(filtros);
 
-  const filtrosParaPdf: Record<string, any> = {
-    estado_ficha: filtros.estado_ficha || null,
-    formulario_nombre: 'Todos',
-    carrera_nombre: 'Todas',
-    ciclo_nombre: 'Todos',
-  };
+    const filtrosParaPdf: Record<string, any> = {
+      estado_ficha: filtros.estado_ficha || null,
+      formulario_nombre: 'Todos',
+      carrera_nombre: 'Todas',
+      ciclo_nombre: 'Todos',
+    };
 
-  if (filtros.formulario_id) {
-    const formRows = await this.dataSource.query(
-      `SELECT titulo FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
-      [filtros.formulario_id],
+    if (filtros.formulario_id) {
+      const formRows = await this.dataSource.query(
+        `SELECT titulo FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
+        [filtros.formulario_id],
+      );
+      filtrosParaPdf.formulario_nombre = formRows?.[0]?.titulo || filtros.formulario_id;
+    }
+
+    if (filtros.carrera_id) {
+      const carreraRows = await this.dataSource.query(
+        `SELECT nombre FROM carreras WHERE id = $1 AND fecha_desactivacion IS NULL`,
+        [filtros.carrera_id],
+      );
+      filtrosParaPdf.carrera_nombre = carreraRows?.[0]?.nombre || filtros.carrera_id;
+    }
+
+    if (filtros.ciclo_id) {
+      const cicloRows = await this.dataSource.query(
+        `SELECT nombre FROM ciclos WHERE id = $1 AND fecha_desactivacion IS NULL`,
+        [filtros.ciclo_id],
+      );
+      filtrosParaPdf.ciclo_nombre = cicloRows?.[0]?.nombre || filtros.ciclo_id;
+    }
+
+    const templatePath = path.join(
+      process.cwd(),
+      process.env.NODE_ENV === 'production'
+        ? 'dist/common/pdf/templates/reporte-consolidado.hbs'
+        : 'src/common/pdf/templates/reporte-consolidado.hbs',
     );
-    filtrosParaPdf.formulario_nombre = formRows?.[0]?.titulo || filtros.formulario_id;
+
+    const source = readFileSync(templatePath, 'utf-8');
+    const template = this.pdfRendererService.compilarTemplate('reporte-consolidado', source);
+
+    const html = template({
+      filtros: filtrosParaPdf,
+      periodo: dataset.periodo,
+      total_registros: dataset.total_registros,
+      dataset: dataset.datos, // ← se envía el dataset COMPLETO, ya no se corta a 50
+      total_fichas_respondidas: agregado.total_fichas_respondidas,
+      generated_at: new Date().toLocaleString('es-EC'),
+    });
+
+    return this.pdfRendererService.renderizarHtmlAPdf(html);
   }
-
-  if (filtros.carrera_id) {
-    const carreraRows = await this.dataSource.query(
-      `SELECT nombre FROM carreras WHERE id = $1 AND fecha_desactivacion IS NULL`,
-      [filtros.carrera_id],
-    );
-    filtrosParaPdf.carrera_nombre = carreraRows?.[0]?.nombre || filtros.carrera_id;
-  }
-
-  if (filtros.ciclo_id) {
-    const cicloRows = await this.dataSource.query(
-      `SELECT nombre FROM ciclos WHERE id = $1 AND fecha_desactivacion IS NULL`,
-      [filtros.ciclo_id],
-    );
-    filtrosParaPdf.ciclo_nombre = cicloRows?.[0]?.nombre || filtros.ciclo_id;
-  }
-
-  const templatePath = path.join(
-    process.cwd(),
-    process.env.NODE_ENV === 'production'
-      ? 'dist/common/pdf/templates/reporte-consolidado.hbs'
-      : 'src/common/pdf/templates/reporte-consolidado.hbs',
-  );
-
-  const source = readFileSync(templatePath, 'utf-8');
-  const template = this.pdfRendererService.compilarTemplate('reporte-consolidado', source);
-
-  const html = template({
-    filtros: filtrosParaPdf,
-    periodo: dataset.periodo,
-    total_registros: dataset.total_registros,
-    dataset: dataset.datos.slice(0, 50),
-    total_fichas_respondidas: agregado.total_fichas_respondidas,
-    // estructura_agregada eliminada → ya no se genera la sección IV
-    generated_at: new Date().toLocaleString('es-EC'),
-  });
-
-  return this.pdfRendererService.renderizarHtmlAPdf(html);
-}
 
   /**
    * @deprecated Use obtenerDatasetFiltrado instead.

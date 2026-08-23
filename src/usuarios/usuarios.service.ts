@@ -255,22 +255,25 @@ export class UsuariosService {
       datosUsuario.email_personal = emailPersonal;
     }
 
-    // Solo el Estudiante requiere carrera y ciclo; el Invitado no.
-    if (rol === 'ESTUDIANTE') {
-      if (!dto.carrera_id || !dto.ciclo_id) {
-        throw new BadRequestException('La carrera y el ciclo son obligatorios para estudiantes.');
-      }
-      const ciclo = await this.ciclosRepository.findOne({
-        where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
-        select: { id: true, carrera_id: true },
-      });
-      if (!ciclo) throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
-      if (ciclo.carrera_id !== dto.carrera_id) {
-        throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
-      }
-      datosUsuario.carrera_id = dto.carrera_id;
-      datosUsuario.ciclo_id = dto.ciclo_id;
-    }
+
+    if (rol === 'ESTUDIANTE' || rol === 'INVITADO') {
+  if (!dto.carrera_id || !dto.ciclo_id) {
+    throw new BadRequestException('La carrera y el ciclo son obligatorios.');
+  }
+  const ciclo = await this.ciclosRepository.findOne({
+    where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
+    select: { id: true, carrera_id: true },
+  });
+  if (!ciclo) {
+    throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+  }
+  if (ciclo.carrera_id !== dto.carrera_id) {
+    throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+  }
+  datosUsuario.carrera_id = dto.carrera_id;
+  datosUsuario.ciclo_id = dto.ciclo_id;
+}
+
 
     const cedulaEnUso = await this.usuariosRepository.findOne({
       where: { cedula: dto.cedula },

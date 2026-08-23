@@ -1,5 +1,5 @@
-import { IsOptional, IsString, IsUUID, IsArray, IsDateString, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsUUID, IsArray, IsDateString, IsBoolean, ValidateNested } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 export class FiltroPreguntaDto {
   @IsUUID()
@@ -63,6 +63,28 @@ export class FiltroReporteDto {
   @IsArray()
   @IsString({ each: true })
   cursos?: string[];
+
+  // ---- Nuevos filtros demográficos (explorador de población) ----
+  @IsOptional()
+  @IsString()
+  sexo?: string;
+
+  @IsOptional()
+  @IsString()
+  etnia?: string;
+
+  @IsOptional()
+  @IsString()
+  zona_residencia?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  tiene_discapacidad?: boolean;
+
+  @IsOptional()
+  @IsString()
+  busqueda?: string;
 
   @IsOptional()
   @IsArray()

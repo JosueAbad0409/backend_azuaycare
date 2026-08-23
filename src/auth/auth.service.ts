@@ -209,8 +209,7 @@ export class AuthService implements OnModuleInit {
       let perfilCompleto = true;
       if (rolesQueCompletanPerfil.includes(rolFinal)) {
         const identidadOk = Boolean(
-          usuario.cedula &&
-          (rolFinal !== 'ESTUDIANTE' || (usuario.carrera_id && usuario.ciclo_id)),
+          usuario.cedula && usuario.carrera_id && usuario.ciclo_id,
         );
 
         let perfilPeriodoOk = false;
