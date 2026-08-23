@@ -209,17 +209,6 @@ export class FormulariosService {
       throw new BadRequestException('El formulario de origen no tiene asignado un tipo válido.');
     }
 
-    const colisionDestino = await this.formulariosRepository.findOne({
-      where: {
-        tipo_formulario_id: formularioOrigen.tipo_formulario_id,
-        periodo_id: nuevoPeriodoId,
-        fecha_desactivacion: IsNull(),
-      },
-    });
-    if (colisionDestino) {
-      throw new BadRequestException('El periodo destino ya cuenta con un formulario de este mismo tipo.');
-    }
-
     const versionesExistentes = await this.formulariosRepository.find({
       where: { tipo_formulario_id: formularioOrigen.tipo_formulario_id, fecha_desactivacion: IsNull() },
       order: { version: 'ASC' },
