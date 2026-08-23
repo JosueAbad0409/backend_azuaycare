@@ -485,28 +485,82 @@ export class ReportesService {
    * Dataset filtrado (usado por el explorador de población, Excel y PDF).
    * `periodo_id` es opcional: si no viene, se buscan fichas de TODOS los periodos.
    */
-  async obtenerDatasetFiltrado(filtros: FiltroReporteDto) {
-    let nombrePeriodo = 'Todos los periodos';
+  /**
+ * Dataset filtrado.
+ * - vista === 'poblacion' → usuarios + perfil (NO exige ficha)
+ * - resto → fichas respondidas (como antes)
+ */
+async obtenerDatasetFiltrado(filtros: FiltroReporteDto) {
+  let nombrePeriodo = 'Todos los periodos';
+
+  if (filtros.periodo_id) {
+    const periodo = await this.dataSource.manager.query(
+      `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.periodo_id],
+    );
+
+    if (!periodo || periodo.length === 0) {
+      throw new NotFoundException(
+        'El periodo de matrícula solicitado no existe o está inactivo.',
+      );
+    }
+    nombrePeriodo = periodo[0].nombre;
+  }
+
+  // ========== EXPLORADOR DE POBLACIÓN (sin ficha) ==========
+  if (filtros.vista === 'poblacion') {
+    const condiciones: string[] = ['u.fecha_desactivacion IS NULL'];
+    const parametros: Record<string, any> = {};
 
     if (filtros.periodo_id) {
-      const periodo = await this.dataSource.manager.query(
-        `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
-        [filtros.periodo_id],
-      );
-
-      if (!periodo || periodo.length === 0) {
-        throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
-      }
-      nombrePeriodo = periodo[0].nombre;
+      condiciones.push('pup.periodo_id = :periodo_id');
+      parametros.periodo_id = filtros.periodo_id;
     }
-
-    const filtro = this.construirCondicionesFiltros(filtros);
+    if (filtros.carrera_id) {
+      condiciones.push('u.carrera_id = :carrera_id');
+      parametros.carrera_id = filtros.carrera_id;
+    }
+    if (filtros.ciclo_id) {
+      condiciones.push('u.ciclo_id = :ciclo_id');
+      parametros.ciclo_id = filtros.ciclo_id;
+    }
+    if (filtros.sexo) {
+      condiciones.push('pup.sexo::text = :sexo');
+      parametros.sexo = filtros.sexo;
+    }
+    if (filtros.etnia) {
+      condiciones.push('pup.etnia::text = :etnia');
+      parametros.etnia = filtros.etnia;
+    }
+    if (filtros.zona_residencia) {
+      condiciones.push('pup.zona_residencia::text = :zona_residencia');
+      parametros.zona_residencia = filtros.zona_residencia;
+    }
+    if (filtros.tiene_discapacidad !== undefined) {
+      condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
+      parametros.tiene_discapacidad = filtros.tiene_discapacidad;
+    }
+    if (filtros.busqueda) {
+      condiciones.push(
+        `(u.cedula ILIKE '%' || :busqueda || '%'
+          OR u.primer_nombre ILIKE '%' || :busqueda || '%'
+          OR u.primer_apellido ILIKE '%' || :busqueda || '%'
+          OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
+      );
+      parametros.busqueda = filtros.busqueda;
+    }
 
     const resultados = await this.dataSource
       .createQueryBuilder()
       .select('u.cedula', 'cedula')
-      .addSelect("CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))", 'apellidos')
-      .addSelect("CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))", 'nombres')
+      .addSelect(
+        "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
+        'apellidos',
+      )
+      .addSelect(
+        "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
+        'nombres',
+      )
       .addSelect('u.email_institucional', 'email')
       .addSelect('pup.sexo', 'sexo')
       .addSelect('pup.etnia', 'etnia')
@@ -514,30 +568,11 @@ export class ReportesService {
       .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
-      .addSelect('f.estado_ficha', 'estado')
-      .addSelect('f.total_ingresos', 'ingresos')
-      .addSelect('f.total_egresos', 'egresos')
-      .addSelect('f.balance_final', 'balance')
-      .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
-      .addSelect(
-        `(
-          SELECT jsonb_object_agg(
-            p.enunciado,
-            COALESCE(res.valor_texto, res.valor_numerico::text, '')
-          )
-          FROM respuestas res
-          INNER JOIN preguntas p ON p.id = res.pregunta_id
-          WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
-        )`,
-        'respuestas_dinamicas',
-      )
-            .from('fichas_respondidas', 'f')
-      .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
+      .from('usuarios', 'u')
+      .innerJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id')
       .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
       .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-      .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
-      .where(filtro.where, filtro.parameters)
+      .where(condiciones.join(' AND '), parametros)
       .orderBy('c.nombre', 'ASC')
       .addOrderBy('u.primer_apellido', 'ASC')
       .getRawMany();
@@ -548,6 +583,66 @@ export class ReportesService {
       datos: resultados,
     };
   }
+
+  // ========== VISTA NORMAL (con fichas) ==========
+  const filtro = this.construirCondicionesFiltros(filtros);
+
+  const resultados = await this.dataSource
+    .createQueryBuilder()
+    .select('u.cedula', 'cedula')
+    .addSelect(
+      "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
+      'apellidos',
+    )
+    .addSelect(
+      "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
+      'nombres',
+    )
+    .addSelect('u.email_institucional', 'email')
+    .addSelect('pup.sexo', 'sexo')
+    .addSelect('pup.etnia', 'etnia')
+    .addSelect('pup.zona_residencia', 'zona_residencia')
+    .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
+    .addSelect('c.nombre', 'carrera')
+    .addSelect('ci.nombre', 'ciclo')
+    .addSelect('f.estado_ficha', 'estado')
+    .addSelect('f.total_ingresos', 'ingresos')
+    .addSelect('f.total_egresos', 'egresos')
+    .addSelect('f.balance_final', 'balance')
+    .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
+    .addSelect(
+      `(
+        SELECT jsonb_object_agg(
+          p.enunciado,
+          COALESCE(res.valor_texto, res.valor_numerico::text, '')
+        )
+        FROM respuestas res
+        INNER JOIN preguntas p ON p.id = res.pregunta_id
+        WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
+      )`,
+      'respuestas_dinamicas',
+    )
+    .from('fichas_respondidas', 'f')
+    .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+    .leftJoin(
+      'perfiles_usuario_periodo',
+      'pup',
+      'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
+    )
+    .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+    .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+    .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
+    .where(filtro.where, filtro.parameters)
+    .orderBy('c.nombre', 'ASC')
+    .addOrderBy('u.primer_apellido', 'ASC')
+    .getRawMany();
+
+  return {
+    periodo: nombrePeriodo,
+    total_registros: resultados.length,
+    datos: resultados,
+  };
+}
 
   async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
     const dataset = await this.obtenerDatasetFiltrado(filtros);
@@ -899,9 +994,6 @@ export class ReportesService {
     return this.pdfRendererService.renderizarHtmlAPdf(html);
   }
 
-  /**
-   * @deprecated Use obtenerDatasetFiltrado instead.
-   */
   async obtenerDatasetPlanoAntiguo(periodoId: string) {
     const periodo = await this.dataSource.manager.query(
       `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
