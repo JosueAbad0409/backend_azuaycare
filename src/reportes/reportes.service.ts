@@ -820,8 +820,33 @@ export class ReportesService {
   }
 
 
-  async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
+    async generarReporteFiltradoPdf(filtros: FiltroReporteDto) {
+    const esVistaPoblacion = filtros.vista === 'poblacion';
     const dataset = await this.obtenerDatasetFiltrado(filtros);
+
+    // ---- Vista simplificada: Explorador de Población ----
+    if (esVistaPoblacion) {
+      const templatePath = path.join(
+        process.cwd(),
+        process.env.NODE_ENV === 'production'
+          ? 'dist/common/pdf/templates/reporte-poblacion.hbs'
+          : 'src/common/pdf/templates/reporte-poblacion.hbs',
+      );
+
+      const source = readFileSync(templatePath, 'utf-8');
+      const template = this.pdfRendererService.compilarTemplate('reporte-poblacion', source);
+
+      const html = template({
+        periodo: dataset.periodo,
+        total_registros: dataset.total_registros,
+        dataset: dataset.datos,
+        generated_at: new Date().toLocaleString('es-EC'),
+      });
+
+      return this.pdfRendererService.renderizarHtmlAPdf(html);
+    }
+
+    // ---- Vista completa: Dashboard / Reportes Consolidados ----
     const agregado = await this.obtenerAgregadoPorPregunta(filtros);
 
     const filtrosParaPdf: Record<string, any> = {
@@ -869,7 +894,7 @@ export class ReportesService {
       filtros: filtrosParaPdf,
       periodo: dataset.periodo,
       total_registros: dataset.total_registros,
-      dataset: dataset.datos, // ← se envía el dataset COMPLETO, ya no se corta a 50
+      dataset: dataset.datos,
       total_fichas_respondidas: agregado.total_fichas_respondidas,
       generated_at: new Date().toLocaleString('es-EC'),
     });

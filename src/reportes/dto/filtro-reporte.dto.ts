@@ -18,6 +18,7 @@ export class FiltroPreguntaDto {
   @IsOptional()
   @IsString()
   texto?: string;
+  
 }
 
 export class FiltroReporteDto {
@@ -91,4 +92,8 @@ export class FiltroReporteDto {
   @ValidateNested({ each: true })
   @Type(() => FiltroPreguntaDto)
   preguntas?: FiltroPreguntaDto[];
+
+  @IsOptional()
+  @IsString()
+  vista?: 'completo' | 'poblacion';
 }
