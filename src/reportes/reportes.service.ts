@@ -407,27 +407,27 @@ export class ReportesService {
       parametros.estado_ficha = filtros.estado_ficha;
     }
 
-    if (filtros.sexo) {
-      condiciones.push('u.sexo = :sexo');
+        if (filtros.sexo) {
+      condiciones.push('pup.sexo::text = :sexo');
       parametros.sexo = filtros.sexo;
     }
 
     if (filtros.etnia) {
-      condiciones.push('u.etnia = :etnia');
+      condiciones.push('pup.etnia::text = :etnia');
       parametros.etnia = filtros.etnia;
     }
 
     if (filtros.zona_residencia) {
-      condiciones.push('u.zona_residencia = :zona_residencia');
+      condiciones.push('pup.zona_residencia::text = :zona_residencia');
       parametros.zona_residencia = filtros.zona_residencia;
     }
 
     if (filtros.tiene_discapacidad !== undefined) {
-      condiciones.push('u.tiene_discapacidad = :tiene_discapacidad');
+      condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
       parametros.tiene_discapacidad = filtros.tiene_discapacidad;
     }
 
-    if (filtros.busqueda) {
+        if (filtros.busqueda) {
       condiciones.push(
         `(u.cedula ILIKE '%' || :busqueda || '%'
           OR u.primer_nombre ILIKE '%' || :busqueda || '%'
@@ -508,10 +508,10 @@ export class ReportesService {
       .addSelect("CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))", 'apellidos')
       .addSelect("CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))", 'nombres')
       .addSelect('u.email_institucional', 'email')
-      .addSelect('u.sexo', 'sexo')
-      .addSelect('u.etnia', 'etnia')
-      .addSelect('u.zona_residencia', 'zona_residencia')
-      .addSelect('u.tiene_discapacidad', 'tiene_discapacidad')
+      .addSelect('pup.sexo', 'sexo')
+      .addSelect('pup.etnia', 'etnia')
+      .addSelect('pup.zona_residencia', 'zona_residencia')
+      .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
       .addSelect('f.estado_ficha', 'estado')
@@ -531,8 +531,9 @@ export class ReportesService {
         )`,
         'respuestas_dinamicas',
       )
-      .from('fichas_respondidas', 'f')
+            .from('fichas_respondidas', 'f')
       .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
       .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
       .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
       .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
@@ -687,6 +688,7 @@ export class ReportesService {
       .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
       .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
       .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
       .where(filtroGlobal.where, filtroGlobal.parameters)
       .getRawOne();
 
@@ -709,7 +711,8 @@ export class ReportesService {
           .leftJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
           .leftJoin('usuarios', 'u', 'u.id = f.usuario_id')
           .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+                .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
           .where('op.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
           .andWhere('op.fecha_desactivacion IS NULL')
           .andWhere(filtroGlobal.where, filtroGlobal.parameters)
@@ -738,7 +741,8 @@ export class ReportesService {
           .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
           .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
           .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+                .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
           .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
           .andWhere('r.fecha_desactivacion IS NULL')
           .andWhere(filtroGlobal.where, filtroGlobal.parameters)
@@ -766,7 +770,8 @@ export class ReportesService {
           .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
           .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
           .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+                .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
           .where(filtroGlobal.where, filtroGlobal.parameters)
           .groupBy('rm.fila_id, fm.texto_fila, rm.columna_id, cm.texto_columna')
           .setParameter('pregunta_id', preg.pregunta_id)
@@ -784,7 +789,8 @@ export class ReportesService {
           .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
           .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
           .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+                .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
           .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
           .andWhere('r.valor_texto IS NOT NULL')
           .andWhere('r.fecha_desactivacion IS NULL')
