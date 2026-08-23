@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import { ArrayNotEmpty, ArrayUnique, IsArray, IsInt, IsNotEmpty, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 
 export class CreateCicloDto {
   @IsString({ message: 'El nombre del ciclo debe ser un texto.' })
@@ -10,8 +10,11 @@ export class CreateCicloDto {
   @Min(1, { message: 'El orden debe ser como mínimo 1.' })
   @IsNotEmpty({ message: 'El número u orden del ciclo es obligatorio.' })
   orden: number;
-  
-  @IsUUID('4', { message: 'El carrera_id debe ser un UUID válido.' })
-  @IsNotEmpty({ message: 'La carrera asociada es obligatoria.' })
-  carrera_id: string;
+
+  // Un ciclo ahora puede pertenecer a una o varias carreras
+  @IsArray({ message: 'carrera_ids debe ser un arreglo.' })
+  @ArrayNotEmpty({ message: 'Debe asociar el ciclo a al menos una carrera.' })
+  @ArrayUnique({ message: 'No se puede repetir la misma carrera.' })
+  @IsUUID('4', { each: true, message: 'Cada carrera_id debe ser un UUID válido.' })
+  carrera_ids: string[];
 }

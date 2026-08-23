@@ -1,4 +1,4 @@
-import { Ciclo } from 'src/ciclos/entities/ciclo.entity';
+import { CicloCarrera } from 'src/ciclos/entities/ciclo-carrera.entity';
 import { CoordinadoresCarrera } from 'src/coordinadores-carreras/entities/coordinadores-carrera.entity';
 import { Usuario } from 'src/usuarios/entities/usuario.entity';
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
@@ -35,9 +35,9 @@ export class Carrera {
   @OneToMany(() => CoordinadoresCarrera, (coordinacion) => coordinacion.carrera)
   coordinaciones: CoordinadoresCarrera[];
 
-  // Relación con ciclos
-  @OneToMany(() => Ciclo, (ciclo) => ciclo.carrera)
-  ciclos: Ciclo[];
+  // Relación con ciclos (muchos-a-muchos a través de ciclos_carreras)
+  @OneToMany(() => CicloCarrera, (cicloCarrera) => cicloCarrera.carrera)
+  ciclosCarreras: CicloCarrera[];
 
 
 }

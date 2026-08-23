@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { Carrera } from './entities/carrera.entity';
-import { CreateCarreraDto } from './dto/create-carrera.dto';
 import { UpdateCarreraDto } from './dto/update-carrera.dto';
+import { CreateCarreraDto } from './dto/create-carrera.dto';
 
 @Injectable()
 export class CarrerasService {

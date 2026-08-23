@@ -1,50 +1,78 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
+import { DataSource, Repository, IsNull } from 'typeorm';
 import { Ciclo } from './entities/ciclo.entity';
 import { CreateCicloDto } from './dto/create-ciclo.dto';
 import { UpdateCicloDto } from './dto/update-ciclo.dto';
+import { CicloCarrera } from './entities/ciclo-carrera.entity';
 
 @Injectable()
 export class CiclosService {
   constructor(
     @InjectRepository(Ciclo)
     private readonly ciclosRepository: Repository<Ciclo>,
+    @InjectRepository(CicloCarrera)
+    private readonly ciclosCarrerasRepository: Repository<CicloCarrera>,
+    private readonly dataSource: DataSource,
   ) {}
+
+  // Lanza error si, para alguna de las carreras dadas, ya existe un ciclo activo
+  // con el mismo nombre o el mismo orden (opcionalmente excluyendo un ciclo por id).
+  private async validarColisiones(
+    carreraIds: string[],
+    nombre: string,
+    orden: number,
+    excluirCicloId?: string,
+  ) {
+    if (!carreraIds?.length) return;
+
+    const query = this.ciclosCarrerasRepository
+      .createQueryBuilder('cc')
+      .innerJoin('cc.ciclo', 'ciclo')
+      .where('cc.carrera_id IN (:...carreraIds)', { carreraIds })
+      .andWhere('ciclo.fecha_desactivacion IS NULL')
+      .andWhere('(ciclo.nombre = :nombre OR ciclo.orden = :orden)', { nombre, orden });
+
+    if (excluirCicloId) {
+      query.andWhere('ciclo.id != :excluirCicloId', { excluirCicloId });
+    }
+
+    const colision = await query.getOne();
+
+    if (colision) {
+      throw new BadRequestException('El nombre o el número de orden ya existe para alguna de las carreras seleccionadas.');
+    }
+  }
 
   async create(createCicloDto: CreateCicloDto) {
     const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
 
-    // Validar duplicado por nombre o por número de orden dentro de la misma carrera
-    const existe = await this.ciclosRepository.findOne({
-      where: [
-        { nombre: nombreSanitizado, carrera_id: createCicloDto.carrera_id, fecha_desactivacion: IsNull() },
-        { orden: createCicloDto.orden, carrera_id: createCicloDto.carrera_id, fecha_desactivacion: IsNull() },
-      ],
-      select: { id: true },
+    await this.validarColisiones(createCicloDto.carrera_ids, nombreSanitizado, createCicloDto.orden);
+
+    return this.dataSource.transaction(async (manager) => {
+      const nuevoCiclo = manager.create(Ciclo, {
+        nombre: nombreSanitizado,
+        orden: createCicloDto.orden,
+      });
+      const cicloGuardado = await manager.save(nuevoCiclo);
+
+      const vinculos = createCicloDto.carrera_ids.map((carreraId) =>
+        manager.create(CicloCarrera, { ciclo_id: cicloGuardado.id, carrera_id: carreraId }),
+      );
+      await manager.save(vinculos);
+
+      return this.findOne(cicloGuardado.id);
     });
-
-    if (existe) {
-      throw new BadRequestException('El nombre o el número de orden ya existen para esta carrera.');
-    }
-
-    const nuevoCiclo = this.ciclosRepository.create({
-      ...createCicloDto,
-      nombre: nombreSanitizado,
-    });
-
-    return this.ciclosRepository.save(nuevoCiclo);
   }
 
   async findByCarrera(carreraId: string) {
-    const ciclos = await this.ciclosRepository.find({
-      where: { 
-        carrera_id: carreraId, 
-        fecha_desactivacion: IsNull() 
-      },
-      relations: { carrera: true },
-      order: { orden: 'ASC' }, // Cambiado de 'nombre' a 'orden'
-    });
+    const ciclos = await this.ciclosRepository
+      .createQueryBuilder('ciclo')
+      .innerJoin('ciclo.ciclosCarreras', 'cc')
+      .where('cc.carrera_id = :carreraId', { carreraId })
+      .andWhere('ciclo.fecha_desactivacion IS NULL')
+      .orderBy('ciclo.orden', 'ASC')
+      .getMany();
 
     if (!ciclos || ciclos.length === 0) {
       throw new NotFoundException('No se encontraron ciclos para esta carrera.');
@@ -60,15 +88,15 @@ export class CiclosService {
       where: { fecha_desactivacion: IsNull() },
       skip: skipReal,
       take: limiteReal,
-      relations: { carrera: true },
-      order: { carrera_id: 'ASC', orden: 'ASC' }, // Cambiado a 'orden'
+      relations: { ciclosCarreras: { carrera: true } },
+      order: { orden: 'ASC' },
     });
   }
 
   async findOne(id: string) {
     const ciclo = await this.ciclosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { carrera: true },
+      relations: { ciclosCarreras: { carrera: true } },
     });
 
     if (!ciclo) {
@@ -80,39 +108,33 @@ export class CiclosService {
 
   async update(id: string, updateCicloDto: UpdateCicloDto) {
     const cicloActual = await this.findOne(id);
-    const datosActualizados: Partial<Ciclo> = { ...updateCicloDto };
 
-    const carreraReferencia = updateCicloDto.carrera_id || cicloActual.carrera_id;
+    const carreraIdsReferencia =
+      updateCicloDto.carrera_ids ?? cicloActual.ciclosCarreras.map((cc) => cc.carrera_id);
+    const nombreReferencia = updateCicloDto.nombre
+      ? updateCicloDto.nombre.toUpperCase().trim()
+      : cicloActual.nombre;
+    const ordenReferencia = updateCicloDto.orden ?? cicloActual.orden;
 
-    if (updateCicloDto.nombre) {
-      datosActualizados.nombre = updateCicloDto.nombre.toUpperCase().trim();
+    if (updateCicloDto.nombre || updateCicloDto.orden || updateCicloDto.carrera_ids) {
+      await this.validarColisiones(carreraIdsReferencia, nombreReferencia, ordenReferencia, id);
     }
 
-    // Verificar colisión de nombre u orden
-    if (updateCicloDto.nombre || updateCicloDto.orden) {
-      const colision = await this.ciclosRepository.findOne({
-        where: [
-          {
-            nombre: datosActualizados.nombre || cicloActual.nombre,
-            carrera_id: carreraReferencia,
-            id: Not(id),
-            fecha_desactivacion: IsNull(),
-          },
-          {
-            orden: updateCicloDto.orden ?? cicloActual.orden,
-            carrera_id: carreraReferencia,
-            id: Not(id),
-            fecha_desactivacion: IsNull(),
-          },
-        ],
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(Ciclo, id, {
+        ...(updateCicloDto.nombre && { nombre: nombreReferencia }),
+        ...(updateCicloDto.orden !== undefined && { orden: updateCicloDto.orden }),
       });
 
-      if (colision) {
-        throw new BadRequestException('El nombre o el número de orden ya existe para esa carrera.');
+      if (updateCicloDto.carrera_ids) {
+        await manager.delete(CicloCarrera, { ciclo_id: id });
+        const vinculos = updateCicloDto.carrera_ids.map((carreraId) =>
+          manager.create(CicloCarrera, { ciclo_id: id, carrera_id: carreraId }),
+        );
+        await manager.save(vinculos);
       }
-    }
+    });
 
-    await this.ciclosRepository.update(id, datosActualizados);
     return this.findOne(id);
   }
 

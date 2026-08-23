@@ -6,6 +6,7 @@ import { Usuario } from './entities/usuario.entity';
 import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { Ciclo } from '../ciclos/entities/ciclo.entity';
+import { CicloCarrera } from '../ciclos/entities/ciclo-carrera.entity';
 import { CompletarPerfilDto } from './dto/completar-perfil.dto';
 import { SexoEnum } from './enums/perfil-usuario.enum';
 import { parseFechaNacimiento } from '../common/is-fecha-nacimiento.validator';
@@ -21,6 +22,8 @@ export class UsuariosService {
     private readonly usuariosRepository: Repository<Usuario>,
     @InjectRepository(Ciclo)
     private readonly ciclosRepository: Repository<Ciclo>,
+    @InjectRepository(CicloCarrera)
+    private readonly ciclosCarrerasRepository: Repository<CicloCarrera>,
     @InjectRepository(PeriodoMatricula)
     private readonly periodosRepository: Repository<PeriodoMatricula>,
     @InjectRepository(PerfilUsuarioPeriodo)
@@ -31,6 +34,15 @@ export class UsuariosService {
       process.env.SUPABASE_URL as string,
       process.env.SUPABASE_KEY as string,
     );
+  }
+
+  // Un ciclo ahora puede estar ligado a varias carreras (tabla puente ciclos_carreras).
+  private async cicloPerteneceACarrera(cicloId: string, carreraId: string): Promise<boolean> {
+    const vinculo = await this.ciclosCarrerasRepository.findOne({
+      where: { ciclo_id: cicloId, carrera_id: carreraId },
+      select: { id: true },
+    });
+    return !!vinculo;
   }
 
   async create(createUsuarioDto: CreateUsuarioDto) {
@@ -59,14 +71,17 @@ export class UsuariosService {
     if (createUsuarioDto.ciclo_id) {
       const ciclo = await this.ciclosRepository.findOne({
         where: { id: createUsuarioDto.ciclo_id, fecha_desactivacion: IsNull() },
-        select: { id: true, carrera_id: true },
+        select: { id: true },
       });
 
       if (!ciclo) {
         throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
       }
 
-      if (createUsuarioDto.carrera_id && ciclo.carrera_id !== createUsuarioDto.carrera_id) {
+      if (
+        createUsuarioDto.carrera_id &&
+        !(await this.cicloPerteneceACarrera(ciclo.id, createUsuarioDto.carrera_id))
+      ) {
         throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
       }
     }
@@ -140,7 +155,7 @@ export class UsuariosService {
     if (updateUsuarioDto.ciclo_id) {
       const ciclo = await this.ciclosRepository.findOne({
         where: { id: updateUsuarioDto.ciclo_id, fecha_desactivacion: IsNull() },
-        select: { id: true, carrera_id: true },
+        select: { id: true },
       });
 
       if (!ciclo) {
@@ -148,18 +163,18 @@ export class UsuariosService {
       }
 
       const carreraIdAValidar = updateUsuarioDto.carrera_id ?? usuarioExistente.carrera_id;
-      if (carreraIdAValidar && ciclo.carrera_id !== carreraIdAValidar) {
+      if (carreraIdAValidar && !(await this.cicloPerteneceACarrera(ciclo.id, carreraIdAValidar))) {
         throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
       }
     }
 
     if (updateUsuarioDto.carrera_id && usuarioExistente.ciclo_id) {
-      const cicloActual = await this.ciclosRepository.findOne({
-        where: { id: usuarioExistente.ciclo_id, fecha_desactivacion: IsNull() },
-        select: { id: true, carrera_id: true },
-      });
+      const perteneceALaNuevaCarrera = await this.cicloPerteneceACarrera(
+        usuarioExistente.ciclo_id,
+        updateUsuarioDto.carrera_id,
+      );
 
-      if (cicloActual && cicloActual.carrera_id !== updateUsuarioDto.carrera_id) {
+      if (!perteneceALaNuevaCarrera) {
         throw new BadRequestException('No es posible cambiar la carrera sin actualizar primero el ciclo asociado.');
       }
     }
@@ -262,12 +277,12 @@ export class UsuariosService {
   }
   const ciclo = await this.ciclosRepository.findOne({
     where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
-    select: { id: true, carrera_id: true },
+    select: { id: true },
   });
   if (!ciclo) {
     throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
   }
-  if (ciclo.carrera_id !== dto.carrera_id) {
+  if (!(await this.cicloPerteneceACarrera(ciclo.id, dto.carrera_id))) {
     throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
   }
   datosUsuario.carrera_id = dto.carrera_id;
