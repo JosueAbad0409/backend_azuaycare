@@ -9,6 +9,10 @@ export class CreateDocumentosRespaldoDto {
   @IsUUID('4', { message: 'El ficha_id debe ser un UUID válido.' })
   ficha_id?: string;
 
+  @IsOptional()
+  @IsUUID('4', { message: 'El perfil_periodo_id debe ser un UUID válido.' })
+  perfil_periodo_id?: string;
+
   @IsString({ message: 'La ruta del documento debe ser texto.' })
   @IsNotEmpty({ message: 'La ruta del documento no puede estar vacía.' })
   ruta_archivo: string;

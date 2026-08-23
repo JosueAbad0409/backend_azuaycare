@@ -6,6 +6,7 @@ import { Express } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { RespuestasFormulario } from 'src/respuestas-formulario/entities/respuestas-formulario.entity';
 import { FichaRespondida } from 'src/fichas-respondidas/entities/ficha-respondida.entity';
+import { PerfilUsuarioPeriodo } from 'src/usuarios/entities/perfil-usuario-periodo.entity';
 
 @Injectable()
 export class DocumentosRespaldoService {
@@ -56,6 +57,20 @@ export class DocumentosRespaldoService {
     return true;
   }
 
+  private async validarPropiedadPerfilPeriodo(perfilPeriodoId: string, usuarioId: string, rol: string) {
+    if (rol.includes('COORDINADOR')) return true;
+
+    const perfilPeriodo = await this.dataSource.manager.createQueryBuilder(PerfilUsuarioPeriodo, 'p')
+      .where('p.id = :perfilPeriodoId', { perfilPeriodoId })
+      .select(['p.usuario_id AS usuario_id'])
+      .getRawOne();
+
+    if (!perfilPeriodo || perfilPeriodo.usuario_id !== usuarioId) {
+      throw new ForbiddenException('No tienes permiso para gestionar los documentos de este perfil.');
+    }
+    return true;
+  }
+
   // ----------------------------------------------------------------------
   // SUBIDA A SUPABASE Y GENERACIÓN DE URL PÚBLICA
   // ----------------------------------------------------------------------
@@ -94,7 +109,7 @@ export class DocumentosRespaldoService {
 
   async subirYCrear(
     archivo: Express.Multer.File,
-    body: { respuesta_id?: string; ficha_id?: string },
+    body: { respuesta_id?: string; ficha_id?: string; perfil_periodo_id?: string },
     usuarioId: string,
     rol: string,
   ): Promise<DocumentoRespaldo> {
@@ -104,6 +119,8 @@ export class DocumentosRespaldoService {
       await this.validarPropiedadDocumento(body.respuesta_id, usuarioId, rol);
     } else if (body.ficha_id) {
       await this.validarPropiedadFicha(body.ficha_id, usuarioId, rol);
+    } else if (body.perfil_periodo_id) {
+      await this.validarPropiedadPerfilPeriodo(body.perfil_periodo_id, usuarioId, rol);
     }
 
     const urlPublica = await this.subirArchivoAStorage(archivo);
@@ -112,6 +129,7 @@ export class DocumentosRespaldoService {
       usuario_id: usuarioId, 
       respuesta_id: body.respuesta_id ?? null,
       ficha_id: body.ficha_id ?? null,
+      perfil_periodo_id: body.perfil_periodo_id ?? null,
       ruta_archivo: urlPublica,
       nombre_original: archivo.originalname,
       mime_type: archivo.mimetype,
@@ -138,6 +156,14 @@ export class DocumentosRespaldoService {
     return await this.documentosRepository.find({
       where: { respuesta_id: respuestaId, fecha_desactivacion: IsNull() },
       relations: { respuesta: true, verificador: true },
+    });
+  }
+
+  async findByPerfilPeriodo(perfilPeriodoId: string, usuarioId: string, rol: string) {
+    await this.validarPropiedadPerfilPeriodo(perfilPeriodoId, usuarioId, rol);
+    return await this.documentosRepository.find({
+      where: { perfil_periodo_id: perfilPeriodoId, fecha_desactivacion: IsNull() },
+      relations: { verificador: true },
     });
   }
 

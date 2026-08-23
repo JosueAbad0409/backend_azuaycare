@@ -37,217 +37,252 @@ export class RespuestasFormularioService {
   ) {}
 
   async guardarMuchas(
-    dtos: any[],
-    usuarioId: string, 
-    archivos?: Express.Multer.File[],
-    esEnvioFinal: boolean = false,
-  ) {
-    if (!dtos.length) return { success: true, message: 'Sin respuestas para guardar.' };
+  dtos: any[],
+  usuarioId: string,
+  archivos?: Express.Multer.File[],
+  esEnvioFinal: boolean = false,
+) {
+  if (!dtos.length) {
+    return { success: true, message: 'Sin respuestas para guardar.' };
+  }
 
-    const fichasIdsUnicas = [...new Set(dtos.map(dto => dto.ficha_id))];
-    
-    for (const fId of fichasIdsUnicas) {
-      const ficha = await this.dataSource.getRepository(FichaRespondida).findOne({ 
-        where: { id: fId }, 
-        select: {
-          id: true,
-          usuario_id: true,
-          estado_ficha: true,
-          formulario_id: true
-        }
-      });
+  const fichasIdsUnicas = [...new Set(dtos.map(dto => dto.ficha_id))];
 
-      if (!ficha || (ficha as any).usuario_id !== usuarioId) {
-        throw new ForbiddenException(`No tienes permiso para insertar respuestas en la ficha seleccionada.`);
-      }
-    }
-
-    const preguntasIds = [...new Set(dtos.map(dto => dto.pregunta_id))];
-    const preguntasData = await this.dataSource.getRepository(Pregunta).find({
-      where: { id: In(preguntasIds) },
-      relations: { tipoCampo: true }
+  // Validación de permisos
+  for (const fId of fichasIdsUnicas) {
+    const ficha = await this.dataSource.getRepository(FichaRespondida).findOne({
+      where: { id: fId },
+      select: {
+        id: true,
+        usuario_id: true,
+        estado_ficha: true,
+        formulario_id: true,
+      },
     });
 
-    for (const dto of dtos) {
-      const preguntaBD = preguntasData.find(p => p.id === dto.pregunta_id);
-      if (preguntaBD) {
-        if (preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
-          if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 1) {
-            throw new BadRequestException(
-              `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es de SELECCION_UNICA pero se recibieron ${dto.opciones_seleccionadas.length} opciones.`
-            );
-          }
-        }
-        if (preguntaBD.tipoCampo?.nombre === 'NUMERICO') {
-          if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
-            throw new BadRequestException(
-              `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es NUMERICA y no debe recibir opciones seleccionadas.`
-            );
-          }
-        }
-      }
-    }
-
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // 1. Limpieza de respuestas anteriores (Borrado lógico)
-      for (const fId of fichasIdsUnicas) {
-        await queryRunner.manager.update(
-          RespuestasFormulario, 
-          { ficha_id: fId, fecha_desactivacion: IsNull() }, 
-          { fecha_desactivacion: new Date() } as any
-        );
-      }
-
-      let fichaId = '';
-
-      // 2. INSERCIÓN MASIVA OPTIMIZADA
-      // Preparamos el array de entidades a crear
-      const respuestasACrear = dtos.map(dto => {
-        fichaId = dto.ficha_id; // Conservamos el último fichaId para uso posterior
-        return this.respuestasRepository.create({
-          ficha_id: dto.ficha_id,
-          pregunta_id: dto.pregunta_id,
-          valor_texto: dto.valor_texto ?? null,
-          valor_numerico: dto.valor_numerico ?? null,
-        });
-      });
-
-      // Guardamos TODAS las respuestas base en una sola transacción
-      const respuestasGuardadas = await queryRunner.manager.save(RespuestasFormulario, respuestasACrear);
-
-      const opcionesAInsertar: any[] = [];
-      const matricesAInsertar: any[] = [];
-
-      // Relacionamos los IDs autogenerados con sus opciones y matrices
-      for (let i = 0; i < dtos.length; i++) {
-        const dto = dtos[i];
-        const respuestaId = respuestasGuardadas[i].id;
-
-        if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
-          dto.opciones_seleccionadas.forEach((opcionId: string) => {
-            opcionesAInsertar.push({ respuesta_id: respuestaId, opcion_id: opcionId });
-          });
-        }
-
-        if (dto.respuestas_matriz && dto.respuestas_matriz.length > 0) {
-          dto.respuestas_matriz.forEach((matriz: any) => {
-            matricesAInsertar.push({
-              respuesta_id: respuestaId,
-              fila_id: matriz.fila_id,
-              columna_id: matriz.columna_id,
-              valor_texto: matriz.valor_texto ?? null
-            });
-          });
-        }
-      }
-
-      // Insertamos las opciones secundarias en bloque
-      if (opcionesAInsertar.length > 0) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .insert()
-          .into('respuestas_opciones_seleccionadas')
-          .values(opcionesAInsertar)
-          .execute();
-      }
-
-      // Insertamos las matrices secundarias en bloque
-      if (matricesAInsertar.length > 0) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .insert()
-          .into('respuestas_matriz')
-          .values(matricesAInsertar)
-          .execute();
-      }
-
-      // 3. GESTIÓN DE ESTADO Y PLAZOS
-      if (fichaId) {
-        const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
-          where: { id: fichaId },
-          relations: { formulario: true },
-        });
-
-        // Estados desde los que un envío final puede transicionar (BORRADOR normal,
-        // o RECHAZADA cuando el estudiante corrige y reenvía).
-        const estadosQuePermitenEnvio = ['BORRADOR', 'RECHAZADA'];
-
-        if (fichaActual && esEnvioFinal && estadosQuePermitenEnvio.includes((fichaActual as any).estado_ficha)) {
-          // Determina si la ficha tiene alguna respuesta afirmativa a una
-          // pregunta marcada como revision_manual_obligatoria (ej. embarazo,
-          // discapacidad). Si no tiene ninguna, se valida automáticamente;
-          // si tiene al menos una, queda en ENVIADA para revisión del staff.
-          const [{ tiene_alertas }] = await queryRunner.manager.query(
-            `SELECT EXISTS (
-               SELECT 1
-               FROM respuestas r
-               INNER JOIN preguntas p ON p.id = r.pregunta_id
-               LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
-               LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
-               WHERE r.ficha_id = $1
-                 AND r.fecha_desactivacion IS NULL
-                 AND p.fecha_desactivacion IS NULL
-                 AND p.revision_manual_obligatoria = true
-                 AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-             ) AS tiene_alertas`,
-            [fichaId],
-          );
-
-          const datosUpdateFicha: Partial<FichaRespondida> = {
-            estado_ficha: tiene_alertas ? 'ENVIADA' : 'VALIDADO',
-          };
-          
-          if (fichaActual.formulario?.dias_plazo_modificacion) {
-            const fechaLimite = new Date();
-            fechaLimite.setDate(fechaLimite.getDate() + fichaActual.formulario.dias_plazo_modificacion);
-            datosUpdateFicha.fecha_limite_edicion = fechaLimite;
-          } else {
-            datosUpdateFicha.fecha_limite_edicion = null;
-          }
-
-          await queryRunner.manager.update(FichaRespondida, fichaId, datosUpdateFicha as any);
-        }
-      }
-
-      // 4. Manejo de archivos
-      if (archivos && archivos.length > 0) {
-        const documentosSubidos = await this.documentosService.subirMultiples(archivos);
-        
-        const documentosAGuardar = documentosSubidos.map(doc => ({
-          ...doc,
-          ficha_id: fichaId,
-        }));
-        
-        await queryRunner.manager
-            .createQueryBuilder()
-            .insert()
-            .into('documentos_respaldo') 
-            .values(documentosAGuardar)
-            .execute();
-      }
-
-      await queryRunner.commitTransaction();
-
-      // 5. Dispara el Evento
-      if (fichaId) {
-        this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
-      }
-
-      return {
-        success: true,
-        message: `${respuestasGuardadas.length} respuestas almacenadas de forma optimizada. Balances en cálculo.`,
-      };
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
+    if (!ficha || (ficha as any).usuario_id !== usuarioId) {
+      throw new ForbiddenException(
+        `No tienes permiso para insertar respuestas en la ficha seleccionada.`,
+      );
     }
   }
+
+  // Validación de tipos de pregunta
+  const preguntasIds = [...new Set(dtos.map(dto => dto.pregunta_id))];
+  const preguntasData = await this.dataSource.getRepository(Pregunta).find({
+    where: { id: In(preguntasIds) },
+    relations: { tipoCampo: true },
+  });
+
+  for (const dto of dtos) {
+    const preguntaBD = preguntasData.find(p => p.id === dto.pregunta_id);
+    if (preguntaBD) {
+      if (preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
+        if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 1) {
+          throw new BadRequestException(
+            `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es de SELECCION_UNICA pero se recibieron ${dto.opciones_seleccionadas.length} opciones.`,
+          );
+        }
+      }
+      if (preguntaBD.tipoCampo?.nombre === 'NUMERICO') {
+        if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
+          throw new BadRequestException(
+            `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es NUMERICA y no debe recibir opciones seleccionadas.`,
+          );
+        }
+      }
+    }
+  }
+
+  const queryRunner = this.dataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+
+  try {
+    // 🔒 Lock por ficha: evita que dos envíos del mismo estudiante se pisen
+    for (const fId of fichasIdsUnicas) {
+      await queryRunner.manager.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1))`,
+        [fId],
+      );
+    }
+
+    // 1. Soft-delete de respuestas anteriores
+    for (const fId of fichasIdsUnicas) {
+      await queryRunner.manager.update(
+        RespuestasFormulario,
+        { ficha_id: fId, fecha_desactivacion: IsNull() },
+        { fecha_desactivacion: new Date() } as any,
+      );
+    }
+
+    let fichaId = '';
+
+    // 2. Inserción masiva
+    const respuestasACrear = dtos.map(dto => {
+      fichaId = dto.ficha_id;
+      return this.respuestasRepository.create({
+        ficha_id: dto.ficha_id,
+        pregunta_id: dto.pregunta_id,
+        valor_texto: dto.valor_texto ?? null,
+        valor_numerico: dto.valor_numerico ?? null,
+      });
+    });
+
+    const respuestasGuardadas = await queryRunner.manager.save(
+      RespuestasFormulario,
+      respuestasACrear,
+    );
+
+    const opcionesAInsertar: any[] = [];
+    const matricesAInsertar: any[] = [];
+
+    for (let i = 0; i < dtos.length; i++) {
+      const dto = dtos[i];
+      const respuestaId = respuestasGuardadas[i].id;
+
+      if (dto.opciones_seleccionadas?.length > 0) {
+        dto.opciones_seleccionadas.forEach((opcionId: string) => {
+          opcionesAInsertar.push({ respuesta_id: respuestaId, opcion_id: opcionId });
+        });
+      }
+
+      if (dto.respuestas_matriz?.length > 0) {
+        dto.respuestas_matriz.forEach((matriz: any) => {
+          matricesAInsertar.push({
+            respuesta_id: respuestaId,
+            fila_id: matriz.fila_id,
+            columna_id: matriz.columna_id,
+            valor_texto: matriz.valor_texto ?? null,
+          });
+        });
+      }
+    }
+
+    if (opcionesAInsertar.length > 0) {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into('respuestas_opciones_seleccionadas')
+        .values(opcionesAInsertar)
+        .execute();
+    }
+
+    if (matricesAInsertar.length > 0) {
+      await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into('respuestas_matriz')
+        .values(matricesAInsertar)
+        .execute();
+    }
+
+    // 3. Estado y plazos
+    if (fichaId) {
+      const fichaActual = await queryRunner.manager.findOne(FichaRespondida, {
+        where: { id: fichaId },
+        relations: { formulario: true },
+      });
+
+      const estadosQuePermitenEnvio = ['BORRADOR', 'RECHAZADA'];
+
+      if (
+        fichaActual &&
+        esEnvioFinal &&
+        estadosQuePermitenEnvio.includes((fichaActual as any).estado_ficha)
+      ) {
+        const [{ tiene_alertas }] = await queryRunner.manager.query(
+          `SELECT EXISTS (
+             SELECT 1
+             FROM respuestas r
+             INNER JOIN preguntas p ON p.id = r.pregunta_id
+             LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+             LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+             WHERE r.ficha_id = $1
+               AND r.fecha_desactivacion IS NULL
+               AND p.fecha_desactivacion IS NULL
+               AND p.revision_manual_obligatoria = true
+               AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) 
+                   NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+           ) AS tiene_alertas`,
+          [fichaId],
+        );
+
+        const datosUpdateFicha: Partial<FichaRespondida> = {
+          estado_ficha: tiene_alertas ? 'ENVIADA' : 'VALIDADO',
+        };
+
+        if (fichaActual.formulario?.dias_plazo_modificacion) {
+          const fechaLimite = new Date();
+          fechaLimite.setDate(
+            fechaLimite.getDate() + fichaActual.formulario.dias_plazo_modificacion,
+          );
+          datosUpdateFicha.fecha_limite_edicion = fechaLimite;
+        } else {
+          datosUpdateFicha.fecha_limite_edicion = null;
+        }
+
+        await queryRunner.manager.update(
+          FichaRespondida,
+          fichaId,
+          datosUpdateFicha as any,
+        );
+      }
+    }
+
+    // 4. Archivos
+    if (archivos && archivos.length > 0) {
+      const documentosSubidos = await this.documentosService.subirMultiples(archivos);
+
+      const documentosAGuardar = documentosSubidos.map(doc => ({
+        ...doc,
+        ficha_id: fichaId,
+      }));
+
+      await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into('documentos_respaldo')
+        .values(documentosAGuardar)
+        .execute();
+    }
+
+    await queryRunner.commitTransaction();
+
+    if (fichaId) {
+      this.eventEmitter.emit('ficha.respuestas.actualizadas', { fichaId });
+    }
+
+    return {
+      success: true,
+      message: `${respuestasGuardadas.length} respuestas almacenadas de forma optimizada. Balances en cálculo.`,
+    };
+  } catch (error: any) {
+    await queryRunner.rollbackTransaction();
+
+    const msg = String(error?.message || error);
+
+    if (
+      msg.includes('timeout') ||
+      msg.includes('Connection terminated') ||
+      msg.includes('too many clients')
+    ) {
+      throw new BadRequestException(
+        'El sistema está recibiendo muchas peticiones. Espera unos segundos e intenta de nuevo.',
+      );
+    }
+
+    if (msg.includes('deadlock') || msg.includes('could not serialize')) {
+      throw new BadRequestException(
+        'Hubo un conflicto temporal al guardar. Intenta de nuevo en unos segundos.',
+      );
+    }
+
+    throw error;
+  } finally {
+    await queryRunner.release();
+  }
+}
 
   async obtenerPrecarga(periodoNuevoId: string, usuarioId: string): Promise<ResultadoPrecarga> {
   const formularioNuevo = await this.dataSource.getRepository(Formulario).findOne({

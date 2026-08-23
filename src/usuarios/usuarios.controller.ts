@@ -60,6 +60,14 @@ export class UsuariosController {
     return this.usuariosService.findOne(id);
   }
 
+
+    // Indica si el usuario ya llenó su perfil en el periodo de matrícula activo (y devuelve ese periodo)
+  @Get('perfil/estado')
+  @Roles('ESTUDIANTE', 'INVITADO')
+  obtenerEstadoPerfil(@Req() req: RequestWithUser) {
+    return this.usuariosService.obtenerEstadoPerfil(req.user.id);
+  }
+
   // Ahora aplica tanto a ESTUDIANTE como a INVITADO y pasa el rol al servicio
   @Patch('perfil/completar')
   @Roles('ESTUDIANTE', 'INVITADO')

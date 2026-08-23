@@ -66,19 +66,27 @@ import { HealthController } from './health/health.controller';
     CacheModule.register({ isGlobal: true }),
     ThrottlerModule.forRoot([{
       ttl: 60000,
-      limit: 100,
+      limit: 300,
     }]), 
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres' as const,
-        url: configService.get<string>('DATABASE_URL'),
-        autoLoadEntities: true,
-        synchronize: configService.get<string>('NODE_ENV') !== 'production', 
-        logging: configService.get<string>('NODE_ENV') !== 'production',
-      }),
-    }),
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (configService: ConfigService) => ({
+    type: 'postgres' as const,
+    url: configService.get<string>('DATABASE_URL'),
+    autoLoadEntities: true,
+    synchronize: configService.get<string>('NODE_ENV') !== 'production',
+    logging: configService.get<string>('NODE_ENV') !== 'production',
+
+    // 🔥 Pool para ~1000 estudiantes (piloto)
+    extra: {
+      max: 30,              // conexiones máximas en el pool
+      min: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    },
+  }),
+}),
     
     AuthModule,
     RolesModule,

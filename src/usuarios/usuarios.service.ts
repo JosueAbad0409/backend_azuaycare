@@ -7,6 +7,10 @@ import { CreateUsuarioDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { Ciclo } from '../ciclos/entities/ciclo.entity';
 import { CompletarPerfilDto } from './dto/completar-perfil.dto';
+import { SexoEnum } from './enums/perfil-usuario.enum';
+import { parseFechaNacimiento } from '../common/is-fecha-nacimiento.validator';
+import { PeriodoMatricula } from '../periodos-matricula/entities/periodos-matricula.entity';
+import { PerfilUsuarioPeriodo } from './entities/perfil-usuario-periodo.entity';
 
 @Injectable()
 export class UsuariosService {
@@ -17,6 +21,10 @@ export class UsuariosService {
     private readonly usuariosRepository: Repository<Usuario>,
     @InjectRepository(Ciclo)
     private readonly ciclosRepository: Repository<Ciclo>,
+    @InjectRepository(PeriodoMatricula)
+    private readonly periodosRepository: Repository<PeriodoMatricula>,
+    @InjectRepository(PerfilUsuarioPeriodo)
+    private readonly perfilPeriodoRepository: Repository<PerfilUsuarioPeriodo>,
   ) {
     // Instanciación manual del cliente de Supabase
     this.supabase = createClient(
@@ -167,6 +175,37 @@ export class UsuariosService {
     return this.findOne(id);
   }
 
+  // Busca el periodo de matrícula actualmente activo. Si no hay ninguno, no se puede completar perfil.
+  private async obtenerPeriodoActivo(): Promise<PeriodoMatricula> {
+    const periodo = await this.periodosRepository.findOne({
+      where: { activo: true, fecha_desactivacion: IsNull() },
+      order: { fecha_inicio: 'DESC' },
+    });
+
+    if (!periodo) {
+      throw new BadRequestException(
+        'No hay un periodo de matrícula activo en este momento. Comuníquese con Bienestar Estudiantil.',
+      );
+    }
+
+    return periodo;
+  }
+
+  // Indica si el usuario ya llenó su perfil para el periodo activo, y devuelve ese periodo.
+  async obtenerEstadoPerfil(usuarioId: string) {
+    const periodoActivo = await this.obtenerPeriodoActivo();
+
+    const perfilPeriodo = await this.perfilPeriodoRepository.findOne({
+      where: { usuario_id: usuarioId, periodo_id: periodoActivo.id },
+    });
+
+    return {
+      periodo: periodoActivo,
+      perfil_completo: !!perfilPeriodo,
+      perfil: perfilPeriodo,
+    };
+  }
+
   async completarPerfilEstudiante(usuarioId: string, rol: string, dto: CompletarPerfilDto) {
     const usuario = await this.usuariosRepository.findOne({
       where: { id: usuarioId, fecha_desactivacion: IsNull() },
@@ -174,7 +213,47 @@ export class UsuariosService {
     });
     if (!usuario) throw new NotFoundException('El usuario no existe o fue desactivado.');
 
-    const datosActualizar: Partial<Usuario> = { cedula: dto.cedula };
+    // El perfil siempre se guarda contra el periodo de matrícula activo.
+    const periodoActivo = await this.obtenerPeriodoActivo();
+
+    // La fecha de nacimiento llega como "DD/MM/AAAA" y se guarda como Date real.
+    const fechaNacimiento = parseFechaNacimiento(dto.fecha_nacimiento);
+    if (!fechaNacimiento) {
+      throw new BadRequestException('La fecha de nacimiento ingresada no es válida.');
+    }
+
+    // ---------- 1. Datos de identidad del Usuario (cédula, nombres, correos, carrera/ciclo actual) ----------
+
+    const datosUsuario: Partial<Usuario> = { cedula: dto.cedula };
+
+    if (dto.primer_nombre) datosUsuario.primer_nombre = dto.primer_nombre;
+    if (dto.segundo_nombre) datosUsuario.segundo_nombre = dto.segundo_nombre;
+    if (dto.primer_apellido) datosUsuario.primer_apellido = dto.primer_apellido;
+    if (dto.segundo_apellido) datosUsuario.segundo_apellido = dto.segundo_apellido;
+
+    if (dto.email_institucional) {
+      const emailInstitucional = dto.email_institucional.toLowerCase().trim();
+      const enUso = await this.usuariosRepository.findOne({
+        where: { email_institucional: emailInstitucional },
+        select: { id: true },
+      });
+      if (enUso && enUso.id !== usuarioId) {
+        throw new BadRequestException('El correo institucional ingresado ya está registrado por otro usuario.');
+      }
+      datosUsuario.email_institucional = emailInstitucional;
+    }
+
+    if (dto.email_personal) {
+      const emailPersonal = dto.email_personal.toLowerCase().trim();
+      const enUso = await this.usuariosRepository.findOne({
+        where: { email_personal: emailPersonal },
+        select: { id: true },
+      });
+      if (enUso && enUso.id !== usuarioId) {
+        throw new BadRequestException('El correo personal ingresado ya está registrado por otro usuario.');
+      }
+      datosUsuario.email_personal = emailPersonal;
+    }
 
     // Solo el Estudiante requiere carrera y ciclo; el Invitado no.
     if (rol === 'ESTUDIANTE') {
@@ -189,8 +268,8 @@ export class UsuariosService {
       if (ciclo.carrera_id !== dto.carrera_id) {
         throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
       }
-      datosActualizar.carrera_id = dto.carrera_id;
-      datosActualizar.ciclo_id = dto.ciclo_id;
+      datosUsuario.carrera_id = dto.carrera_id;
+      datosUsuario.ciclo_id = dto.ciclo_id;
     }
 
     const cedulaEnUso = await this.usuariosRepository.findOne({
@@ -201,8 +280,54 @@ export class UsuariosService {
       throw new BadRequestException('La cédula ingresada ya está registrada por otro usuario.');
     }
 
-    await this.usuariosRepository.update(usuarioId, datosActualizar);
-    return this.findOne(usuarioId);
+    await this.usuariosRepository.update(usuarioId, datosUsuario);
+
+    // ---------- 2. Datos personales del periodo activo (se piden cada nuevo periodo) ----------
+
+    const datosPerfilPeriodo = {
+      usuario_id: usuarioId,
+      periodo_id: periodoActivo.id,
+      numero_celular: dto.numero_celular,
+      sexo: dto.sexo,
+      estado_civil: dto.estado_civil,
+      tiene_hijos: dto.tiene_hijos,
+      etnia: dto.etnia,
+      idioma: dto.idioma,
+      lugar_nacimiento: dto.lugar_nacimiento,
+      fecha_nacimiento: fechaNacimiento,
+      rango_edad: dto.rango_edad,
+      nacionalidad: dto.nacionalidad,
+      // Solo se guarda si el sexo es Mujer; para Hombre queda en null aunque llegue en el body.
+      esta_embarazada: dto.sexo === SexoEnum.MUJER ? (dto.esta_embarazada ?? false) : null,
+      tiene_discapacidad: dto.tiene_discapacidad,
+      // La subpregunta solo se guarda si tiene_discapacidad es true.
+      tipo_discapacidad: dto.tiene_discapacidad ? (dto.tipo_discapacidad ?? null) : null,
+      zona_residencia: dto.zona_residencia,
+    };
+
+    const perfilPeriodoExistente = await this.perfilPeriodoRepository.findOne({
+      where: { usuario_id: usuarioId, periodo_id: periodoActivo.id },
+      select: { id: true },
+    });
+
+    if (perfilPeriodoExistente) {
+      await this.perfilPeriodoRepository.update(perfilPeriodoExistente.id, datosPerfilPeriodo);
+    } else {
+      const nuevoPerfilPeriodo = this.perfilPeriodoRepository.create(datosPerfilPeriodo);
+      await this.perfilPeriodoRepository.save(nuevoPerfilPeriodo);
+    }
+
+    const perfilPeriodoGuardado = await this.perfilPeriodoRepository.findOne({
+      where: { usuario_id: usuarioId, periodo_id: periodoActivo.id },
+    });
+
+    const usuarioActualizado = await this.findOne(usuarioId);
+
+    return {
+      usuario: usuarioActualizado,
+      periodo: periodoActivo,
+      perfil_periodo: perfilPeriodoGuardado,
+    };
   }
 
   async actualizarFoto(usuarioId: string, archivo: Express.Multer.File) {
@@ -229,13 +354,11 @@ export class UsuariosService {
 
         if (deleteError) {
           console.warn(`No se pudo eliminar la foto anterior: ${deleteError.message}`);
-          // Dependiendo de tu lógica, puedes lanzar error o simplemente continuar
         }
       }
     }
 
     // 3. Subir la nueva foto (Mantenemos tu lógica de Date.now() para evitar problemas de caché en el navegador)
-    // Nota: Asegúrate de que el archivo realmente sea webp, de lo contrario podrías querer extraer la extensión dinámica.
     const nombreUnico = `perfil-${usuarioId}-${Date.now()}.webp`;
 
     const { error: uploadError } = await this.supabase.storage
@@ -246,7 +369,6 @@ export class UsuariosService {
       });
 
     if (uploadError) {
-      // Esto imprimirá en la terminal de NestJS el motivo exacto del bloqueo
       console.error("ERROR REAL DE SUPABASE:", uploadError);
       throw new InternalServerErrorException(`Error al subir la nueva foto: ${uploadError.message}`);
     }

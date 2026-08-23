@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGenerat
 import { RespuestasFormulario } from '../../respuestas-formulario/entities/respuestas-formulario.entity';
 import { FichaRespondida } from '../../fichas-respondidas/entities/ficha-respondida.entity';
 import { Usuario } from '../../usuarios/entities/usuario.entity';
+import { PerfilUsuarioPeriodo } from '../../usuarios/entities/perfil-usuario-periodo.entity';
 
 @Entity({ name: 'documentos_respaldo' })
 export class DocumentoRespaldo {
@@ -19,6 +20,9 @@ export class DocumentoRespaldo {
   // Opcional: se llena cuando el documento es general de la ficha
   @Column({ name: 'ficha_id', type: 'uuid', nullable: true })
   ficha_id: string | null;
+
+  @Column({ name: 'perfil_periodo_id', type: 'uuid', nullable: true })
+  perfil_periodo_id: string | null;
 
   @Column({ name: 'ruta_archivo', type: 'text', nullable: false })
   ruta_archivo: string;
@@ -66,6 +70,10 @@ export class DocumentoRespaldo {
   @ManyToOne(() => FichaRespondida, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'ficha_id' })
   ficha: FichaRespondida | null;
+
+  @ManyToOne(() => PerfilUsuarioPeriodo, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'perfil_periodo_id' })
+  perfilPeriodo: PerfilUsuarioPeriodo | null;
 
   @ManyToOne(() => Usuario, { onDelete: 'NO ACTION' })
   @JoinColumn({ name: 'usuario_verificador' })

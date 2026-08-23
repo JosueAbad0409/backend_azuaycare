@@ -40,10 +40,16 @@ export class DocumentosRespaldoController {
         ],
       }),
     ) file: Express.Multer.File,
-    @Body() body: { respuesta_id?: string; ficha_id?: string },
+    @Body() body: { respuesta_id?: string; ficha_id?: string; perfil_periodo_id?: string },
     @Req() req: RequestWithUser,
   ) {
     return await this.documentosService.subirYCrear(file, body, req.user.id, req.user.rol);
+  }
+
+  @Get('perfil-periodo/:perfilPeriodoId')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
+  findByPerfilPeriodo(@Param('perfilPeriodoId') perfilPeriodoId: string, @Req() req: RequestWithUser) {
+    return this.documentosService.findByPerfilPeriodo(perfilPeriodoId, req.user.id, req.user.rol);
   }
 
   // Permite al usuario ver sus propios documentos sueltos o subidos
