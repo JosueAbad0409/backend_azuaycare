@@ -25,7 +25,6 @@ export class FichasRespondidasService {
 
   private readonly MAX_CONCURRENT_QR_PDF = 3;
   
-  
   private currentQrPdfJobs = 0;
   private readonly qrPdfWaitQueue: Array<() => void> = [];
 
@@ -80,9 +79,6 @@ export class FichasRespondidasService {
   }
 
   async getResumenVulnerabilidad(fichaId: string) {
-    // Consulta corregida con los nombres reales de tus tablas: 
-    // 'respuestas' en lugar de 'respuestas_formulario'
-    // 'respuestas_opciones_seleccionadas' en lugar de 'opciones_seleccionadas'
     const alertas = await this.dataSource.query(`
       SELECT p.enunciado as pregunta, 
              COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
@@ -103,9 +99,6 @@ export class FichasRespondidasService {
     };
   }
 
-  /**
-   * Obtiene la lista de fichas paginadas y filtradas por estado o búsqueda parcial por usuario.
-   */
   async getFichasPaginadasYFiltradas(skip: number, take: number, search: string, estado: string, user: any) {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 10000);
     const skipReal = Math.max(Number(skip) || 0, 0);
@@ -116,31 +109,25 @@ export class FichasRespondidasService {
       .where('f.fecha_desactivacion IS NULL')
       .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
 
-    // 🔒 FASE 3: CANDADO DE AISLAMIENTO POR COORDINADOR
     if (user.rol === 'COORDINADOR_CARRERA') {
-      // Buscamos las carreras a las que pertenece este coordinador
       const asignaciones = await this.coordinadoresRepository.find({
         where: { usuario_id: user.id },
-        select: { carrera_id: true } // Corregido para TypeORM 0.3.x
+        select: { carrera_id: true }
       });
 
       const carrerasIds = asignaciones.map(a => a.carrera_id);
 
-      // Si es coordinador de carrera pero por algún motivo no tiene carreras asignadas, devolvemos vacío
       if (carrerasIds.length === 0) {
         return { data: [], total: 0 };
       }
 
-      // Aplicamos el filtro usando el alias 'u' de usuario
       query.andWhere('u.carrera_id IN (:...carrerasIds)', { carrerasIds });
     }
 
-    // Filtro por estado
     if (estado && estado !== 'TODOS') {
       query.andWhere('f.estado_ficha = :estado', { estado });
     }
 
-    // Filtro por término de búsqueda (nombre, apellido, cédula, email)
     if (search && search.trim() !== '') {
       const term = `%${search.trim().toLowerCase()}%`;
       query.andWhere(
@@ -152,7 +139,6 @@ export class FichasRespondidasService {
       );
     }
 
-    // Ejecutamos ambas consultas en paralelo (datos y total)
     const [data, total] = await query
       .orderBy('f.created_at', 'DESC')
       .skip(skipReal)
@@ -165,19 +151,10 @@ export class FichasRespondidasService {
     };
   }
 
-  /**
-   * Obtiene la lista de fichas ordenadas por cantidad de alertas (respuestas
-   * afirmativas a preguntas marcadas como revision_manual_obligatoria).
-   * Exclusivo para el equipo de Bienestar.
-   *
-   * `nivel` acepta: 'TODOS' (default), 'CON_ALERTAS', 'SIN_ALERTAS'.
-   */
   async getFichasPorPrioridadVulnerabilidad(skip: number, take: number, nivel: string) {
     const limiteReal = Math.min(Math.max(Number(take) || 50, 1), 500);
     const skipReal = Math.max(Number(skip) || 0, 0);
 
-    // Subconsulta: cuenta, por ficha, cuántas respuestas afirmativas tiene
-    // a preguntas marcadas como revision_manual_obligatoria.
     const subQueryAlertas = `
       SELECT r.ficha_id AS ficha_id, COUNT(*)::int AS total_alertas
       FROM respuestas r
@@ -259,20 +236,18 @@ export class FichasRespondidasService {
   async findByUsuario(usuarioId: string) {
     return this.fichasRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
-      // 🔥 AGREGAMOS usuario: true PARA QUE LLEGUE LA CÉDULA AL FRONTEND
       relations: { usuario: true, periodo: true, formulario: true, rangoResultado: true }, 
       order: { created_at: 'DESC' },
     });
   }
 
-  async getResumenFicha(id: string, user: any) {
+  async getResumenFicha(id: string, user: any, forceRefresh = false) {
     const ficha = await this.findOne(id, user);
 
     const cacheKey = `form_struct_${ficha.formulario_id}`;
-    let formularioCompleto: any = await this.cacheManager.get(cacheKey);
+    let formularioCompleto: any = forceRefresh ? null : await this.cacheManager.get(cacheKey);
 
     if (!formularioCompleto) {
-
       formularioCompleto = await this.dataSource.manager.findOne(Formulario, {
         where: { id: ficha.formulario_id, fecha_desactivacion: IsNull() },
         relations: {
@@ -303,21 +278,16 @@ export class FichasRespondidasService {
     const formularioParaRespuesta = JSON.parse(JSON.stringify(formularioCompleto));
 
     if (formularioParaRespuesta && formularioParaRespuesta.secciones) {
-      
-      // 🔥 1. FILTRAR SECCIONES FANTASMAS (Eliminadas lógicamente)
       formularioParaRespuesta.secciones = formularioParaRespuesta.secciones.filter(
         (seccion: any) => seccion.fecha_desactivacion === null
       );
 
       formularioParaRespuesta.secciones.forEach((seccion: any) => {
         if (seccion.preguntas) {
-          
-          // 🔥 2. FILTRAR PREGUNTAS FANTASMAS (Eliminadas lógicamente)
           seccion.preguntas = seccion.preguntas.filter(
             (pregunta: any) => pregunta.fecha_desactivacion === null
           );
 
-          // 3. Asignar las respuestas solo a las preguntas válidas y activas
           seccion.preguntas.forEach((pregunta: any) => {
             pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
           });
@@ -410,17 +380,19 @@ export class FichasRespondidasService {
   async reabrir(id: string, coordinadorId: string, reabrirDto?: ReabrirFichaDto) {
     const ficha = await this.findOne(id);
 
+    // Borramos el caché del formulario para que se consulte la estructura actualizada en la BD
+    const cacheKey = `form_struct_${ficha.formulario_id}`;
+    await this.cacheManager.del(cacheKey);
+
     const nuevaFechaLimite = (reabrirDto && reabrirDto.dias_extension) ? new Date() : null;
     if (nuevaFechaLimite && reabrirDto && reabrirDto.dias_extension) {
       nuevaFechaLimite.setDate(nuevaFechaLimite.getDate() + reabrirDto.dias_extension);
     }
 
-    // 🔥 CAMBIO CLAVE AQUÍ: Pasamos la ficha a 'BORRADOR' en lugar de 'ENVIADA'
-    // Esto quita el candado de solo lectura en el frontend del estudiante.
     await this.cambiarEstado(id, 'BORRADOR', coordinadorId, 'Reapertura autorizada para completar nuevas preguntas agregadas al formulario');
 
     await this.fichasRepository.update(id, {
-      cerrado_manual_por: null, // Limpiamos por si Bienestar la había cerrado a la fuerza
+      cerrado_manual_por: null,
       fecha_limite_edicion: nuevaFechaLimite
     });
 
@@ -439,21 +411,20 @@ export class FichasRespondidasService {
   private templateFichaCache: string | null = null;
 
   private cargarTemplateFicha(): string {
-  // En desarrollo siempre releer el archivo
-  if (process.env.NODE_ENV !== 'production') {
-    this.templateFichaCache = null;
+    if (process.env.NODE_ENV !== 'production') {
+      this.templateFichaCache = null;
+    }
+    if (!this.templateFichaCache) {
+      const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
+      const ruta = fs.existsSync(rutaTemplate)
+        ? rutaTemplate
+        : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
+      this.templateFichaCache = fs.readFileSync(ruta, 'utf-8');
+    }
+    return this.templateFichaCache;
   }
-  if (!this.templateFichaCache) {
-    const rutaTemplate = path.join(process.cwd(), 'dist/common/pdf/templates/ficha-socioeconomica.hbs');
-    const ruta = fs.existsSync(rutaTemplate)
-      ? rutaTemplate
-      : path.join(process.cwd(), 'src/common/pdf/templates/ficha-socioeconomica.hbs');
-    this.templateFichaCache = fs.readFileSync(ruta, 'utf-8');
-  }
-  return this.templateFichaCache;
-}
 
-private templateQrCache: string | null = null;
+  private templateQrCache: string | null = null;
 
   private cargarTemplateQr(): string {
     if (process.env.NODE_ENV !== 'production') {
@@ -470,7 +441,6 @@ private templateQrCache: string | null = null;
       } else if (fs.existsSync(rutaSrc)) {
         ruta = rutaSrc;
       } else {
-        // 🔥 ESTO EVITA EL ERROR 500 SILENCIOSO Y TE DICE QUÉ PASA
         throw new BadRequestException(`No se encontró la plantilla HBS. Rutas buscadas: ${rutaDist}`);
       }
       
@@ -479,38 +449,28 @@ private templateQrCache: string | null = null;
     return this.templateQrCache;
   }
 
-
-  /**
-   * Adquiere un slot de concurrencia.
-   * Si hay menos de MAX_CONCURRENT_QR_PDF trabajos activos → continúa de inmediato.
-   * Si no → se encola y espera a que se libere un slot.
-   */
   private async acquireQrPdfSlot(): Promise<void> {
     if (this.currentQrPdfJobs < this.MAX_CONCURRENT_QR_PDF) {
       this.currentQrPdfJobs++;
       return;
     }
 
-    // Encolar: la promesa se resuelve cuando alguien libere un slot
     await new Promise<void>((resolve) => {
       this.qrPdfWaitQueue.push(resolve);
     });
     this.currentQrPdfJobs++;
   }
 
-  /**
-   * Libera un slot y despierta al siguiente de la cola (si existe).
-   */
   private releaseQrPdfSlot(): void {
     this.currentQrPdfJobs = Math.max(0, this.currentQrPdfJobs - 1);
 
     const next = this.qrPdfWaitQueue.shift();
     if (next) {
-      next(); // despierta al siguiente esperando
+      next();
     }
   }
 
-    async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
+  async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
     await this.acquireQrPdfSlot();
 
     try {
@@ -555,238 +515,233 @@ private templateQrCache: string | null = null;
       this.logger.error(`Error crítico generando PDF Resumen: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Error interno al generar el PDF: ${error.message}`);
     } finally {
-      // Siempre liberar el slot, aunque haya fallado
       this.releaseQrPdfSlot();
     }
   }
 
+  async generarPdfFicha(id: string, user: any): Promise<Buffer> {
+    // Forzamos el refresco para evitar datos en caché obsoletos
+    const data = await this.getResumenFicha(id, user, true);
 
-async generarPdfFicha(id: string, user: any): Promise<Buffer> {
-  const data = await this.getResumenFicha(id, user);
+    let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
+      where: { formulario_id: data.ficha.formulario_id },
+    });
 
-  let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
-    where: { formulario_id: data.ficha.formulario_id },
-  });
+    if (!plantilla) {
+      plantilla = {
+        color_primario: '#003366',
+        color_secundario: '#666666',
+        encabezado: 'Sistema de Bienestar Estudiantil',
+        pie_pagina: 'Ficha generada automáticamente',
+        mostrar_tabla_rango: true,
+        logo_url: '',
+      };
+    }
 
-  if (!plantilla) {
-    plantilla = {
-      color_primario: '#003366',
-      color_secundario: '#666666',
-      encabezado: 'Sistema de Bienestar Estudiantil',
-      pie_pagina: 'Ficha generada automáticamente',
-      mostrar_tabla_rango: true,
-      logo_url: '',
+    let totalIngresos = Number(data.ficha.total_ingresos) || 0;
+    let totalEgresos = Number(data.ficha.total_egresos) || 0;
+    let balanceFinal = Number(data.ficha.balance_final);
+    let estatusNombre = data.ficha.rangoResultado?.nombre || null;
+
+    if (totalIngresos === 0 && totalEgresos === 0) {
+      const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
+      totalIngresos = recalc.totalIngresos;
+      totalEgresos = recalc.totalEgresos;
+      balanceFinal = recalc.balance;
+      if (recalc.rangoNombre) {
+        estatusNombre = recalc.rangoNombre;
+      }
+    }
+
+    if (Number.isNaN(balanceFinal)) {
+      balanceFinal = totalIngresos - totalEgresos;
+    }
+
+    if (!estatusNombre) {
+      const rango = await this.dataSource.manager
+        .createQueryBuilder()
+        .select('rvc.nombre', 'nombre')
+        .from('rangos_variable_calculada', 'rvc')
+        .where('rvc.formulario_id = :formId', { formId: data.ficha.formulario_id })
+        .andWhere("rvc.variable_calculo = 'BALANCE'")
+        .andWhere('CAST(rvc.valor_min AS numeric) <= :balance', { balance: balanceFinal })
+        .andWhere('(rvc.valor_max IS NULL OR CAST(rvc.valor_max AS numeric) >= :balance)', {
+          balance: balanceFinal,
+        })
+        .andWhere('rvc.fecha_desactivacion IS NULL')
+        .orderBy('rvc.orden', 'ASC')
+        .getRawOne();
+
+      if (rango?.nombre) {
+        estatusNombre = rango.nombre;
+      }
+    }
+
+    const esFichaFinanciera =
+      plantilla.mostrar_tabla_rango === true ||
+      data.ficha.rangoResultado != null ||
+      totalIngresos > 0 ||
+      totalEgresos > 0 ||
+      balanceFinal !== 0;
+
+    const fichaParaPdf = {
+      ...data.ficha,
+      total_ingresos: totalIngresos,
+      total_egresos: totalEgresos,
+      balance_final: balanceFinal,
+      rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
     };
-  }
 
-  let totalIngresos = Number(data.ficha.total_ingresos) || 0;
-  let totalEgresos = Number(data.ficha.total_egresos) || 0;
-  let balanceFinal = Number(data.ficha.balance_final);
-  let estatusNombre = data.ficha.rangoResultado?.nombre || null;
+    const dependencias: any[] = await this.dataSource.query(
+      `SELECT id, pregunta_id, pregunta_disparadora_id, opcion_disparadora_id, valor_disparador
+       FROM preguntas_dependencias
+       WHERE fecha_desactivacion IS NULL
+         AND pregunta_id IN (
+           SELECT p.id FROM preguntas p
+           INNER JOIN secciones s ON s.id = p.seccion_id
+           WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL
+         )`,
+      [data.ficha.formulario_id],
+    );
 
-  if (totalIngresos === 0 && totalEgresos === 0) {
-    const recalc = await this.recalcularTotalesParaPdf(id, data.ficha.formulario_id);
-    totalIngresos = recalc.totalIngresos;
-    totalEgresos = recalc.totalEgresos;
-    balanceFinal = recalc.balance;
-    if (recalc.rangoNombre) {
-      estatusNombre = recalc.rangoNombre;
-    }
-  }
-
-  if (Number.isNaN(balanceFinal)) {
-    balanceFinal = totalIngresos - totalEgresos;
-  }
-
-  if (!estatusNombre) {
-    const rango = await this.dataSource.manager
-      .createQueryBuilder()
-      .select('rvc.nombre', 'nombre')
-      .from('rangos_variable_calculada', 'rvc')
-      .where('rvc.formulario_id = :formId', { formId: data.ficha.formulario_id })
-      .andWhere("rvc.variable_calculo = 'BALANCE'")
-      .andWhere('CAST(rvc.valor_min AS numeric) <= :balance', { balance: balanceFinal })
-      .andWhere('(rvc.valor_max IS NULL OR CAST(rvc.valor_max AS numeric) >= :balance)', {
-        balance: balanceFinal,
-      })
-      .andWhere('rvc.fecha_desactivacion IS NULL')
-      .orderBy('rvc.orden', 'ASC')
-      .getRawOne();
-
-    if (rango?.nombre) {
-      estatusNombre = rango.nombre;
-    }
-  }
-
-  const esFichaFinanciera =
-    plantilla.mostrar_tabla_rango === true ||
-    data.ficha.rangoResultado != null ||
-    totalIngresos > 0 ||
-    totalEgresos > 0 ||
-    balanceFinal !== 0;
-
-  const fichaParaPdf = {
-    ...data.ficha,
-    total_ingresos: totalIngresos,
-    total_egresos: totalEgresos,
-    balance_final: balanceFinal,
-    rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
-  };
-
-  // ——— Dependencias (mismo criterio que el estudiante) ———
-  const dependencias: any[] = await this.dataSource.query(
-    `SELECT id, pregunta_id, pregunta_disparadora_id, opcion_disparadora_id, valor_disparador
-     FROM preguntas_dependencias
-     WHERE fecha_desactivacion IS NULL
-       AND pregunta_id IN (
-         SELECT p.id FROM preguntas p
-         INNER JOIN secciones s ON s.id = p.seccion_id
-         WHERE s.formulario_id = $1 AND p.fecha_desactivacion IS NULL
-       )`,
-    [data.ficha.formulario_id],
-  );
-
-  const mapaRespuestas = new Map<string, any>();
-  for (const sec of data.formulario_estructurado?.secciones || []) {
-    for (const preg of sec.preguntas || []) {
-      if (preg.respuesta_estudiante) {
-        mapaRespuestas.set(preg.id, preg.respuesta_estudiante);
+    const mapaRespuestas = new Map<string, any>();
+    for (const sec of data.formulario_estructurado?.secciones || []) {
+      for (const preg of sec.preguntas || []) {
+        if (preg.respuesta_estudiante) {
+          mapaRespuestas.set(preg.id, preg.respuesta_estudiante);
+        }
       }
     }
-  }
 
-  const esPreguntaVisiblePdf = (preguntaId: string): boolean => {
-    const dep = dependencias.find((d: any) => d.pregunta_id === preguntaId);
-    if (!dep) return true;
+    const esPreguntaVisiblePdf = (preguntaId: string): boolean => {
+      const dep = dependencias.find((d: any) => d.pregunta_id === preguntaId);
+      if (!dep) return true;
 
-    const respPadre = mapaRespuestas.get(dep.pregunta_disparadora_id);
-    if (!respPadre) return false;
+      const respPadre = mapaRespuestas.get(dep.pregunta_disparadora_id);
+      if (!respPadre) return false;
 
-    if (dep.opcion_disparadora_id) {
-      const ids = (respPadre.opcionesSeleccionadas || []).map(
-        (o: any) => o.opcion_id || o.opcion?.id,
-      );
-      if (ids.includes(dep.opcion_disparadora_id)) return true;
-      if (respPadre.valor_texto === dep.opcion_disparadora_id) return true;
-      return false;
-    }
-
-    if (dep.valor_disparador != null && dep.valor_disparador !== '') {
-      let valorActual = '';
-      if (respPadre.opcionesSeleccionadas?.length) {
-        valorActual = respPadre.opcionesSeleccionadas
-          .map((o: any) => o.opcion?.texto_opcion || '')
-          .join(', ');
-      } else {
-        valorActual = String(respPadre.valor_texto ?? respPadre.valor_numerico ?? '');
+      if (dep.opcion_disparadora_id) {
+        const ids = (respPadre.opcionesSeleccionadas || []).map(
+          (o: any) => o.opcion_id || o.opcion?.id,
+        );
+        if (ids.includes(dep.opcion_disparadora_id)) return true;
+        if (respPadre.valor_texto === dep.opcion_disparadora_id) return true;
+        return false;
       }
-      valorActual = valorActual.replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
-      return valorActual.toLowerCase() === String(dep.valor_disparador).toLowerCase();
-    }
 
-    return true;
-  };
+      if (dep.valor_disparador != null && dep.valor_disparador !== '') {
+        let valorActual = '';
+        if (respPadre.opcionesSeleccionadas?.length) {
+          valorActual = respPadre.opcionesSeleccionadas
+            .map((o: any) => o.opcion?.texto_opcion || '')
+            .join(', ');
+        } else {
+          valorActual = String(respPadre.valor_texto ?? respPadre.valor_numerico ?? '');
+        }
+        valorActual = valorActual.replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
+        return valorActual.toLowerCase() === String(dep.valor_disparador).toLowerCase();
+      }
 
-  const esPreguntaDependiente = (preguntaId: string): boolean =>
-    dependencias.some((d: any) => d.pregunta_id === preguntaId);
+      return true;
+    };
 
-  // ——— Secciones: solo preguntas raíz visibles + subpreguntas activadas ———
-  const secciones = (data.formulario_estructurado?.secciones || []).map(
-    (sec: any, idx: number) => {
-      const preguntasRaiz = (sec.preguntas || []).filter(
-        (preg: any) =>
-          !esPreguntaDependiente(preg.id) && esPreguntaVisiblePdf(preg.id),
-      );
+    const esPreguntaDependiente = (preguntaId: string): boolean =>
+      dependencias.some((d: any) => d.pregunta_id === preguntaId);
 
-      const preguntas = preguntasRaiz.map((preg: any) => {
-        const subIds = dependencias
-          .filter((d: any) => d.pregunta_disparadora_id === preg.id)
-          .map((d: any) => d.pregunta_id)
-          .filter((sid: string) => esPreguntaVisiblePdf(sid));
+    const secciones = (data.formulario_estructurado?.secciones || []).map(
+      (sec: any, idx: number) => {
+        const preguntasRaiz = (sec.preguntas || []).filter(
+          (preg: any) =>
+            !esPreguntaDependiente(preg.id) && esPreguntaVisiblePdf(preg.id),
+        );
 
-        const subpreguntas = (sec.preguntas || [])
-          .filter((p: any) => subIds.includes(p.id))
-          .map((sub: any) => ({
-            enunciado: sub.enunciado,
-            respuestaHtml: this.construirRespuestaHtml(sub.respuesta_estudiante),
-          }));
+        const preguntas = preguntasRaiz.map((preg: any) => {
+          const subIds = dependencias
+            .filter((d: any) => d.pregunta_disparadora_id === preg.id)
+            .map((d: any) => d.pregunta_id)
+            .filter((sid: string) => esPreguntaVisiblePdf(sid));
+
+          const subpreguntas = (sec.preguntas || [])
+            .filter((p: any) => subIds.includes(p.id))
+            .map((sub: any) => ({
+              enunciado: sub.enunciado,
+              respuestaHtml: this.construirRespuestaHtml(sub.respuesta_estudiante),
+            }));
+
+          return {
+            enunciado: preg.enunciado,
+            respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante),
+            subpreguntas,
+          };
+        });
 
         return {
-          enunciado: preg.enunciado,
-          respuestaHtml: this.construirRespuestaHtml(preg.respuesta_estudiante),
-          subpreguntas,
+          nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
+          numero: idx + 1,
+          preguntas,
         };
-      });
+      },
+    );
 
-      return {
-        nombre: sec.nombre || sec.titulo || 'Sección sin nombre',
-        numero: idx + 1,
-        preguntas,
-      };
-    },
-  );
+    let tieneDiscapacidad = false;
+    let usaLentes = false;
+    let enfermedadCronica = '';
 
-  // Salud / NEE
-  let tieneDiscapacidad = false;
-  let usaLentes = false;
-  let enfermedadCronica = '';
+    if (data.formulario_estructurado?.secciones) {
+      for (const sec of data.formulario_estructurado.secciones) {
+        for (const preg of sec.preguntas || []) {
+          if (!esPreguntaVisiblePdf(preg.id)) continue;
 
-  if (data.formulario_estructurado?.secciones) {
-    for (const sec of data.formulario_estructurado.secciones) {
-      for (const preg of sec.preguntas || []) {
-        if (!esPreguntaVisiblePdf(preg.id)) continue;
+          const resp = preg.respuesta_estudiante;
+          if (!resp) continue;
 
-        const resp = preg.respuesta_estudiante;
-        if (!resp) continue;
+          let valorTexto = resp.valor_texto || '';
+          if (resp.opcionesSeleccionadas?.length > 0) {
+            valorTexto = resp.opcionesSeleccionadas
+              .map((o: any) => o.opcion?.texto_opcion)
+              .join(', ');
+          }
+          valorTexto = String(valorTexto).replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
+          const valorNormalizado = valorTexto.toUpperCase().trim();
 
-        let valorTexto = resp.valor_texto || '';
-        if (resp.opcionesSeleccionadas?.length > 0) {
-          valorTexto = resp.opcionesSeleccionadas
-            .map((o: any) => o.opcion?.texto_opcion)
-            .join(', ');
-        }
-        valorTexto = String(valorTexto).replace(/\[EVIDENCIA_URL:.*?\]/g, '').trim();
-        const valorNormalizado = valorTexto.toUpperCase().trim();
-
-        if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
-          tieneDiscapacidad = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
-        } else if (preg.codigo_sistema === 'SALUD_LENTES_BOOL') {
-          usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
-        } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
-          enfermedadCronica = valorTexto;
-          if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
-            enfermedadCronica = '';
+          if (preg.codigo_sistema === 'SALUD_DISCAPACIDAD_BOOL') {
+            tieneDiscapacidad = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+          } else if (preg.codigo_sistema === 'SALUD_LENTES_BOOL') {
+            usaLentes = valorNormalizado === 'SI' || valorNormalizado === 'SÍ';
+          } else if (preg.codigo_sistema === 'SALUD_ENFERMEDAD_CRONICA') {
+            enfermedadCronica = valorTexto;
+            if (['NINGUNA', 'NO', 'NA', 'N/A'].includes(valorNormalizado)) {
+              enfermedadCronica = '';
+            }
           }
         }
       }
     }
+
+    const requiereAtencionSalud =
+      tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
+
+    const templateFuente = this.cargarTemplateFicha();
+    const template = this.pdfRenderer.compilarTemplate(
+      'ficha-socioeconomica',
+      templateFuente,
+    );
+
+    const html = template({
+      plantilla,
+      formulario: data.formulario_estructurado,
+      ficha: fichaParaPdf,
+      esFichaFinanciera,
+      secciones,
+      requiereAtencionSalud,
+      tieneDiscapacidad,
+      usaLentes,
+      enfermedadCronica,
+    });
+
+    return this.pdfRenderer.renderizarHtmlAPdf(html);
   }
 
-  const requiereAtencionSalud =
-    tieneDiscapacidad || usaLentes || enfermedadCronica !== '';
-
-  const templateFuente = this.cargarTemplateFicha();
-  const template = this.pdfRenderer.compilarTemplate(
-    'ficha-socioeconomica',
-    templateFuente,
-  );
-
-  const html = template({
-    plantilla,
-    formulario: data.formulario_estructurado,
-    ficha: fichaParaPdf,
-    esFichaFinanciera,
-    secciones,
-    requiereAtencionSalud,
-    tieneDiscapacidad,
-    usaLentes,
-    enfermedadCronica,
-  });
-
-  return this.pdfRenderer.renderizarHtmlAPdf(html);
-}
-
-  /** Recalcula ingresos/egresos/balance/rango solo para el PDF (no escribe en BD). */
   private async recalcularTotalesParaPdf(fichaId: string, formularioId: string) {
     const ingresosDb = await this.dataSource.manager
       .createQueryBuilder()
@@ -837,128 +792,125 @@ async generarPdfFicha(id: string, user: any): Promise<Buffer> {
     };
   }
 
-  
   private construirRespuestaHtml(resp: any): string {
-  if (!resp) return '<i>Sin responder</i>';
+    if (!resp) return '<i>Sin responder</i>';
 
-  const escapar = (txt: string) =>
-    String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escapar = (txt: string) =>
+      String(txt).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  let contenido = '';
-  let evidenciaUrlDesdeTexto: string | null = null;
+    let contenido = '';
+    let evidenciaUrlDesdeTexto: string | null = null;
 
-  // Extraer evidencia embebida en valor_texto
-  let valorTextoLimpio = resp.valor_texto ? String(resp.valor_texto) : '';
-  if (valorTextoLimpio.includes('[EVIDENCIA_URL:')) {
-    const match = valorTextoLimpio.match(/\[EVIDENCIA_URL:(.*?)\]/);
-    if (match?.[1]) {
-      evidenciaUrlDesdeTexto = match[1].trim();
-      valorTextoLimpio = valorTextoLimpio.replace(match[0], '').trim();
+    let valorTextoLimpio = resp.valor_texto ? String(resp.valor_texto) : '';
+    if (valorTextoLimpio.includes('[EVIDENCIA_URL:')) {
+      const match = valorTextoLimpio.match(/\[EVIDENCIA_URL:(.*?)\]/);
+      if (match?.[1]) {
+        evidenciaUrlDesdeTexto = match[1].trim();
+        valorTextoLimpio = valorTextoLimpio.replace(match[0], '').trim();
+      }
     }
-  }
 
-  if (valorTextoLimpio) {
-    contenido = escapar(valorTextoLimpio);
-  } else if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) {
-    contenido = escapar(resp.valor_numerico.toString());
-  } else if (resp.opcionesSeleccionadas?.length > 0) {
-    contenido = escapar(
-      resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '),
-    );
-  } else if (resp.respuestasMatriz?.length > 0) {
-    const filasAgrupadas = new Map<string, string[]>();
-    resp.respuestasMatriz.forEach((rm: any) => {
-      const fila = rm.fila?.texto_fila || 'Criterio';
-      const columna = rm.columna?.texto_columna || 'Opción';
-      if (!filasAgrupadas.has(fila)) filasAgrupadas.set(fila, []);
-      filasAgrupadas.get(fila)!.push(columna);
-    });
+    if (valorTextoLimpio) {
+      contenido = escapar(valorTextoLimpio);
+    } else if (resp.valor_numerico !== null && resp.valor_numerico !== undefined) {
+      contenido = escapar(resp.valor_numerico.toString());
+    } else if (resp.opcionesSeleccionadas?.length > 0) {
+      contenido = escapar(
+        resp.opcionesSeleccionadas.map((o: any) => o.opcion?.texto_opcion).join(', '),
+      );
+    } else if (resp.respuestasMatriz?.length > 0) {
+      const filasAgrupadas = new Map<string, string[]>();
+      resp.respuestasMatriz.forEach((rm: any) => {
+        const fila = rm.fila?.texto_fila || 'Criterio';
+        const columna = rm.columna?.texto_columna || 'Opción';
+        if (!filasAgrupadas.has(fila)) filasAgrupadas.set(fila, []);
+        filasAgrupadas.get(fila)!.push(columna);
+      });
 
-    let html = `
-      <table style="width:100%; border-collapse: collapse; margin-top: 4px; font-size: 11px;">
-        <thead>
-          <tr style="background:#f0f0f0;">
-            <th style="border:1px solid #ccc; padding:5px 8px; text-align:left; width:40%;">Criterio</th>
-            <th style="border:1px solid #ccc; padding:5px 8px; text-align:left;">Selección</th>
-          </tr>
-        </thead>
-        <tbody>`;
+      let html = `
+        <table style="width:100%; border-collapse: collapse; margin-top: 4px; font-size: 11px;">
+          <thead>
+            <tr style="background:#f0f0f0;">
+              <th style="border:1px solid #ccc; padding:5px 8px; text-align:left; width:40%;">Criterio</th>
+              <th style="border:1px solid #ccc; padding:5px 8px; text-align:left;">Selección</th>
+            </tr>
+          </thead>
+          <tbody>`;
 
-    filasAgrupadas.forEach((columnas, fila) => {
+      filasAgrupadas.forEach((columnas, fila) => {
+        html += `
+            <tr>
+              <td style="border:1px solid #ccc; padding:5px 8px; font-weight:bold;">${escapar(fila)}</td>
+              <td style="border:1px solid #ccc; padding:5px 8px;">${escapar(columnas.join(', '))}</td>
+            </tr>`;
+      });
+
       html += `
-          <tr>
-            <td style="border:1px solid #ccc; padding:5px 8px; font-weight:bold;">${escapar(fila)}</td>
-            <td style="border:1px solid #ccc; padding:5px 8px;">${escapar(columnas.join(', '))}</td>
-          </tr>`;
-    });
-
-    html += `
-        </tbody>
-      </table>`;
-    contenido = html;
-  }
-
-  // Evidencias / documentos de respaldo asociados a la respuesta
-  const documentos = (resp.documentos || []).filter((d: any) => !d.fecha_desactivacion);
-
-  type Ev = { url: string; nombre: string; mime: string };
-  const evidencias: Ev[] = [];
-
-  for (const doc of documentos) {
-    evidencias.push({
-      url: doc.ruta_archivo,
-      nombre: doc.nombre_original || 'Archivo',
-      mime: doc.mime_type || '',
-    });
-  }
-
-  if (evidenciaUrlDesdeTexto && !evidencias.some(e => e.url === evidenciaUrlDesdeTexto)) {
-  evidencias.push({
-    url: evidenciaUrlDesdeTexto,
-    nombre: 'Evidencia adjunta',
-    mime: 'image/*', // forzar intento de imagen
-  });
-}
-
-if (evidencias.length > 0) {
-  let evidenciasHtml = `
-    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
-      <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">
-        📎 Evidencia adjunta (${evidencias.length})
-      </div>`;
-
-  for (const ev of evidencias) {
-    const esImagen =
-      (ev.mime && ev.mime.toLowerCase().startsWith('image')) ||
-      /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(ev.url) ||
-      /^https?:\/\//i.test(ev.url); // Supabase sin extensión → intentar imagen
-
-    const nombre = escapar(ev.nombre);
-
-    if (esImagen && ev.url) {
-      evidenciasHtml += `
-        <div style="margin:8px 0;">
-          <div style="font-size:10px;color:#64748b;margin-bottom:4px;">${nombre}</div>
-          <img src="${escapar(ev.url)}"
-               alt="${nombre}"
-               style="max-width:320px;max-height:240px;border:1px solid #e2e8f0;border-radius:8px;display:block;object-fit:contain;background:#fff;" />
-        </div>`;
-    } else {
-      evidenciasHtml += `
-        <div style="font-size:11px;color:#334155;margin:4px 0;padding:6px 8px;background:#f1f5f9;border-radius:6px;">
-          📄 ${nombre}
-        </div>`;
+          </tbody>
+        </table>`;
+      contenido = html;
     }
+
+    const documentos = (resp.documentos || []).filter((d: any) => !d.fecha_desactivacion);
+
+    type Ev = { url: string; nombre: string; mime: string };
+    const evidencias: Ev[] = [];
+
+    for (const doc of documentos) {
+      evidencias.push({
+        url: doc.ruta_archivo,
+        nombre: doc.nombre_original || 'Archivo',
+        mime: doc.mime_type || '',
+      });
+    }
+
+    if (evidenciaUrlDesdeTexto && !evidencias.some(e => e.url === evidenciaUrlDesdeTexto)) {
+      evidencias.push({
+        url: evidenciaUrlDesdeTexto,
+        nombre: 'Evidencia adjunta',
+        mime: 'image/*',
+      });
+    }
+
+    if (evidencias.length > 0) {
+      let evidenciasHtml = `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
+          <div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:6px;">
+            📎 Evidencia adjunta (${evidencias.length})
+          </div>`;
+
+      for (const ev of evidencias) {
+        const esImagen =
+          (ev.mime && ev.mime.toLowerCase().startsWith('image')) ||
+          /\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i.test(ev.url) ||
+          /^https?:\/\//i.test(ev.url);
+
+        const nombre = escapar(ev.nombre);
+
+        if (esImagen && ev.url) {
+          evidenciasHtml += `
+            <div style="margin:8px 0;">
+              <div style="font-size:10px;color:#64748b;margin-bottom:4px;">${nombre}</div>
+              <img src="${escapar(ev.url)}"
+                   alt="${nombre}"
+                   style="max-width:320px;max-height:240px;border:1px solid #e2e8f0;border-radius:8px;display:block;object-fit:contain;background:#fff;" />
+            </div>`;
+        } else {
+          evidenciasHtml += `
+            <div style="font-size:11px;color:#334155;margin:4px 0;padding:6px 8px;background:#f1f5f9;border-radius:6px;">
+              📄 ${nombre}
+            </div>`;
+        }
+      }
+
+      evidenciasHtml += `</div>`;
+      contenido = (contenido || '<i>Sin texto de respuesta</i>') + evidenciasHtml;
+    }
+
+    return contenido || '<i>Sin responder</i>';
   }
 
-  evidenciasHtml += `</div>`;
-  contenido = (contenido || '<i>Sin texto de respuesta</i>') + evidenciasHtml;
-}
-
-  return contenido || '<i>Sin responder</i>';
-}
-
-private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string, comentario?: string) {
+  private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string, comentario?: string) {
     const estadosNotificables = ['VALIDADO', 'RECHAZADO', 'RECHAZADA', 'BORRADOR'];
     if (!estadosNotificables.includes(estadoNuevo.toUpperCase()) || !ficha.usuario) return;
 
@@ -972,9 +924,7 @@ private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string
     ).catch(e => this.logger.error(`Fallo correo a ${emailDestino}`));
   }
 
-
   private async heredarRespuestasAnteriores(nuevaFichaId: string, usuarioId: string, nuevoFormularioId: string) {
-
     const fichaAnterior = await this.fichasRepository.findOne({
       where: [
         { usuario_id: usuarioId, estado_ficha: 'ENVIADA', fecha_desactivacion: IsNull() },
@@ -1004,7 +954,7 @@ private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string
 
     if (preguntasNuevas.length === 0) {
       this.logger.error('🚨 El formulario nuevo no tiene preguntas asociadas. Revisa el proceso de clonado.');
-      return; // Agregado un return para evitar que el código siga si no hay preguntas
+      return;
     }
 
     const mapaPreguntas = new Map<string, string>();
@@ -1036,36 +986,29 @@ private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string
       }
     }
 
-    // 🔥 CORRECCIÓN 1: De respuestas_formulario a respuestas
     const respuestasAnteriores = await this.dataSource.query(
       `SELECT id, pregunta_id, valor_texto, valor_numerico FROM respuestas 
        WHERE ficha_id = $1 AND fecha_desactivacion IS NULL`, [fichaAnterior.id]
     );
 
-    let respuestasInsertadas = 0;
-
     for (const respVieja of respuestasAnteriores) {
       const nuevaPreguntaId = mapaPreguntas.get(respVieja.pregunta_id);
       if (!nuevaPreguntaId) continue;
 
-      // 🔥 CORRECCIÓN 2: De respuestas_formulario a respuestas
       const insertRespuesta = await this.dataSource.query(
         `INSERT INTO respuestas (ficha_id, pregunta_id, valor_texto, valor_numerico, creado_por) 
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [nuevaFichaId, nuevaPreguntaId, respVieja.valor_texto, respVieja.valor_numerico, usuarioId]
       );
       const nuevaRespuestaId = insertRespuesta[0].id;
-      respuestasInsertadas++;
 
-      // 🔥 CORRECCIÓN 3: De opciones_seleccionadas a respuestas_opciones_seleccionadas
       const seleccionadas = await this.dataSource.query(
-  `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
-);
+        `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
+      );
       
       for (const sel of seleccionadas) {
         const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
         if (nuevaOpcionId) {
-          // 🔥 CORRECCIÓN 4: De opciones_seleccionadas a respuestas_opciones_seleccionadas
           await this.dataSource.query(
             `INSERT INTO respuestas_opciones_seleccionadas (respuesta_id, opcion_id) VALUES ($1, $2)`,
             [nuevaRespuestaId, nuevaOpcionId]
@@ -1086,6 +1029,4 @@ private notificarEstudiantePorCorreo(ficha: FichaRespondida, estadoNuevo: string
       }
     }
   }
-
-  
 }

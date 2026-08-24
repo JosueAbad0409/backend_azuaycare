@@ -43,7 +43,6 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async obtenerBrowser(): Promise<Browser> {
-    // 🔧 CORRECCIÓN 1: Se cambió .isConnected() por .connected
     if (!this.browser || !this.browser.connected) {
       this.logger.warn('🔄 Relanzando instancia de Chromium...');
       await this.lanzarBrowser();
@@ -69,71 +68,70 @@ export class PdfRendererService implements OnModuleInit, OnModuleDestroy {
 
   /** Compila y cachea plantillas .hbs en memoria (evita leer disco en cada PDF). */
   compilarTemplate(nombre: string, source: string): HandlebarsTemplateDelegate {
-  if (process.env.NODE_ENV !== 'production') {
-    return Handlebars.compile(source); // sin cache
+    if (process.env.NODE_ENV !== 'production') {
+      return Handlebars.compile(source); // sin cache
+    }
+    if (!this.templatesCache.has(nombre)) {
+      this.templatesCache.set(nombre, Handlebars.compile(source));
+    }
+    return this.templatesCache.get(nombre)!;
   }
-  if (!this.templatesCache.has(nombre)) {
-    this.templatesCache.set(nombre, Handlebars.compile(source));
-  }
-  return this.templatesCache.get(nombre)!;
-}
-
-
 
   async renderizarHtmlAPdf(html: string): Promise<Buffer> {
-  await this.adquirirSlot();
-  const browser = await this.obtenerBrowser();
-  let page: Awaited<ReturnType<Browser['newPage']>> | null = null;
+    await this.adquirirSlot();
+    const browser = await this.obtenerBrowser();
+    let page: Awaited<ReturnType<Browser['newPage']>> | null = null;
 
-  try {
-    page = await browser.newPage();
+    try {
+      page = await browser.newPage();
 
-    // Timeout global de la página
-    page.setDefaultTimeout(TIMEOUT_RENDER_MS);
-    page.setDefaultNavigationTimeout(TIMEOUT_RENDER_MS);
+      // Timeout global de la página
+      page.setDefaultTimeout(TIMEOUT_RENDER_MS);
+      page.setDefaultNavigationTimeout(TIMEOUT_RENDER_MS);
 
-    await page.setContent(html, {
-      waitUntil: 'domcontentloaded',   // más rápido y estable que 'load'
-      timeout: TIMEOUT_RENDER_MS,
-    });
+      await page.setContent(html, {
+        waitUntil: 'domcontentloaded', // más rápido y estable que 'load'
+        timeout: TIMEOUT_RENDER_MS,
+      });
 
-    // Esperar imágenes externas (Supabase, etc.) con un tiempo razonable
-    await page.evaluate(async () => {
-      const imgs = Array.from(document.images);
-      await Promise.all(
-        imgs.map(
-          (img) =>
-            img.complete
-              ? Promise.resolve()
-              : new Promise<void>((resolve) => {
-                  const timer = setTimeout(() => resolve(), 8000); // máx 8s por imagen
-                  img.onload = () => {
-                    clearTimeout(timer);
-                    resolve();
-                  };
-                  img.onerror = () => {
-                    clearTimeout(timer);
-                    resolve(); // no bloquear si falla
-                  };
-                }),
-        ),
-      );
-    });
+      // Esperar imágenes externas (Supabase, etc.) con un tiempo razonable
+      await page.evaluate(async () => {
+        const imgs = Array.from(document.images);
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              img.complete
+                ? Promise.resolve()
+                : new Promise<void>((resolve) => {
+                    const timer = setTimeout(() => resolve(), 8000); // máx 8s por imagen
+                    img.onload = () => {
+                      clearTimeout(timer);
+                      resolve();
+                    };
+                    img.onerror = () => {
+                      clearTimeout(timer);
+                      resolve();
+                    };
+                  }),
+          ),
+        );
+      });
 
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
-      timeout: TIMEOUT_RENDER_MS,
-    });
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: true, // 🔥 Fuerza a Puppeteer a respetar paginación CSS de las plantillas HBS
+        margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
+        timeout: TIMEOUT_RENDER_MS,
+      });
 
-    return Buffer.from(pdfBuffer);
-  } catch (error: any) {
-    this.logger.error(`Error generando PDF: ${error.message}`, error.stack);
-    throw new InternalServerErrorException('No se pudo generar el documento PDF. Intenta nuevamente.');
-  } finally {
-    if (page) await page.close().catch(() => undefined);
-    this.liberarSlot();
+      return Buffer.from(pdfBuffer);
+    } catch (error: any) {
+      this.logger.error(`Error generando PDF: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('No se pudo generar el documento PDF. Intenta nuevamente.');
+    } finally {
+      if (page) await page.close().catch(() => undefined);
+      this.liberarSlot();
+    }
   }
-}
 }
