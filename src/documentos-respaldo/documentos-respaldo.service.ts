@@ -103,6 +103,24 @@ export class DocumentosRespaldoService {
     return urlData.publicUrl;
   }
 
+  // 🔥 NUEVO: Función que elimina física y lógicamente documentos viejos reemplazados
+  private async limpiarDocumentosPrevios(criterio: { respuesta_id?: string; ficha_id?: string; perfil_periodo_id?: string }) {
+    const viejos = await this.documentosRepository.find({ where: criterio });
+    
+    for (const doc of viejos) {
+      try {
+        const nombreArchivo = doc.ruta_archivo.split('/').pop();
+        if (nombreArchivo) {
+          await this.supabase.storage.from(this.BUCKET_NAME).remove([nombreArchivo]);
+        }
+      } catch (error) {
+        console.error(`Error al limpiar archivo viejo de Supabase:`, error);
+      }
+      // Lo eliminamos de la base de datos para que no quede huérfano
+      await this.documentosRepository.delete(doc.id);
+    }
+  }
+
   // ----------------------------------------------------------------------
   // SUBIDA + CREACIÓN EN BD
   // ----------------------------------------------------------------------
@@ -115,12 +133,16 @@ export class DocumentosRespaldoService {
   ): Promise<DocumentoRespaldo> {
     if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
 
+    // 🔥 Antes de subir, validamos propiedad y LIMPIAMOS cualquier archivo previo asociado a este campo
     if (body.respuesta_id) {
       await this.validarPropiedadDocumento(body.respuesta_id, usuarioId, rol);
+      await this.limpiarDocumentosPrevios({ respuesta_id: body.respuesta_id });
     } else if (body.ficha_id) {
       await this.validarPropiedadFicha(body.ficha_id, usuarioId, rol);
+      await this.limpiarDocumentosPrevios({ ficha_id: body.ficha_id });
     } else if (body.perfil_periodo_id) {
       await this.validarPropiedadPerfilPeriodo(body.perfil_periodo_id, usuarioId, rol);
+      await this.limpiarDocumentosPrevios({ perfil_periodo_id: body.perfil_periodo_id });
     }
 
     const urlPublica = await this.subirArchivoAStorage(archivo);
@@ -147,7 +169,7 @@ export class DocumentosRespaldoService {
   async findByUsuario(usuarioId: string) {
     return await this.documentosRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
-      order: { created_at: 'DESC' } // 🔥 Ordenamos del más reciente al más antiguo para la galería
+      order: { created_at: 'DESC' }
     });
   }
 
@@ -197,7 +219,7 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // ELIMINACIÓN FÍSICA (Base de datos + Storage)
+  // ELIMINACIÓN FÍSICA INDEPENDIENTES
   // ----------------------------------------------------------------------
 
   async remove(id: string, usuarioId: string, rol: string) {
@@ -207,36 +229,29 @@ export class DocumentosRespaldoService {
       throw new NotFoundException('El documento de respaldo no existe o ya fue eliminado.');
     }
 
-    // 1. Validar propiedad: Si no es coordinador, debe ser el dueño del archivo
     if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
       throw new ForbiddenException('No tienes permiso para eliminar este documento.');
     }
 
-    // 🔥 2. REGLA DE PROTECCIÓN: Bloquear si es evidencia de un formulario
-    if (documento.respuesta_id !== null || documento.ficha_id !== null) {
+    if (documento.respuesta_id !== null || documento.ficha_id !== null || documento.perfil_periodo_id !== null) {
       throw new ForbiddenException(
-        'Acción denegada: No puedes eliminar este documento directamente porque está vinculado a una ficha institucional como evidencia. Debes actualizarlo o eliminarlo desde el formulario correspondiente.'
+        'Acción denegada: No puedes eliminar este documento directamente porque está vinculado a una ficha o formulario. Para eliminarlo, hazlo desde el formulario correspondiente.'
       );
     }
 
-    // 3. Si es un archivo libre/suelto, procedemos con la eliminación física de Supabase
     try {
       const nombreArchivo = documento.ruta_archivo.split('/').pop();
-      
       if (nombreArchivo) {
         const { error } = await this.supabase.storage
           .from(this.BUCKET_NAME)
           .remove([nombreArchivo]);
           
-        if (error) {
-          console.error(`Error de Supabase al borrar archivo: ${error.message}`);
-        }
+        if (error) console.error(`Error de Supabase al borrar archivo: ${error.message}`);
       }
     } catch (error) {
       console.error('Error al intentar eliminar archivo de Supabase:', error);
     }
 
-    // 4. Eliminación física de la base de datos
     await this.documentosRepository.delete(id);
 
     return { message: 'Documento independiente eliminado físicamente del sistema y del almacenamiento.' };
