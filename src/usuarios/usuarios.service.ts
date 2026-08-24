@@ -15,7 +15,7 @@ import { PerfilUsuarioPeriodo } from './entities/perfil-usuario-periodo.entity';
 
 @Injectable()
 export class UsuariosService {
-  private supabase: SupabaseClient;
+  private readonly supabase: SupabaseClient;
 
   constructor(
     @InjectRepository(Usuario)
@@ -29,14 +29,12 @@ export class UsuariosService {
     @InjectRepository(PerfilUsuarioPeriodo)
     private readonly perfilPeriodoRepository: Repository<PerfilUsuarioPeriodo>,
   ) {
-    // Instanciación manual del cliente de Supabase
     this.supabase = createClient(
       process.env.SUPABASE_URL as string,
       process.env.SUPABASE_KEY as string,
     );
   }
 
-  // Un ciclo ahora puede estar ligado a varias carreras (tabla puente ciclos_carreras).
   private async cicloPerteneceACarrera(cicloId: string, carreraId: string): Promise<boolean> {
     const vinculo = await this.ciclosCarrerasRepository.findOne({
       where: { ciclo_id: cicloId, carrera_id: carreraId },
@@ -95,47 +93,77 @@ export class UsuariosService {
   }
 
   findAll(skip: number = 0, take: number = 1000) {
-  const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
-  const skipReal = Math.max(Number(skip) || 0, 0);
+    const limiteReal = Math.min(Math.max(Number(take) || 1000, 1), 5000);
+    const skipReal = Math.max(Number(skip) || 0, 0);
 
-  return this.usuariosRepository.find({
-    skip: skipReal,
-    take: limiteReal,
-    select: {
-      id: true,
-      email_institucional: true,
-      primer_nombre: true,
-      primer_apellido: true,
-      segundo_nombre: true,
-      segundo_apellido: true,
-      cedula: true,
-      rol_id: true,
-      carrera_id: true,
-      ciclo_id: true,
-      foto_url: true,
-      fecha_desactivacion: true,
-    },
-    relations: { 
-      rol: true, 
-      ciclo: true,
-      carrera: true,
-      coordinaciones: { carrera: true } 
-    },
-    order: { primer_nombre: 'ASC' }
-  });
-}
+    return this.usuariosRepository.find({
+      skip: skipReal,
+      take: limiteReal,
+      select: {
+        id: true,
+        email_institucional: true,
+        primer_nombre: true,
+        primer_apellido: true,
+        segundo_nombre: true,
+        segundo_apellido: true,
+        cedula: true,
+        rol_id: true,
+        carrera_id: true,
+        ciclo_id: true,
+        foto_url: true,
+        fecha_desactivacion: true,
+      },
+      relations: { 
+        rol: true, 
+        ciclo: true,
+        carrera: true,
+        coordinaciones: { carrera: true } 
+      },
+      order: { primer_nombre: 'ASC' }
+    });
+  }
 
   async findOne(id: string) {
     const usuario = await this.usuariosRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { rol: true, ciclo: true },
+      relations: { rol: true, ciclo: true, carrera: true },
     });
 
     if (!usuario) {
       throw new NotFoundException('El usuario solicitado no existe o fue desactivado.');
     }
 
-    return usuario;
+    const periodoActivo = await this.periodosRepository.findOne({
+      where: { activo: true, fecha_desactivacion: IsNull() },
+      order: { fecha_inicio: 'DESC' },
+    });
+
+    let perfilPeriodo: PerfilUsuarioPeriodo | null = null;
+    if (periodoActivo) {
+      perfilPeriodo = await this.perfilPeriodoRepository.findOne({
+        where: { usuario_id: id, periodo_id: periodoActivo.id },
+      });
+    }
+
+    return {
+      ...usuario,
+      ...(perfilPeriodo ? {
+        numero_celular: perfilPeriodo.numero_celular,
+        sexo: perfilPeriodo.sexo,
+        estado_civil: perfilPeriodo.estado_civil,
+        tiene_hijos: perfilPeriodo.tiene_hijos,
+        etnia: perfilPeriodo.etnia,
+        idioma: perfilPeriodo.idioma,
+        lugar_nacimiento: perfilPeriodo.lugar_nacimiento,
+        fecha_nacimiento: perfilPeriodo.fecha_nacimiento,
+        rango_edad: perfilPeriodo.rango_edad,
+        nacionalidad: perfilPeriodo.nacionalidad,
+        esta_embarazada: perfilPeriodo.esta_embarazada,
+        tiene_discapacidad: perfilPeriodo.tiene_discapacidad,
+        tipo_discapacidad: perfilPeriodo.tipo_discapacidad,
+        zona_residencia: perfilPeriodo.zona_residencia,
+      } : {}),
+    };
   }
 
   async update(id: string, updateUsuarioDto: UpdateUsuarioDto) {
@@ -180,7 +208,6 @@ export class UsuariosService {
     }
 
     const datosActualizados: Partial<Usuario> = { ...updateUsuarioDto };
-
     const resultado = await this.usuariosRepository.update(id, datosActualizados);
 
     if (resultado.affected === 0) {
@@ -190,7 +217,6 @@ export class UsuariosService {
     return this.findOne(id);
   }
 
-  // Busca el periodo de matrícula actualmente activo. Si no hay ninguno, no se puede completar perfil.
   private async obtenerPeriodoActivo(): Promise<PeriodoMatricula> {
     const periodo = await this.periodosRepository.findOne({
       where: { activo: true, fecha_desactivacion: IsNull() },
@@ -206,7 +232,6 @@ export class UsuariosService {
     return periodo;
   }
 
-  // Indica si el usuario ya llenó su perfil para el periodo activo, y devuelve ese periodo.
   async obtenerEstadoPerfil(usuarioId: string) {
     const periodoActivo = await this.obtenerPeriodoActivo();
 
@@ -221,24 +246,42 @@ export class UsuariosService {
     };
   }
 
-  async completarPerfilEstudiante(usuarioId: string, rol: string, dto: CompletarPerfilDto) {
-    const usuario = await this.usuariosRepository.findOne({
-      where: { id: usuarioId, fecha_desactivacion: IsNull() },
-      select: { id: true, cedula: true, carrera_id: true, ciclo_id: true },
+  // Helper para validar asignación de carrera y ciclo
+  private async validarCarreraYCicloEstudiante(carreraId?: string, cicloId?: string): Promise<void> {
+    if (!carreraId || !cicloId) {
+      throw new BadRequestException('La carrera y el ciclo son obligatorios.');
+    }
+    const ciclo = await this.ciclosRepository.findOne({ 
+      where: { id: cicloId, fecha_desactivacion: IsNull() }, 
+      select: { id: true } 
     });
-    if (!usuario) throw new NotFoundException('El usuario no existe o fue desactivado.');
+    if (!ciclo) {
+      throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
+    }
+    if (!(await this.cicloPerteneceACarrera(ciclo.id, carreraId))) {
+      throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
+    }
+  }
 
-    // El perfil siempre se guarda contra el periodo de matrícula activo.
-    const periodoActivo = await this.obtenerPeriodoActivo();
-
-    // La fecha de nacimiento llega como "DD/MM/AAAA" y se guarda como Date real.
-    const fechaNacimiento = parseFechaNacimiento(dto.fecha_nacimiento);
-    if (!fechaNacimiento) {
-      throw new BadRequestException('La fecha de nacimiento ingresada no es válida.');
+  // Helper para validar duplicidad de correos
+  private async validarCorreosUnicos(usuarioId: string, dto: CompletarPerfilDto, datosUsuario: Partial<Usuario>): Promise<void> {
+    if (dto.email_institucional) {
+      const emailInst = dto.email_institucional.toLowerCase().trim();
+      const enUso = await this.usuariosRepository.findOne({ where: { email_institucional: emailInst }, select: { id: true } });
+      if (enUso && enUso.id !== usuarioId) throw new BadRequestException('El correo institucional ingresado ya está registrado por otro usuario.');
+      datosUsuario.email_institucional = emailInst;
     }
 
-    // ---------- 1. Datos de identidad del Usuario (cédula, nombres, correos, carrera/ciclo actual) ----------
+    if (dto.email_personal) {
+      const emailPers = dto.email_personal.toLowerCase().trim();
+      const enUso = await this.usuariosRepository.findOne({ where: { email_personal: emailPers }, select: { id: true } });
+      if (enUso && enUso.id !== usuarioId) throw new BadRequestException('El correo personal ingresado ya está registrado por otro usuario.');
+      datosUsuario.email_personal = emailPers;
+    }
+  }
 
+  // Función refactorizada: ahora tiene muy poca complejidad cognitiva
+  private async actualizarIdentidadUsuario(usuarioId: string, rol: string, dto: CompletarPerfilDto): Promise<void> {
     const datosUsuario: Partial<Usuario> = { cedula: dto.cedula };
 
     if (dto.primer_nombre) datosUsuario.primer_nombre = dto.primer_nombre;
@@ -246,65 +289,26 @@ export class UsuariosService {
     if (dto.primer_apellido) datosUsuario.primer_apellido = dto.primer_apellido;
     if (dto.segundo_apellido) datosUsuario.segundo_apellido = dto.segundo_apellido;
 
-    if (dto.email_institucional) {
-      const emailInstitucional = dto.email_institucional.toLowerCase().trim();
-      const enUso = await this.usuariosRepository.findOne({
-        where: { email_institucional: emailInstitucional },
-        select: { id: true },
-      });
-      if (enUso && enUso.id !== usuarioId) {
-        throw new BadRequestException('El correo institucional ingresado ya está registrado por otro usuario.');
-      }
-      datosUsuario.email_institucional = emailInstitucional;
-    }
-
-    if (dto.email_personal) {
-      const emailPersonal = dto.email_personal.toLowerCase().trim();
-      const enUso = await this.usuariosRepository.findOne({
-        where: { email_personal: emailPersonal },
-        select: { id: true },
-      });
-      if (enUso && enUso.id !== usuarioId) {
-        throw new BadRequestException('El correo personal ingresado ya está registrado por otro usuario.');
-      }
-      datosUsuario.email_personal = emailPersonal;
-    }
-
+    await this.validarCorreosUnicos(usuarioId, dto, datosUsuario);
 
     if (rol === 'ESTUDIANTE' || rol === 'INVITADO') {
-  if (!dto.carrera_id || !dto.ciclo_id) {
-    throw new BadRequestException('La carrera y el ciclo son obligatorios.');
-  }
-  const ciclo = await this.ciclosRepository.findOne({
-    where: { id: dto.ciclo_id, fecha_desactivacion: IsNull() },
-    select: { id: true },
-  });
-  if (!ciclo) {
-    throw new NotFoundException('El ciclo seleccionado no existe o está inactivo.');
-  }
-  if (!(await this.cicloPerteneceACarrera(ciclo.id, dto.carrera_id))) {
-    throw new BadRequestException('El ciclo seleccionado no pertenece a la carrera indicada.');
-  }
-  datosUsuario.carrera_id = dto.carrera_id;
-  datosUsuario.ciclo_id = dto.ciclo_id;
-}
+      await this.validarCarreraYCicloEstudiante(dto.carrera_id, dto.ciclo_id);
+      datosUsuario.carrera_id = dto.carrera_id;
+      datosUsuario.ciclo_id = dto.ciclo_id;
+    }
 
-
-    const cedulaEnUso = await this.usuariosRepository.findOne({
-      where: { cedula: dto.cedula },
-      select: { id: true },
-    });
+    const cedulaEnUso = await this.usuariosRepository.findOne({ where: { cedula: dto.cedula }, select: { id: true } });
     if (cedulaEnUso && cedulaEnUso.id !== usuarioId) {
       throw new BadRequestException('La cédula ingresada ya está registrada por otro usuario.');
     }
 
     await this.usuariosRepository.update(usuarioId, datosUsuario);
+  }
 
-    // ---------- 2. Datos personales del periodo activo (se piden cada nuevo periodo) ----------
-
+  private async guardarFichaDemografica(usuarioId: string, periodoId: string, dto: CompletarPerfilDto, fechaNacimiento: Date) {
     const datosPerfilPeriodo = {
       usuario_id: usuarioId,
-      periodo_id: periodoActivo.id,
+      periodo_id: periodoId,
       numero_celular: dto.numero_celular,
       sexo: dto.sexo,
       estado_civil: dto.estado_civil,
@@ -315,16 +319,14 @@ export class UsuariosService {
       fecha_nacimiento: fechaNacimiento,
       rango_edad: dto.rango_edad,
       nacionalidad: dto.nacionalidad,
-      // Solo se guarda si el sexo es Mujer; para Hombre queda en null aunque llegue en el body.
       esta_embarazada: dto.sexo === SexoEnum.MUJER ? (dto.esta_embarazada ?? false) : null,
       tiene_discapacidad: dto.tiene_discapacidad,
-      // La subpregunta solo se guarda si tiene_discapacidad es true.
       tipo_discapacidad: dto.tiene_discapacidad ? (dto.tipo_discapacidad ?? null) : null,
       zona_residencia: dto.zona_residencia,
     };
 
     const perfilPeriodoExistente = await this.perfilPeriodoRepository.findOne({
-      where: { usuario_id: usuarioId, periodo_id: periodoActivo.id },
+      where: { usuario_id: usuarioId, periodo_id: periodoId },
       select: { id: true },
     });
 
@@ -335,10 +337,25 @@ export class UsuariosService {
       await this.perfilPeriodoRepository.save(nuevoPerfilPeriodo);
     }
 
-    const perfilPeriodoGuardado = await this.perfilPeriodoRepository.findOne({
-      where: { usuario_id: usuarioId, periodo_id: periodoActivo.id },
-    });
+    return this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId, periodo_id: periodoId } });
+  }
 
+  async completarPerfilEstudiante(usuarioId: string, rol: string, dto: CompletarPerfilDto) {
+    const usuario = await this.usuariosRepository.findOne({
+      where: { id: usuarioId, fecha_desactivacion: IsNull() },
+      select: { id: true },
+    });
+    if (!usuario) throw new NotFoundException('El usuario no existe o fue desactivado.');
+
+    const periodoActivo = await this.obtenerPeriodoActivo();
+
+    const fechaNacimiento = parseFechaNacimiento(dto.fecha_nacimiento);
+    if (!fechaNacimiento) {
+      throw new BadRequestException('La fecha de nacimiento ingresada no es válida.');
+    }
+
+    await this.actualizarIdentidadUsuario(usuarioId, rol, dto);
+    const perfilPeriodoGuardado = await this.guardarFichaDemografica(usuarioId, periodoActivo.id, dto, fechaNacimiento);
     const usuarioActualizado = await this.findOne(usuarioId);
 
     return {
@@ -349,7 +366,6 @@ export class UsuariosService {
   }
 
   async actualizarFoto(usuarioId: string, archivo: Express.Multer.File) {
-    // 1. Obtener el usuario actual para verificar si ya tiene una foto
     const usuario = await this.usuariosRepository.findOne({
       where: { id: usuarioId, fecha_desactivacion: IsNull() },
       select: { id: true, foto_url: true },
@@ -359,11 +375,9 @@ export class UsuariosService {
       throw new NotFoundException('El usuario no existe o fue desactivado.');
     }
 
-    // 2. Si el usuario ya tiene una foto alojada en Supabase, la eliminamos primero
-    if (usuario.foto_url && usuario.foto_url.includes('supabase.co')) {
-      // Extraemos el nombre del archivo exacto desde la URL pública
+    if (usuario.foto_url?.includes('supabase.co')) {
       const urlParts = usuario.foto_url.split('/');
-      const nombreArchivoAnterior = urlParts[urlParts.length - 1];
+      const nombreArchivoAnterior = urlParts.at(-1);
 
       if (nombreArchivoAnterior) {
         const { error: deleteError } = await this.supabase.storage
@@ -376,7 +390,6 @@ export class UsuariosService {
       }
     }
 
-    // 3. Subir la nueva foto (Mantenemos tu lógica de Date.now() para evitar problemas de caché en el navegador)
     const nombreUnico = `perfil-${usuarioId}-${Date.now()}.webp`;
 
     const { error: uploadError } = await this.supabase.storage
@@ -391,7 +404,6 @@ export class UsuariosService {
       throw new InternalServerErrorException(`Error al subir la nueva foto: ${uploadError.message}`);
     }
 
-    // 4. Obtener la URL pública y guardar en la base de datos
     const { data } = this.supabase.storage.from('fotos_perfil').getPublicUrl(nombreUnico);
 
     await this.usuariosRepository.update(usuarioId, {
