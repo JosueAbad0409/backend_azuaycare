@@ -8,6 +8,7 @@ import {
   IsUUID,
   MaxLength,
   ValidateIf,
+  IsDefined,
 } from 'class-validator';
 import { IsCedulaEcuatoriana } from 'src/common/is-cedula-ecuatoriana.validator';
 import { IsCelularEcuatoriano } from 'src/common/is-celular-ecuatoriano.validator';
@@ -36,7 +37,7 @@ export class CompletarPerfilDto {
   @IsOptional()
   ciclo_id?: string;
 
-  // ---------- Correos y nombres (editables si el proveedor de login no los trajo completos) ----------
+  // ---------- Correos y nombres ----------
 
   @IsEmail({}, { message: 'El correo institucional no es válido.' })
   @IsOptional()
@@ -77,7 +78,7 @@ export class CompletarPerfilDto {
   estado_civil: EstadoCivilEnum;
 
   @IsBoolean({ message: 'Indique si tiene hijos/as (true/false).' })
-  @IsNotEmpty({ message: '¿Tiene hijos/as? es obligatorio.' })
+  @IsDefined({ message: '¿Tiene hijos/as? es obligatorio.' })
   tiene_hijos: boolean;
 
   @IsEnum(EtniaEnum, { message: 'La etnia/raza ingresada no es válida.' })
@@ -109,17 +110,17 @@ export class CompletarPerfilDto {
   @MaxLength(100)
   nacionalidad: string;
 
-  // Solo aplica si sexo = Mujer; si no aplica, se ignora en el backend.
+  // Solo aplica si sexo = Mujer
   @ValidateIf((dto: CompletarPerfilDto) => dto.sexo === SexoEnum.MUJER)
   @IsBoolean({ message: 'Indique si está embarazada (true/false).' })
-  @IsNotEmpty({ message: '¿Está embarazada? es obligatorio para mujeres.' })
+  @IsDefined({ message: '¿Está embarazada? es obligatorio para mujeres.' })
   esta_embarazada?: boolean;
 
   @IsBoolean({ message: 'Indique si tiene alguna discapacidad (true/false).' })
-  @IsNotEmpty({ message: '¿Tiene alguna discapacidad? es obligatorio.' })
+  @IsDefined({ message: '¿Tiene alguna discapacidad? es obligatorio.' })
   tiene_discapacidad: boolean;
 
-  // Subpregunta: obligatoria únicamente si tiene_discapacidad = true
+  // Subpregunta
   @ValidateIf((dto: CompletarPerfilDto) => dto.tiene_discapacidad === true)
   @IsString()
   @IsNotEmpty({ message: 'El tipo de discapacidad es obligatorio si indicó que tiene una discapacidad.' })
