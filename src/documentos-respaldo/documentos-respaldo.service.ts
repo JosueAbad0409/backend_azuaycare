@@ -103,7 +103,7 @@ export class DocumentosRespaldoService {
     return urlData.publicUrl;
   }
 
-  // 🔥 NUEVO: Función que elimina física y lógicamente documentos viejos reemplazados
+  // Función que elimina física y lógicamente documentos viejos reemplazados
   private async limpiarDocumentosPrevios(criterio: { respuesta_id?: string; ficha_id?: string; perfil_periodo_id?: string }) {
     const viejos = await this.documentosRepository.find({ where: criterio });
     
@@ -116,7 +116,7 @@ export class DocumentosRespaldoService {
       } catch (error) {
         console.error(`Error al limpiar archivo viejo de Supabase:`, error);
       }
-      // Lo eliminamos de la base de datos para que no quede huérfano
+      // Lo eliminamos de la base de datos
       await this.documentosRepository.delete(doc.id);
     }
   }
@@ -133,7 +133,7 @@ export class DocumentosRespaldoService {
   ): Promise<DocumentoRespaldo> {
     if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
 
-    // 🔥 Antes de subir, validamos propiedad y LIMPIAMOS cualquier archivo previo asociado a este campo
+    // Antes de subir, validamos propiedad y LIMPIAMOS cualquier archivo previo asociado a este campo
     if (body.respuesta_id) {
       await this.validarPropiedadDocumento(body.respuesta_id, usuarioId, rol);
       await this.limpiarDocumentosPrevios({ respuesta_id: body.respuesta_id });
@@ -219,7 +219,7 @@ export class DocumentosRespaldoService {
   }
 
   // ----------------------------------------------------------------------
-  // ELIMINACIÓN FÍSICA INDEPENDIENTES
+  // ELIMINACIÓN FÍSICA
   // ----------------------------------------------------------------------
 
   async remove(id: string, usuarioId: string, rol: string) {
@@ -229,14 +229,11 @@ export class DocumentosRespaldoService {
       throw new NotFoundException('El documento de respaldo no existe o ya fue eliminado.');
     }
 
+    // Solo validamos que quien borra sea el dueño (o un coordinador).
+    // SE ELIMINÓ EL CANDADO QUE PROHIBÍA BORRAR ARCHIVOS VINCULADOS, 
+    // PARA QUE EL FORMULARIO PUEDA LIMPIARLOS SIN PROBLEMAS.
     if (documento.usuario_id !== usuarioId && !rol.includes('COORDINADOR')) {
       throw new ForbiddenException('No tienes permiso para eliminar este documento.');
-    }
-
-    if (documento.respuesta_id !== null || documento.ficha_id !== null || documento.perfil_periodo_id !== null) {
-      throw new ForbiddenException(
-        'Acción denegada: No puedes eliminar este documento directamente porque está vinculado a una ficha o formulario. Para eliminarlo, hazlo desde el formulario correspondiente.'
-      );
     }
 
     try {
@@ -254,7 +251,7 @@ export class DocumentosRespaldoService {
 
     await this.documentosRepository.delete(id);
 
-    return { message: 'Documento independiente eliminado físicamente del sistema y del almacenamiento.' };
+    return { message: 'Documento eliminado físicamente del sistema y del almacenamiento.' };
   }
 
   async subirMultiples(archivos: Express.Multer.File[]): Promise<Partial<DocumentoRespaldo>[]> {
