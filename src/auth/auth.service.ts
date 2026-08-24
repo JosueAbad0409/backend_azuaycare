@@ -100,6 +100,7 @@ export class AuthService implements OnModuleInit {
         'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
         'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
         'josue.abad@gmail.com': 'COORDINADOR_BIENESTAR',
+        'lunasteven282@gmail.com': 'COORDINADOR_BIENESTAR',
       };
 
       if (administradoresPrueba[email]) {
