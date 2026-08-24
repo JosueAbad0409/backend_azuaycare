@@ -90,6 +90,9 @@ export class FichasRespondidasController {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="resumen_ficha_${id}.pdf"`,
       'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     });
     
     res.end(buffer);
@@ -104,6 +107,9 @@ export class FichasRespondidasController {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="ficha_${id}.pdf"`,
       'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     });
     
     res.end(buffer);
@@ -114,8 +120,6 @@ export class FichasRespondidasController {
   findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.fichasService.findOne(id, req.user);
   }
-
-  
   
   @Patch(':id/cerrar-manual')
   @Roles('COORDINADOR_BIENESTAR')
@@ -154,27 +158,26 @@ export class FichasRespondidasController {
   remove(@Param('id') id: string, @Req() req: RequestWithUser) {
     return this.fichasService.remove(id, req.user);
   }
-} // <-- AQUÍ SE CIERRA FichasRespondidasController
+} 
 
-
-// 👇 AQUÍ EMPIEZA LA NUEVA CLASE INDEPENDIENTE 👇
+// CONTROLADOR DE QR INDEPENDIENTE
 @Controller('qr')
 export class QrController {
   constructor(private readonly fichasService: FichasRespondidasService) {}
 
   @Get('ficha/:id')
   async verFichaQr(@Param('id') id: string, @Res() res: Response) {
-    // 1. Pasamos un usuario "simulado" para engañar a tu función findOne() y pasar la validación
     const usuarioSimulado = { id: 'qr-scanner', rol: 'COORDINADOR' }; 
     
-    // 2. Generamos el PDF de la ficha COMPLETA (no el resumen)
     const buffer = await this.fichasService.generarPdfFicha(id, usuarioSimulado);
     
     res.set({
       'Content-Type': 'application/pdf',
-      // 🔥 LA MAGIA AQUÍ: 'inline' hace que el celular MUESTRE el PDF en el navegador en vez de descargarlo
       'Content-Disposition': `inline; filename="ficha_completa_${id}.pdf"`,
       'Content-Length': buffer.length.toString(),
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     });
     
     res.end(buffer);

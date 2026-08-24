@@ -584,12 +584,18 @@ export class FichasRespondidasService {
       totalEgresos > 0 ||
       balanceFinal !== 0;
 
+    const fotoPerfil = data.ficha.usuario?.foto_url || null;
+
     const fichaParaPdf = {
       ...data.ficha,
       total_ingresos: totalIngresos,
       total_egresos: totalEgresos,
       balance_final: balanceFinal,
       rangoResultado: data.ficha.rangoResultado || (estatusNombre ? { nombre: estatusNombre } : null),
+      usuario: {
+        ...data.ficha.usuario,
+        foto_url: fotoPerfil
+      }
     };
 
     const dependencias: any[] = await this.dataSource.query(
