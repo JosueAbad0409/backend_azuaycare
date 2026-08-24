@@ -3,12 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <style>
+    /* Regla global de impresión para estabilizar la paginación en Puppeteer */
+    @page {
+      size: A4;
+      margin: 15mm 15mm 20mm 15mm;
+    }
+
     * { box-sizing: border-box; }
     body {
       font-family: 'Helvetica', Arial, sans-serif;
       color: #1e293b;
       margin: 0;
-      padding: 28px 32px 56px;
+      padding: 0;
       font-size: 12px;
       line-height: 1.45;
     }
@@ -47,14 +53,13 @@
       color: #991b1b;
     }
 
-    /* CAJA DE SECCIÓN */
+    /* CAJA DE SECCIÓN CORREGIDA PARA EVITAR EL CORTE DE PÁGINAS */
     .seccion-box {
       border: 1.5px solid #e2e8f0;
       border-radius: 10px;
       margin-bottom: 20px;
-      page-break-inside: avoid;
-      overflow: hidden;
       background: #fff;
+      /* Se eliminó overflow: hidden y page-break-inside: avoid para permitir saltos naturales */
     }
     .seccion-header {
       background: {{plantilla.color_primario}};
@@ -64,6 +69,8 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
     }
     .seccion-header span {
       opacity: 0.85;
@@ -76,7 +83,7 @@
 
     .pregunta {
       margin-bottom: 12px;
-      page-break-inside: avoid;
+      page-break-inside: avoid; /* Mantenemos esto a nivel de pregunta, que es lo correcto */
     }
     .pregunta-label {
       display: block;
@@ -106,7 +113,6 @@
       display: block;
     }
 
-    /* SUBPREGUNTA (solo si se activó) */
     .subpregunta {
       margin: 10px 0 10px 12px;
       padding: 10px 12px;
@@ -131,7 +137,7 @@
 
     .footer {
       position: fixed;
-      bottom: 12px;
+      bottom: -10px;
       left: 0;
       right: 0;
       text-align: center;
@@ -151,11 +157,22 @@
   </div>
 
   <div class="info-box">
-    <strong>Estudiante:</strong> {{ficha.usuario.primer_nombre}} {{ficha.usuario.primer_apellido}} <br>
-    <strong>Cédula:</strong> {{ficha.usuario.cedula}} <br>
-    <strong>Periodo:</strong> {{ficha.periodo.nombre}} <br>
-    <strong>Fecha de envío:</strong> {{formatDate ficha.created_at}} <br>
-    <strong>Estado:</strong> {{ficha.estado_ficha}}
+    <table style="width: 100%; border-collapse: collapse; border: none;">
+      <tr>
+        {{#if ficha.usuario.foto_url}}
+        <td style="width: 85px; vertical-align: middle; padding-right: 15px;">
+          <img src="{{ficha.usuario.foto_url}}" alt="Foto del estudiante" style="width: 75px; height: 75px; object-fit: cover; border-radius: 50%; border: 2px solid {{plantilla.color_primario}};">
+        </td>
+        {{/if}}
+        <td style="vertical-align: middle; line-height: 1.6;">
+          <strong>Estudiante:</strong> {{ficha.usuario.primer_nombre}} {{ficha.usuario.primer_apellido}} <br>
+          <strong>Cédula:</strong> {{ficha.usuario.cedula}} <br>
+          <strong>Periodo:</strong> {{ficha.periodo.nombre}} <br>
+          <strong>Fecha de envío:</strong> {{formatDate ficha.created_at}} <br>
+          <strong>Estado:</strong> {{ficha.estado_ficha}}
+        </td>
+      </tr>
+    </table>
   </div>
 
   {{#if esFichaFinanciera}}
