@@ -160,16 +160,17 @@ export class FichasRespondidasController {
   }
 } 
 
-// CONTROLADOR DE QR INDEPENDIENTE
+// CONTROLADOR DE QR INDEPENDIENTE PÚBLICO
 @Controller('qr')
 export class QrController {
-  constructor(private readonly fichasService: FichasRespondidasService) {}
+  constructor(
+    private readonly fichasService: FichasRespondidasService,
+  ) {}
 
   @Get('ficha/:id')
   async verFichaQr(@Param('id') id: string, @Res() res: Response) {
-    const usuarioSimulado = { id: 'qr-scanner', rol: 'COORDINADOR' }; 
-    
-    const buffer = await this.fichasService.generarPdfFicha(id, usuarioSimulado);
+    // 🔥 Petición pública (user = null) para evitar validaciones de sesión al escanear desde un teléfono
+    const buffer = await this.fichasService.generarPdfFicha(id, null);
     
     res.set({
       'Content-Type': 'application/pdf',

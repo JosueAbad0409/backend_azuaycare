@@ -226,8 +226,13 @@ export class FichasRespondidasService {
       throw new NotFoundException('La ficha solicitada no existe o fue dada de baja.');
     }
 
-    if (user && !user.rol.includes('COORDINADOR') && ficha.usuario_id !== user.id) {
-      throw new ForbiddenException('No tienes permiso sobre la ficha de otro usuario.');
+        if (user) {
+      const rolStr = typeof user.rol === 'string' ? user.rol : JSON.stringify(user.rol || '');
+      const esCoordinador = rolStr.includes('COORDINADOR');
+      
+      if (!esCoordinador && ficha.usuario_id !== user.id) {
+        throw new ForbiddenException('No tienes permiso sobre la ficha de otro usuario.');
+      }
     }
 
     return ficha;
