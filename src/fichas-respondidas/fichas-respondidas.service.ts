@@ -476,6 +476,16 @@ export class FichasRespondidasService {
     try {
       const ficha = await this.findOne(id, user);
 
+      // 🔥 Inyección explícita de la foto de perfil para que Handlebars la detecte
+      const fotoPerfil = ficha.usuario?.foto_url || null;
+      const fichaParaPdf = {
+        ...ficha,
+        usuario: {
+          ...ficha.usuario,
+          foto_url: fotoPerfil,
+        },
+      };
+
       const alertas = await this.dataSource.query(`
       SELECT p.enunciado as pregunta, 
              COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
@@ -503,7 +513,7 @@ export class FichasRespondidasService {
       const template = this.pdfRenderer.compilarTemplate('formularioQR', templateFuente);
 
       const html = template({
-        ficha: ficha,
+        ficha: fichaParaPdf, // 🔥 Pasamos el objeto enriquecido con foto_url
         alertasVulnerabilidad: alertas,
         qrCode: qrCodeBase64,
         fechaGeneracion: new Date().toLocaleDateString('es-EC')
