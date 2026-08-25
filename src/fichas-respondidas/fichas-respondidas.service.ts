@@ -24,7 +24,7 @@ export class FichasRespondidasService {
   private readonly logger = new Logger(FichasRespondidasService.name);
 
   private readonly MAX_CONCURRENT_QR_PDF = 3;
-  
+
   private currentQrPdfJobs = 0;
   private readonly qrPdfWaitQueue: Array<() => void> = [];
 
@@ -230,7 +230,7 @@ export class FichasRespondidasService {
     if (user) {
       const rolStr = typeof user.rol === 'string' ? user.rol : JSON.stringify(user.rol || '');
       const esCoordinador = rolStr.includes('COORDINADOR');
-      
+
       if (!esCoordinador && ficha.usuario_id !== user.id) {
         throw new ForbiddenException('No tienes permiso sobre la ficha de otro usuario.');
       }
@@ -242,7 +242,7 @@ export class FichasRespondidasService {
   async findByUsuario(usuarioId: string) {
     return this.fichasRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
-      relations: { usuario: true, periodo: true, formulario: true, rangoResultado: true }, 
+      relations: { usuario: true, periodo: true, formulario: true, rangoResultado: true },
       order: { created_at: 'DESC' },
     });
   }
@@ -426,11 +426,11 @@ export class FichasRespondidasService {
     if (process.env.NODE_ENV !== 'production') {
       this.templateQrCache = null;
     }
-    
+
     if (!this.templateQrCache) {
       const rutaDist = path.join(process.cwd(), 'dist/common/pdf/templates/formularioQR.hbs');
       const rutaSrc = path.join(process.cwd(), 'src/common/pdf/templates/formularioQR.hbs');
-      
+
       let ruta = '';
       if (fs.existsSync(rutaDist)) {
         ruta = rutaDist;
@@ -439,7 +439,7 @@ export class FichasRespondidasService {
       } else {
         throw new BadRequestException(`No se encontró la plantilla HBS. Rutas buscadas: ${rutaDist}`);
       }
-      
+
       this.templateQrCache = fs.readFileSync(ruta, 'utf-8');
     }
     return this.templateQrCache;
@@ -492,6 +492,13 @@ export class FichasRespondidasService {
     }
   }
 
+  /**
+   * Genera el PDF resumen (con QR) que se descarga desde la app.
+   * El QR codifica la URL pública /qr/ficha/:id con un parámetro `v`
+   * (timestamp) para evitar que el visor de PDF del celular/CDN
+   * cachee una versión vieja del documento al escanear el mismo
+   * código repetidas veces.
+   */
   async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
     await this.acquireQrPdfSlot();
 
@@ -524,7 +531,10 @@ export class FichasRespondidasService {
       `, [id]);
 
       const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com';
-      const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
+
+      // ?v=Date.now() -> hace que la URL sea única en cada generación,
+      // evitando que el visor de PDF del celular reutilice una respuesta cacheada.
+      const urlBienestar = `${backendUrl}/qr/ficha/${id}?v=${Date.now()}`;
 
       const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, {
         errorCorrectionLevel: 'M',
@@ -617,7 +627,6 @@ export class FichasRespondidasService {
       totalEgresos > 0 ||
       balanceFinal !== 0;
 
-    // 🔥 OBTENER FOTO DE PERFIL TANTO DE foto_url COMO DE foto_perfil Y CONVERTIR A BASE64
     const urlFoto = (data.ficha.usuario as any)?.foto_url || (data.ficha.usuario as any)?.foto_perfil || null;
     const fotoPerfil = await this.fetchImageAsBase64(urlFoto);
 
@@ -788,7 +797,7 @@ export class FichasRespondidasService {
       .createQueryBuilder()
       .select('r.valor_numerico', 'num')
       .addSelect('r.valor_texto', 'txt')
-      .from('respuestas', 'r') 
+      .from('respuestas', 'r')
       .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
       .where('r.ficha_id = :fichaId', { fichaId })
       .andWhere("p.categoria_financiera = 'INGRESO'")
@@ -799,7 +808,7 @@ export class FichasRespondidasService {
       .createQueryBuilder()
       .select('r.valor_numerico', 'num')
       .addSelect('r.valor_texto', 'txt')
-      .from('respuestas', 'r') 
+      .from('respuestas', 'r')
       .innerJoin('preguntas', 'p', 'p.id = r.pregunta_id')
       .where('r.ficha_id = :fichaId', { fichaId })
       .andWhere("p.categoria_financiera = 'EGRESO'")
@@ -1046,7 +1055,7 @@ export class FichasRespondidasService {
       const seleccionadas = await this.dataSource.query(
         `SELECT opcion_id FROM respuestas_opciones_seleccionadas WHERE respuesta_id = $1`, [respVieja.id]
       );
-      
+
       for (const sel of seleccionadas) {
         const nuevaOpcionId = mapaOpciones.get(sel.opcion_id);
         if (nuevaOpcionId) {
