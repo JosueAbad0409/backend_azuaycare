@@ -105,15 +105,17 @@ export class AuthService implements OnModuleInit {
       };
 
       // 2. Determinar el rol inicial para USUARIOS NUEVOS
-      let nombreRolAsignado = 'INVITADO'; // Por defecto: externos, docentes o coordinadores sin registrar
+      let nombreRolAsignado = 'INVITADO'; // Por defecto: externos, docentes o coordinadores no predefinidos
+
+      const dominio = email.split('@')[1] ?? '';
+      const usuarioLocal = email.split('@')[0] ?? '';
 
       if (administradoresPrueba[email]) {
         nombreRolAsignado = administradoresPrueba[email];
-      } else if (email.endsWith('@est.tecazuay.edu.ec') || /\.est@tecazuay\.edu\.ec$/.test(email)) {
+      } else if (dominio === 'tecazuay.edu.ec' && usuarioLocal.endsWith('.est')) {
+        // Solo correos tipo nombre.est@tecazuay.edu.ec se identifican como ESTUDIANTE
         nombreRolAsignado = 'ESTUDIANTE';
       }
-      // NOTA: Cualquier otro correo institucional (@tecazuay.edu.ec) será INVITADO. 
-      // Un administrador le cambiará el rol en la base de datos si resulta ser un Coordinador.
 
       // 3. Buscar al usuario en la base de datos
       let usuario = await this.usuariosRepository.findOne({
@@ -137,7 +139,7 @@ export class AuthService implements OnModuleInit {
       });
 
       if (!usuario) {
-        // El usuario NO existe, lo creamos con el rol que determinamos arriba
+        // El usuario NO existe, se crea con el rol resuelto arriba
         let rolDb = this.rolesCache.get(nombreRolAsignado);
         if (!rolDb) {
           const rolEncontrado = await this.rolesRepository.findOne({ where: { nombre: nombreRolAsignado } });
@@ -165,8 +167,7 @@ export class AuthService implements OnModuleInit {
         usuario.rol = rolDb; 
 
       } else {
-        // El usuario SÍ existe. Aquí NO TOCAMOS SU ROL. 
-        // Si un admin le cambió el rol a Coordinador, se mantendrá.
+        // El usuario SÍ existe: se mantiene su rol actual de la BD
         let necesitaActualizar = false;
 
         if (!usuario.google_id) {
@@ -192,7 +193,7 @@ export class AuthService implements OnModuleInit {
         }
       }
 
-      // Tomamos el rol de la Base de Datos (si ya existía) o el que le acabamos de asignar
+      // Tomamos el rol de la BD (si existía) o el que se le asignó al crearlo
       const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
 
       // Generamos el Token
