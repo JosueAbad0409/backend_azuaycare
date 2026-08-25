@@ -160,8 +160,10 @@
     <table style="width: 100%; border-collapse: collapse; border: none;">
       <tr>
         {{#if ficha.usuario.foto_url}}
-        <td style="width: 85px; vertical-align: middle; padding-right: 15px;">
-          <img src="{{ficha.usuario.foto_url}}" alt="Foto del estudiante" style="width: 75px; height: 75px; object-fit: cover; border-radius: 50%; border: 2px solid {{plantilla.color_primario}};">
+        <td style="width: 105px; vertical-align: middle; padding-right: 15px;">
+          <img src="{{ficha.usuario.foto_url}}" 
+               alt="Foto del estudiante" 
+               style="width: 95px; height: 95px; object-fit: cover; border-radius: 50%; border: 3px solid {{plantilla.color_primario}}; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
         </td>
         {{/if}}
         <td style="vertical-align: middle; line-height: 1.6;">
