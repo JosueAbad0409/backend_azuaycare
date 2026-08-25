@@ -226,7 +226,7 @@ export class FichasRespondidasService {
       throw new NotFoundException('La ficha solicitada no existe o fue dada de baja.');
     }
 
-        if (user) {
+    if (user) {
       const rolStr = typeof user.rol === 'string' ? user.rol : JSON.stringify(user.rol || '');
       const esCoordinador = rolStr.includes('COORDINADOR');
       
@@ -317,28 +317,14 @@ export class FichasRespondidasService {
         await this.fichasRepository.update(id, { estado_ficha: 'CERRADA_POR_PLAZO' });
         throw new BadRequestException('El plazo de edición ha vencido.');
       }
-      if (fichaExistente.estado_ficha !== 'BORRADOR') throw new BadRequestException('No puedes editar una ficha enviada.');
+      if (fichaExistente.estado_ficha !== 'BORRADOR' && fichaExistente.estado_ficha !== 'RECHAZADA') {
+        throw new BadRequestException('No puedes editar una ficha que ya fue enviada o validada.');
+      }
     }
 
     const datosUpdate: any = { ...updateDto };
-    const estado_ficha = datosUpdate.estado_ficha;
-    const comentario = datosUpdate.comentario;
-
-    delete datosUpdate.estado_ficha;
+    delete datosUpdate.estado_ficha; // Las transiciones de estado se manejan centralizadamente en respuestas-formulario
     delete datosUpdate.comentario;
-
-    if (estado_ficha && estado_ficha !== fichaExistente.estado_ficha) {
-      await this.dataSource.manager.insert('historial_estados_ficha', {
-        ficha_id: id,
-        estado_anterior: fichaExistente.estado_ficha,
-        estado_nuevo: estado_ficha,
-        comentario: comentario || null,
-        cambiado_por: user.id
-      });
-      datosUpdate.estado_ficha = estado_ficha;
-
-      this.notificarEstudiantePorCorreo(fichaExistente, estado_ficha, comentario);
-    }
 
     if (datosUpdate.total_ingresos !== undefined || datosUpdate.total_egresos !== undefined) {
       const ingresos = datosUpdate.total_ingresos ?? fichaExistente.total_ingresos;
@@ -385,7 +371,6 @@ export class FichasRespondidasService {
   async reabrir(id: string, coordinadorId: string, reabrirDto?: ReabrirFichaDto) {
     const ficha = await this.findOne(id);
 
-    // Borramos el caché del formulario para que se consulte la estructura actualizada en la BD
     const cacheKey = `form_struct_${ficha.formulario_id}`;
     await this.cacheManager.del(cacheKey);
 
@@ -475,14 +460,34 @@ export class FichasRespondidasService {
     }
   }
 
+  private async fetchImageAsBase64(url: string | null): Promise<string | null> {
+    if (!url) return null;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        this.logger.warn(`Foto no accesible (${response.status}): ${url}`);
+        return null;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mime = response.headers.get('content-type') || 'image/jpeg';
+      return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch (e: any) {
+      this.logger.warn(`No se pudo descargar la foto de perfil: ${url} — ${e.message}`);
+      return null;
+    }
+  }
+
   async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
     await this.acquireQrPdfSlot();
 
     try {
       const ficha = await this.findOne(id, user);
 
-      // 🔥 Inyección explícita de la foto de perfil para que Handlebars la detecte
-      const fotoPerfil = ficha.usuario?.foto_url || null;
+      const fotoPerfil = await this.fetchImageAsBase64(ficha.usuario?.foto_url || null);
       const fichaParaPdf = {
         ...ficha,
         usuario: {
@@ -518,7 +523,7 @@ export class FichasRespondidasService {
       const template = this.pdfRenderer.compilarTemplate('formularioQR', templateFuente);
 
       const html = template({
-        ficha: fichaParaPdf, // 🔥 Pasamos el objeto enriquecido con foto_url
+        ficha: fichaParaPdf,
         alertasVulnerabilidad: alertas,
         qrCode: qrCodeBase64,
         fechaGeneracion: new Date().toLocaleDateString('es-EC')
@@ -535,7 +540,6 @@ export class FichasRespondidasService {
   }
 
   async generarPdfFicha(id: string, user: any): Promise<Buffer> {
-    // Forzamos el refresco para evitar datos en caché obsoletos
     const data = await this.getResumenFicha(id, user, true);
 
     let plantilla: any = await this.dataSource.manager.findOne('plantillas_pdf', {
@@ -599,7 +603,7 @@ export class FichasRespondidasService {
       totalEgresos > 0 ||
       balanceFinal !== 0;
 
-    const fotoPerfil = data.ficha.usuario?.foto_url || null;
+    const fotoPerfil = await this.fetchImageAsBase64(data.ficha.usuario?.foto_url || null);
 
     const fichaParaPdf = {
       ...data.ficha,
