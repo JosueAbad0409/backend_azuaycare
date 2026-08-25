@@ -1,41 +1,45 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateRangoVariableCalculadaDto {
-    @IsUUID('4')
-    @IsNotEmpty()
-    formulario_id: string;
+  @IsUUID('4')
+  @IsNotEmpty()
+  formulario_id: string;
 
-    @IsString()
-    @IsNotEmpty()
-    variable_calculo: string;
+  @IsString()
+  @IsNotEmpty()
+  variable_calculo: string;
 
-    @IsString()
-    @IsNotEmpty()
-    nombre: string;
+  @IsString()
+  @IsNotEmpty()
+  nombre: string;
 
-    @IsNumber()
-    @IsNotEmpty()
-    valor_min: number;
+  @IsNumber()
+  @IsNotEmpty()
+  valor_min: number;
 
-    @IsNumber()
-    @IsNotEmpty()
-    valor_max: number;
+  @IsNumber()
+  @IsNotEmpty()
+  valor_max: number;
 
-    @IsNumber()
-    @IsOptional()
-    orden?: number;
-    }
+  @IsBoolean()
+  @IsOptional()
+  es_vulnerable?: boolean;
 
-    export class SimularRangoDto {
-    @IsUUID('4')
-    @IsNotEmpty()
-    formulario_id: string;
+  @IsNumber()
+  @IsOptional()
+  orden?: number;
+}
 
-    @IsString()
-    @IsNotEmpty()
-    variable_calculo: string;
+export class SimularRangoDto {
+  @IsUUID('4')
+  @IsNotEmpty()
+  formulario_id: string;
 
-    @IsNumber()
-    @IsNotEmpty()
-    valor_prueba: number;
+  @IsString()
+  @IsNotEmpty()
+  variable_calculo: string;
+
+  @IsNumber()
+  @IsNotEmpty()
+  valor_prueba: number;
 }

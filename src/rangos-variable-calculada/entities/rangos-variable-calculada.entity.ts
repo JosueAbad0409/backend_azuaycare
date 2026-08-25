@@ -21,6 +21,10 @@ export class RangoVariableCalculada {
     @Column({ type: 'numeric', nullable: false })
     valor_max: number;
 
+    // 🔴 COLUMNA QUE FALTABA
+    @Column({ type: 'boolean', default: false })
+    es_vulnerable: boolean;
+
     @Column({ type: 'integer', default: 1 })
     orden: number;
 
