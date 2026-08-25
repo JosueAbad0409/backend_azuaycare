@@ -53,13 +53,11 @@
       color: #991b1b;
     }
 
-    /* CAJA DE SECCIÓN CORREGIDA PARA EVITAR EL CORTE DE PÁGINAS */
     .seccion-box {
       border: 1.5px solid #e2e8f0;
       border-radius: 10px;
       margin-bottom: 20px;
       background: #fff;
-      /* Se eliminó overflow: hidden y page-break-inside: avoid para permitir saltos naturales */
     }
     .seccion-header {
       background: {{plantilla.color_primario}};
@@ -83,7 +81,7 @@
 
     .pregunta {
       margin-bottom: 12px;
-      page-break-inside: avoid; /* Mantenemos esto a nivel de pregunta, que es lo correcto */
+      page-break-inside: avoid;
     }
     .pregunta-label {
       display: block;
@@ -159,13 +157,17 @@
   <div class="info-box">
     <table style="width: 100%; border-collapse: collapse; border: none;">
       <tr>
-        {{#if ficha.usuario.foto_url}}
         <td style="width: 105px; vertical-align: middle; padding-right: 15px;">
-          <img src="{{ficha.usuario.foto_url}}" 
-               alt="Foto del estudiante" 
-               style="width: 95px; height: 95px; object-fit: cover; border-radius: 50%; border: 3px solid {{plantilla.color_primario}}; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+          {{#if ficha.usuario.foto_url}}
+            <img src="{{ficha.usuario.foto_url}}" 
+                 alt="Foto del estudiante" 
+                 style="width: 95px; height: 95px; object-fit: cover; border-radius: 50%; border: 3px solid {{plantilla.color_primario}}; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+          {{else}}
+            <div style="width: 95px; height: 95px; border-radius: 50%; border: 3px solid {{plantilla.color_primario}}; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #64748b; font-weight: bold; text-align: center;">
+              SIN FOTO
+            </div>
+          {{/if}}
         </td>
-        {{/if}}
         <td style="vertical-align: middle; line-height: 1.6;">
           <strong>Estudiante:</strong> {{ficha.usuario.primer_nombre}} {{ficha.usuario.primer_apellido}} <br>
           <strong>Cédula:</strong> {{ficha.usuario.cedula}} <br>

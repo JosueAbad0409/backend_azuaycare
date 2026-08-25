@@ -498,7 +498,9 @@ export class FichasRespondidasService {
     try {
       const ficha = await this.findOne(id, user);
 
-      const fotoPerfil = await this.fetchImageAsBase64(ficha.usuario?.foto_url || null);
+      const urlFoto = (ficha.usuario as any)?.foto_url || (ficha.usuario as any)?.foto_perfil || null;
+      const fotoPerfil = await this.fetchImageAsBase64(urlFoto);
+
       const fichaParaPdf = {
         ...ficha,
         usuario: {
@@ -615,7 +617,9 @@ export class FichasRespondidasService {
       totalEgresos > 0 ||
       balanceFinal !== 0;
 
-    const fotoPerfil = await this.fetchImageAsBase64(data.ficha.usuario?.foto_url || null);
+    // 🔥 OBTENER FOTO DE PERFIL TANTO DE foto_url COMO DE foto_perfil Y CONVERTIR A BASE64
+    const urlFoto = (data.ficha.usuario as any)?.foto_url || (data.ficha.usuario as any)?.foto_perfil || null;
+    const fotoPerfil = await this.fetchImageAsBase64(urlFoto);
 
     const fichaParaPdf = {
       ...data.ficha,

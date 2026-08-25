@@ -169,7 +169,6 @@ export class QrController {
 
   @Get('ficha/:id')
   async verFichaQr(@Param('id') id: string, @Res() res: Response) {
-    // 🔥 Petición pública (user = null) para evitar validaciones de sesión al escanear desde un teléfono
     const buffer = await this.fichasService.generarPdfFicha(id, null);
     
     res.set({
