@@ -95,10 +95,7 @@ export class AuthService implements OnModuleInit {
         segundoApellido = rawFamily.length > 1 ? rawFamily.slice(1).join(' ') : null;
       }
 
-      // 1. Validar dominio institucional (@tecazuay.edu.ec o @est.tecazuay.edu.ec)
-      const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec') || email.endsWith('@est.tecazuay.edu.ec');
-
-      // Mapeo manual para administradores/bienestar específicos (puedes añadir aquí los que necesites)
+      // 1. Mapeo manual para administradores iniciales
       const administradoresPrueba: Record<string, string> = {
         'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
         'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
@@ -107,23 +104,18 @@ export class AuthService implements OnModuleInit {
         'bienestar.institucional@tecazuay.edu.ec': 'COORDINADOR_BIENESTAR',
       };
 
-      if (!esDominioInstitucional && !administradoresPrueba[email]) {
-        throw new UnauthorizedException(
-          'Solo se permite el ingreso con correos institucionales del Tec Azuay.'
-        );
-      }
-
-      // 2. Determinar Rol
-      let nombreRolAsignado = 'INVITADO';
+      // 2. Determinar el rol inicial para USUARIOS NUEVOS
+      let nombreRolAsignado = 'INVITADO'; // Por defecto: externos, docentes o coordinadores sin registrar
 
       if (administradoresPrueba[email]) {
         nombreRolAsignado = administradoresPrueba[email];
       } else if (email.endsWith('@est.tecazuay.edu.ec') || /\.est@tecazuay\.edu\.ec$/.test(email)) {
         nombreRolAsignado = 'ESTUDIANTE';
-      } else if (esDominioInstitucional) {
-        nombreRolAsignado = 'COORDINADOR_CARRERA';
       }
+      // NOTA: Cualquier otro correo institucional (@tecazuay.edu.ec) será INVITADO. 
+      // Un administrador le cambiará el rol en la base de datos si resulta ser un Coordinador.
 
+      // 3. Buscar al usuario en la base de datos
       let usuario = await this.usuariosRepository.findOne({
         where: [
           { google_id: googleId },
@@ -145,12 +137,7 @@ export class AuthService implements OnModuleInit {
       });
 
       if (!usuario) {
-        if (nombreRolAsignado === 'COORDINADOR_CARRERA' && !administradoresPrueba[email]) {
-          throw new UnauthorizedException(
-            'Tu correo no está registrado como Coordinador de Carrera. Un administrador debe crear tu cuenta previamente.'
-          );
-        }
-
+        // El usuario NO existe, lo creamos con el rol que determinamos arriba
         let rolDb = this.rolesCache.get(nombreRolAsignado);
         if (!rolDb) {
           const rolEncontrado = await this.rolesRepository.findOne({ where: { nombre: nombreRolAsignado } });
@@ -175,8 +162,11 @@ export class AuthService implements OnModuleInit {
         });
 
         await this.usuariosRepository.save(usuario);
-        usuario.rol = rolDb;
+        usuario.rol = rolDb; 
+
       } else {
+        // El usuario SÍ existe. Aquí NO TOCAMOS SU ROL. 
+        // Si un admin le cambió el rol a Coordinador, se mantendrá.
         let necesitaActualizar = false;
 
         if (!usuario.google_id) {
@@ -202,8 +192,10 @@ export class AuthService implements OnModuleInit {
         }
       }
 
+      // Tomamos el rol de la Base de Datos (si ya existía) o el que le acabamos de asignar
       const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
 
+      // Generamos el Token
       const accessToken = this.jwtService.sign({
         sub: usuario.id,
         email: usuario.email_institucional,
@@ -211,18 +203,17 @@ export class AuthService implements OnModuleInit {
         carrera_id: usuario.carrera_id ?? null,
         nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
         foto_url: usuario.foto_url ?? null,
-        cedula: usuario.cedula ?? null,
+        cedula: usuario.cedula ?? null, 
       });
 
+      // Verificamos si necesita completar su perfil
       const rolesQueCompletanPerfil = ['ESTUDIANTE', 'INVITADO'];
-
       let perfilCompleto = true;
+      
       if (rolesQueCompletanPerfil.includes(rolFinal)) {
-        const identidadOk = Boolean(
-          usuario.cedula && usuario.carrera_id && usuario.ciclo_id,
-        );
-
+        const identidadOk = Boolean(usuario.cedula && usuario.carrera_id && usuario.ciclo_id);
         let perfilPeriodoOk = false;
+        
         if (identidadOk) {
           const periodoActivo = await this.periodosRepository.findOne({
             where: { activo: true, fecha_desactivacion: IsNull() },
@@ -255,10 +246,7 @@ export class AuthService implements OnModuleInit {
         perfilCompleto,
       };
     } catch (error) {
-      if (
-        error instanceof UnauthorizedException ||
-        error instanceof InternalServerErrorException
-      ) {
+      if (error instanceof UnauthorizedException || error instanceof InternalServerErrorException) {
         throw error;
       }
 
