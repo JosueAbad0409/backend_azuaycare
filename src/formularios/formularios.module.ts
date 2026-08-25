@@ -10,7 +10,8 @@ import { OpcionPregunta } from 'src/opciones-pregunta/entities/opciones-pregunta
 import { FilaMatriz } from 'src/matrices-form/entities/fila-matriz.entity';
 import { ColumnaMatriz } from 'src/matrices-form/entities/columna-matriz.entity';
 import { PreguntaDependencia } from 'src/preguntas-dependencias/entities/pregunta-dependencia.entity';
-import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity'; // NUEVO
+import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.entity';
+import { FormularioCacheModule } from 'src/common/cache/formulario-cache.module';
 
 @Module({
   imports: [
@@ -23,8 +24,9 @@ import { TipoFormulario } from 'src/tipos-formulario/entities/tipo-formulario.en
       FilaMatriz,
       ColumnaMatriz,
       PreguntaDependencia,
-      TipoFormulario, // NUEVO
+      TipoFormulario,
     ]),
+    FormularioCacheModule,
   ],
   controllers: [FormulariosController],
   providers: [FormulariosService],
