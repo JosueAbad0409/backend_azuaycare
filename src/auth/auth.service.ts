@@ -95,22 +95,33 @@ export class AuthService implements OnModuleInit {
         segundoApellido = rawFamily.length > 1 ? rawFamily.slice(1).join(' ') : null;
       }
 
-      let nombreRolAsignado = 'INVITADO';
+      // 1. Validar dominio institucional (@tecazuay.edu.ec o @est.tecazuay.edu.ec)
+      const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec') || email.endsWith('@est.tecazuay.edu.ec');
+
+      // Mapeo manual para administradores/bienestar específicos (puedes añadir aquí los que necesites)
       const administradoresPrueba: Record<string, string> = {
         'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
         'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
         'josue.abad@gmail.com': 'COORDINADOR_BIENESTAR',
         'lunasteven282@gmail.com': 'COORDINADOR_BIENESTAR',
+        'bienestar.institucional@tecazuay.edu.ec': 'COORDINADOR_BIENESTAR',
       };
+
+      if (!esDominioInstitucional && !administradoresPrueba[email]) {
+        throw new UnauthorizedException(
+          'Solo se permite el ingreso con correos institucionales del Tec Azuay.'
+        );
+      }
+
+      // 2. Determinar Rol
+      let nombreRolAsignado = 'INVITADO';
 
       if (administradoresPrueba[email]) {
         nombreRolAsignado = administradoresPrueba[email];
-      } else {
-        const esDominioInstitucional = email.endsWith('@tecazuay.edu.ec');
-        if (esDominioInstitucional) {
-          const esEstudianteRegular = /\.est@tecazuay\.edu\.ec$/.test(email);
-          nombreRolAsignado = esEstudianteRegular ? 'ESTUDIANTE' : 'COORDINADOR_CARRERA';
-        }
+      } else if (email.endsWith('@est.tecazuay.edu.ec') || /\.est@tecazuay\.edu\.ec$/.test(email)) {
+        nombreRolAsignado = 'ESTUDIANTE';
+      } else if (esDominioInstitucional) {
+        nombreRolAsignado = 'COORDINADOR_CARRERA';
       }
 
       let usuario = await this.usuariosRepository.findOne({
@@ -136,7 +147,7 @@ export class AuthService implements OnModuleInit {
       if (!usuario) {
         if (nombreRolAsignado === 'COORDINADOR_CARRERA' && !administradoresPrueba[email]) {
           throw new UnauthorizedException(
-            'Tu correo no está registrado como Coordinador autorizado. Un administrador debe crear tu cuenta previamente.'
+            'Tu correo no está registrado como Coordinador de Carrera. Un administrador debe crear tu cuenta previamente.'
           );
         }
 
@@ -160,14 +171,10 @@ export class AuthService implements OnModuleInit {
           primer_apellido: primerApellido,
           segundo_apellido: segundoApellido,
           foto_url: fotoGoogle,
-          // 👇 CORRECCIÓN: Romper la referencia directa en memoria pasando solo el ID.
-          // Esto evita que TypeORM recorra la caché entera y provoque cuellos de botella/timeouts.
           rol: { id: rolDb.id } as Role,
         });
 
         await this.usuariosRepository.save(usuario);
-
-        // Asignamos manualmente el rol cargado para que el JWT pueda firmarse correctamente
         usuario.rol = rolDb;
       } else {
         let necesitaActualizar = false;
@@ -195,17 +202,18 @@ export class AuthService implements OnModuleInit {
         }
       }
 
+      const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
+
       const accessToken = this.jwtService.sign({
         sub: usuario.id,
         email: usuario.email_institucional,
-        rol: usuario.rol?.nombre ?? nombreRolAsignado,
+        rol: rolFinal,
         carrera_id: usuario.carrera_id ?? null,
         nombre: `${usuario.primer_nombre} ${usuario.primer_apellido}`,
         foto_url: usuario.foto_url ?? null,
-        cedula: usuario.cedula ?? null, // 🔥 AGREGAMOS LA CÉDULA AL TOKEN
+        cedula: usuario.cedula ?? null,
       });
 
-      const rolFinal = usuario.rol?.nombre ?? nombreRolAsignado;
       const rolesQueCompletanPerfil = ['ESTUDIANTE', 'INVITADO'];
 
       let perfilCompleto = true;
@@ -247,7 +255,6 @@ export class AuthService implements OnModuleInit {
         perfilCompleto,
       };
     } catch (error) {
-      // 👇 CORRECCIÓN: Separar errores controlados de los errores inesperados (ej: fallos de base de datos)
       if (
         error instanceof UnauthorizedException ||
         error instanceof InternalServerErrorException
@@ -255,7 +262,6 @@ export class AuthService implements OnModuleInit {
         throw error;
       }
 
-      // Si el error llega hasta aquí, suele ser de Base de Datos (Constraint de TypeORM, timeout, etc.)
       console.error('CRÍTICO - Error en loginWithGoogle:', error);
       throw new InternalServerErrorException(
         'Ocurrió un error interno al intentar registrar o autenticar al usuario. Revise los logs.',

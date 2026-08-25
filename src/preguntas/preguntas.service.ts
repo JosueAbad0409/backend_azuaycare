@@ -6,7 +6,7 @@ import { CreatePreguntaDto } from './dto/create-pregunta.dto';
 import { UpdatePreguntaDto } from './dto/update-pregunta.dto';
 import { Seccion } from '../secciones/entities/secciones.entity';
 import { Formulario } from '../formularios/entities/formulario.entity';
-import { FormularioCacheService } from 'src/common/cache/formulario-cache.service';
+import { FormularioCacheService } from '../common/cache/formulario-cache.service';
 
 @Injectable()
 export class PreguntasService {
@@ -18,7 +18,7 @@ export class PreguntasService {
     @InjectRepository(Formulario)
     private readonly formulariosRepository: Repository<Formulario>,
     private readonly dataSource: DataSource,
-    private readonly formularioCacheService: FormularioCacheService, // NUEVO
+    private readonly formularioCacheService: FormularioCacheService,
   ) { }
 
   private async validarFormularioModificablePorSeccion(seccionId: string) {
@@ -36,7 +36,7 @@ export class PreguntasService {
       throw new BadRequestException('El formulario está congelado (publicado o bloqueado). No se permiten modificaciones estructurales.');
     }
 
-    return seccion; // NUEVO: devolvemos la sección para reusar formulario_id sin otra query
+    return seccion;
   }
 
   private async validarCategoriaFinanciera(seccionId: string, categoriaFinanciera?: string) {
@@ -66,7 +66,6 @@ export class PreguntasService {
       creado_por: usuarioId,
     });
 
-    // Reabrir todas las fichas de este formulario (comportamiento existente)
     await this.preguntasRepository.query(`
       UPDATE fichas_respondidas 
       SET estado_ficha = 'BORRADOR', cerrado_manual_por = NULL 
@@ -77,7 +76,6 @@ export class PreguntasService {
 
     const preguntaGuardada = await this.preguntasRepository.save(nuevaPregunta);
 
-    // NUEVO: invalidar caché para que la estructura se recargue en el próximo request
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
     return preguntaGuardada;
@@ -143,7 +141,6 @@ export class PreguntasService {
       AND fecha_desactivacion IS NULL
     `, [id]);
 
-    // NUEVO: invalidar caché
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
     return this.findOne(id);
@@ -168,7 +165,6 @@ export class PreguntasService {
       await queryRunner.release();
     }
 
-    // NUEVO: invalidar caché (el orden visual también forma parte de la estructura cacheada)
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
     return { message: 'Preguntas reordenadas con éxito.' };
@@ -200,7 +196,6 @@ export class PreguntasService {
       await queryRunner.release();
     }
 
-    // NUEVO: invalidar caché
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
     return { message: 'Pregunta y sus dependencias eliminadas lógicamente con éxito.' };

@@ -8,6 +8,7 @@ import { UpdateOpcionPreguntaDto } from './dto/update-opciones-pregunta.dto';
 import { Pregunta } from '../preguntas/entities/pregunta.entity';
 import { Seccion } from '../secciones/entities/secciones.entity';
 import { Formulario } from '../formularios/entities/formulario.entity';
+import { FormularioCacheService } from '../common/cache/formulario-cache.service';
 
 @Injectable()
 export class OpcionesPreguntaService {
@@ -20,9 +21,10 @@ export class OpcionesPreguntaService {
     private readonly seccionesRepository: Repository<Seccion>,
     @InjectRepository(Formulario)
     private readonly formulariosRepository: Repository<Formulario>,
+    private readonly formularioCacheService: FormularioCacheService,
   ) {}
 
-  private async validarFormularioModificablePorPregunta(preguntaId: string) {
+  private async validarFormularioModificablePorPregunta(preguntaId: string): Promise<string> {
     const pregunta = await this.preguntasRepository.findOne({ 
       where: { id: preguntaId, fecha_desactivacion: IsNull() } 
     });
@@ -39,18 +41,27 @@ export class OpcionesPreguntaService {
     if (formulario && (formulario.publicado || formulario.bloqueado)) {
       throw new BadRequestException('El formulario está congelado (publicado o bloqueado). No se permiten modificaciones en las opciones.');
     }
+
+    return seccion.formulario_id;
   }
 
   async create(createOpcionPreguntaDto: CreateOpcionPreguntaDto, usuarioId: string) {
+    let formularioId: string | null = null;
     if (createOpcionPreguntaDto.pregunta_id) {
-      await this.validarFormularioModificablePorPregunta(createOpcionPreguntaDto.pregunta_id);
+      formularioId = await this.validarFormularioModificablePorPregunta(createOpcionPreguntaDto.pregunta_id);
     }
 
     const nuevaOpcion = this.opcionesRepository.create({
       ...createOpcionPreguntaDto, 
       creado_por: usuarioId,
     });
-    return this.opcionesRepository.save(nuevaOpcion);
+    const opcionGuardada = await this.opcionesRepository.save(nuevaOpcion);
+
+    if (formularioId) {
+      await this.formularioCacheService.invalidarPorFormularioId(formularioId);
+    }
+
+    return opcionGuardada;
   }
 
   findAll(skip: number = 0, take: number = 10) {
@@ -83,24 +94,38 @@ export class OpcionesPreguntaService {
 
   async update(id: string, updateOpcionPreguntaDto: UpdateOpcionPreguntaDto, usuarioId: string) {
     const opcion = await this.findOne(id);
+    let formularioId: string | null = null;
+
     if (opcion.pregunta_id) {
-      await this.validarFormularioModificablePorPregunta(opcion.pregunta_id);
+      formularioId = await this.validarFormularioModificablePorPregunta(opcion.pregunta_id);
     }
 
     await this.opcionesRepository.update(id, {
       ...updateOpcionPreguntaDto,
       actualizado_por: usuarioId,
     });
+
+    if (formularioId) {
+      await this.formularioCacheService.invalidarPorFormularioId(formularioId);
+    }
+
     return this.findOne(id);
   }
 
   async remove(id: string) {
     const opcion = await this.findOne(id);
+    let formularioId: string | null = null;
+
     if (opcion.pregunta_id) {
-      await this.validarFormularioModificablePorPregunta(opcion.pregunta_id);
+      formularioId = await this.validarFormularioModificablePorPregunta(opcion.pregunta_id);
     }
 
     await this.opcionesRepository.update(id, { fecha_desactivacion: new Date() });
+
+    if (formularioId) {
+      await this.formularioCacheService.invalidarPorFormularioId(formularioId);
+    }
+
     return { message: 'Opción dada de baja con éxito.' };
   }
 }

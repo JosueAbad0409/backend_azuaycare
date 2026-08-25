@@ -81,15 +81,16 @@ export class FichasRespondidasService {
   async getResumenVulnerabilidad(fichaId: string) {
     const alertas = await this.dataSource.query(`
       SELECT p.enunciado as pregunta, 
-             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
+             REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g') as respuesta
       FROM respuestas r
       INNER JOIN preguntas p ON p.id = r.pregunta_id
       LEFT JOIN respuestas_opciones_seleccionadas os ON os.respuesta_id = r.id
       LEFT JOIN opciones_pregunta op ON op.id = os.opcion_id
       WHERE r.ficha_id = $1
         AND r.fecha_desactivacion IS NULL
+        AND p.fecha_desactivacion IS NULL
         AND p.revision_manual_obligatoria = true
-        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+        AND UPPER(TRIM(REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g'))) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
     `, [fichaId]);
 
     return {
@@ -164,7 +165,7 @@ export class FichasRespondidasService {
       WHERE r.fecha_desactivacion IS NULL
         AND p.fecha_desactivacion IS NULL
         AND p.revision_manual_obligatoria = true
-        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+        AND UPPER(TRIM(REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g'))) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
       GROUP BY r.ficha_id
     `;
 
@@ -294,6 +295,11 @@ export class FichasRespondidasService {
           );
 
           seccion.preguntas.forEach((pregunta: any) => {
+            if (pregunta.opciones) {
+              pregunta.opciones = pregunta.opciones.filter(
+                (opcion: any) => opcion.fecha_desactivacion === null
+              );
+            }
             pregunta.respuesta_estudiante = respuestas.find((r: any) => r.pregunta_id === pregunta.id) || null;
           });
         }
@@ -323,7 +329,7 @@ export class FichasRespondidasService {
     }
 
     const datosUpdate: any = { ...updateDto };
-    delete datosUpdate.estado_ficha; // Las transiciones de estado se manejan centralizadamente en respuestas-formulario
+    delete datosUpdate.estado_ficha;
     delete datosUpdate.comentario;
 
     if (datosUpdate.total_ingresos !== undefined || datosUpdate.total_egresos !== undefined) {
@@ -465,7 +471,12 @@ export class FichasRespondidasService {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const response = await fetch(url, { signal: controller.signal });
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
       clearTimeout(timeout);
       if (!response.ok) {
         this.logger.warn(`Foto no accesible (${response.status}): ${url}`);
@@ -497,17 +508,18 @@ export class FichasRespondidasService {
       };
 
       const alertas = await this.dataSource.query(`
-      SELECT p.enunciado as pregunta, 
-             COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text) as respuesta
-      FROM respuestas r
-      INNER JOIN preguntas p ON p.id = r.pregunta_id
-      LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
-      LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
-      WHERE r.ficha_id = $1
-        AND r.fecha_desactivacion IS NULL
-        AND p.revision_manual_obligatoria = true
-        AND UPPER(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, '')) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
-    `, [id]);
+        SELECT p.enunciado as pregunta, 
+               REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g') as respuesta
+        FROM respuestas r
+        INNER JOIN preguntas p ON p.id = r.pregunta_id
+        LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+        LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+        WHERE r.ficha_id = $1
+          AND r.fecha_desactivacion IS NULL
+          AND p.fecha_desactivacion IS NULL
+          AND p.revision_manual_obligatoria = true
+          AND UPPER(TRIM(REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g'))) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+      `, [id]);
 
       const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com';
       const urlBienestar = `${backendUrl}/qr/ficha/${id}`;
