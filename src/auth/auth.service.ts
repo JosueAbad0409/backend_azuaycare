@@ -149,8 +149,14 @@ export class AuthService implements OnModuleInit {
         await this.usuariosRepository.save(usuario);
         usuario.rol = rolDb; 
       } else {
+        // CASO: Ya existía en BD (ej. Se registró antes con contraseña). Le vinculamos Google.
         let necesitaActualizar = false;
-        if (!usuario.google_id) { usuario.google_id = googleId; necesitaActualizar = true; }
+        
+        if (!usuario.google_id) { 
+          usuario.google_id = googleId; 
+          necesitaActualizar = true; 
+        }
+        
         if (usuario.primer_nombre === 'Usuario' && primerNombre !== 'Usuario') {
           usuario.primer_nombre = primerNombre;
           usuario.segundo_nombre = segundoNombre;
@@ -158,10 +164,12 @@ export class AuthService implements OnModuleInit {
           usuario.segundo_apellido = segundoApellido;
           necesitaActualizar = true;
         }
+        
         if (!usuario.foto_personalizada && fotoGoogle && usuario.foto_url !== fotoGoogle) {
           usuario.foto_url = fotoGoogle;
           necesitaActualizar = true;
         }
+        
         if (necesitaActualizar) await this.usuariosRepository.save(usuario);
       }
 
@@ -174,18 +182,37 @@ export class AuthService implements OnModuleInit {
   }
 
   // ==========================================
-  // FLUJO LOCAL
+  // FLUJO LOCAL (CORREO Y CONTRASEÑA)
   // ==========================================
   async registroLocal(registroDto: RegistroLocalDto) {
     const { email, password } = registroDto;
     const emailLimpio = email.toLowerCase().trim();
 
-    const usuarioExistente = await this.usuariosRepository.findOne({
-      where: { email_institucional: emailLimpio }
-    });
+    // 1. Buscamos al usuario forzando traer la contraseña para verificar su estado
+    const usuarioExistente = await this.usuariosRepository.createQueryBuilder('usuario')
+      .addSelect('usuario.password')
+      .where('usuario.email_institucional = :email', { email: emailLimpio })
+      .getOne();
 
-    if (usuarioExistente) throw new UnauthorizedException('Este correo ya está registrado en el sistema.');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
+    // 2. ¿El usuario ya existe?
+    if (usuarioExistente) {
+      if (usuarioExistente.password) {
+        // Ya tiene cuenta completa (Local o Local+Google)
+        throw new UnauthorizedException('Este correo ya está registrado y tiene una contraseña. Por favor, inicia sesión.');
+      } else {
+        // CASO: Entró con Google antes, pero no tiene contraseña local. ¡Se la asignamos!
+        usuarioExistente.password = hashedPassword;
+        await this.usuariosRepository.save(usuarioExistente);
+        return { 
+          message: 'Contraseña vinculada exitosamente a tu cuenta de Google. Ya puedes iniciar sesión aquí.' 
+        };
+      }
+    }
+
+    // 3. Si el usuario NO existe, lo creamos desde cero
     let nombreRolAsignado = 'INVITADO';
     if (emailLimpio.endsWith('@est.tecazuay.edu.ec') || /\.est@tecazuay\.edu\.ec$/.test(emailLimpio)) {
       nombreRolAsignado = 'ESTUDIANTE';
@@ -201,9 +228,6 @@ export class AuthService implements OnModuleInit {
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     const nuevoUsuario = this.usuariosRepository.create({
       email_institucional: emailLimpio,
       password: hashedPassword,
@@ -213,7 +237,10 @@ export class AuthService implements OnModuleInit {
     });
 
     await this.usuariosRepository.save(nuevoUsuario);
-    return { message: 'Usuario registrado exitosamente. Ya puedes iniciar sesión.' };
+
+    return {
+      message: 'Usuario registrado exitosamente. Ya puedes iniciar sesión.',
+    };
   }
 
   async loginLocal(loginLocalDto: LoginLocalDto) {
@@ -229,7 +256,7 @@ export class AuthService implements OnModuleInit {
     if (!usuario) throw new UnauthorizedException('Credenciales incorrectas (Correo no encontrado).');
     
     if (!usuario.password) {
-      throw new UnauthorizedException('Esta cuenta está vinculada a Google. Por favor, inicia sesión con el botón de Google.');
+      throw new UnauthorizedException('Esta cuenta está vinculada a Google y no tiene contraseña. Usa el botón de Google, o ve a "Crear Cuenta" para asignarle una contraseña.');
     }
 
     const isPasswordValid = await bcrypt.compare(password, usuario.password);
