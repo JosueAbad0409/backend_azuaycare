@@ -33,14 +33,13 @@ export class SeccionesService {
       creado_por: usuarioId,
     });
 
-    // 🔥 MAGIA AUTOMÁTICA: Si se agrega una nueva sección, reabrir fichas
     await this.seccionesRepository.query(`
       UPDATE fichas_respondidas 
       SET estado_ficha = 'BORRADOR', cerrado_manual_por = NULL 
       WHERE formulario_id = $1
       AND estado_ficha != 'BORRADOR'
       AND fecha_desactivacion IS NULL
-    `, [createSeccionDto.formulario_id]); // 👈 Igual, verifica que coincida con tu DTO
+    `, [createSeccionDto.formulario_id]);
 
     return this.seccionesRepository.save(nuevaSeccion);
   }
@@ -86,8 +85,6 @@ export class SeccionesService {
   }
 
   async reordenar(formulario_id: string, ordenes: { id: string; orden: number }[]) {
-    await this.validarFormularioModificable(formulario_id);
-    
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
