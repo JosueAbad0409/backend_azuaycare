@@ -21,12 +21,12 @@ export class Usuario {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Modificado a nullable: true
-  @Column({ name: 'google_id', unique: true, nullable: true })
+  // Corregido: Se especifica explícitamente el tipo varchar
+  @Column({ name: 'google_id', type: 'varchar', unique: true, nullable: true })
   google_id: string | null;
 
-  // Nueva columna oculta para el registro local
-  @Column({ nullable: true, select: false })
+  // Corregido: Se especifica explícitamente el tipo varchar
+  @Column({ type: 'varchar', nullable: true, select: false })
   password?: string;
 
   @Column({ name: 'email_institucional', type: 'varchar', length: 150, unique: true, nullable: true })
