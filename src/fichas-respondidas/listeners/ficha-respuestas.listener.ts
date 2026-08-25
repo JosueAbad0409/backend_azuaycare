@@ -24,18 +24,17 @@ export class FichaRespuestasListener {
 
       if (!ficha) return;
 
-      // 1. Extraer Ingresos (Manejando textos y números, e ignorando borradores)
+      // 1. Extraer Ingresos
       const ingresosDb = await this.dataSource.manager.createQueryBuilder(RespuestasFormulario, 'r')
         .select('r.valor_numerico', 'num')
         .addSelect('r.valor_texto', 'txt')
         .innerJoin('r.pregunta', 'p')
         .where('r.ficha_id = :fichaId', { fichaId: payload.fichaId })
         .andWhere("p.categoria_financiera = 'INGRESO'")
-        .andWhere('r.fecha_desactivacion IS NULL') // 🔥 FIX: Fundamental para no sumar historiales
+        .andWhere('r.fecha_desactivacion IS NULL')
         .getRawMany();
         
       let totalIngresos = 0;
-      // Convertimos a número de forma segura, ya sea que Angular lo envió como int o como string
       ingresosDb.forEach(r => totalIngresos += Number(r.num) || Number(r.txt) || 0);
 
       // 2. Extraer Egresos
@@ -52,29 +51,27 @@ export class FichaRespuestasListener {
       egresosDb.forEach(r => totalEgresos += Number(r.num) || Number(r.txt) || 0);
 
       const balanceCrudo = totalIngresos - totalEgresos;
-      // El balance nunca debe quedar negativo: si los egresos superan a los
-      // ingresos, se guarda 0 en vez de un número negativo.
       const balance = Math.max(0, balanceCrudo);
 
       // 3. Buscar en el motor de variables calculadas para 'BALANCE'
       let rangoAsignadoId = null;
+      let esVulnerablePorBalance = false;
+
       const rango = await this.dataSource.manager.createQueryBuilder('rangos_variable_calculada', 'rvc')
+        .select(['rvc.id AS id', 'rvc.es_vulnerable AS es_vulnerable'])
         .where('rvc.formulario_id = :formId', { formId: ficha.formulario_id })
         .andWhere("rvc.variable_calculo = 'BALANCE'")
         .andWhere(':balance >= rvc.valor_min', { balance })
-        // 🔥 FIX: Soporte para rangos infinitos (valor_max vacío)
         .andWhere('(:balance <= rvc.valor_max OR rvc.valor_max IS NULL)', { balance })
         .andWhere('rvc.fecha_desactivacion IS NULL')
         .getRawOne();
 
       if (rango) {
         rangoAsignadoId = rango.id;
+        esVulnerablePorBalance = Boolean(rango.es_vulnerable);
       }
 
       // 4. Guardado atómico
-      // Nota: el cálculo de vulnerabilidad basado en puntaje_riesgo fue
-      // retirado del sistema. rango_vulnerabilidad_id y puntaje_vulnerabilidad
-      // ya no se recalculan aquí.
       await this.dataSource.manager.update(FichaRespondida, payload.fichaId, {
         total_ingresos: totalIngresos,
         total_egresos: totalEgresos,
@@ -82,9 +79,9 @@ export class FichaRespuestasListener {
         rango_resultado_id: rangoAsignadoId,
       });
 
-      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance}`);
+      this.logger.log(`[Variable Calculada] Ficha ${payload.fichaId} | Balance: ${balance} | Vulnerable Rango: ${esVulnerablePorBalance}`);
 
-      // 6. Notificación
+      // 5. Notificación
       const datosUsuario = await this.dataSource.manager.createQueryBuilder('fichas_respondidas', 'f')
         .select(['u.primer_nombre AS nombres', 'u.email_institucional AS correo'])
         .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
@@ -100,5 +97,4 @@ export class FichaRespuestasListener {
       this.logger.error(`[Event Error] No se pudo clasificar la ficha ${payload.fichaId}:`, msg);
     }
   }
-  
 }
