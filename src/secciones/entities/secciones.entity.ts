@@ -15,6 +15,10 @@ export class Seccion {
   @Column({ nullable: false, length: 200 })
   nombre: string;
 
+  // 👈 COLUMNA AGREGADA
+  @Column({ type: 'text', nullable: true })
+  descripcion: string | null;
+
   @Column({ type: 'integer', default: 1 })
   orden: number;
 
