@@ -90,10 +90,22 @@ export class CompletarPerfilDto {
   @MaxLength(100)
   idioma: string;
 
-  @IsString()
-  @IsNotEmpty({ message: 'El lugar de nacimiento es obligatorio.' })
-  @MaxLength(150)
-  lugar_nacimiento: string;
+  // 🔥 NUEVOS CAMPOS GEOGRÁFICOS VALIDADOS POR UUID
+  @IsUUID('4', { message: 'El ID de la nacionalidad no es válido.' })
+  @IsNotEmpty({ message: 'La nacionalidad es obligatoria.' })
+  nacionalidad_id: string;
+
+  @IsUUID('4', { message: 'El ID del país de residencia no es válido.' })
+  @IsNotEmpty({ message: 'El país de residencia es obligatorio.' })
+  pais_residencia_id: string;
+
+  @IsUUID('4', { message: 'El ID de la provincia no es válido.' })
+  @IsOptional()
+  provincia_residencia_id?: string;
+
+  @IsUUID('4', { message: 'El ID del cantón no es válido.' })
+  @IsOptional()
+  canton_residencia_id?: string;
 
   // Formato esperado: DD/MM/AAAA
   @IsString()
@@ -104,11 +116,6 @@ export class CompletarPerfilDto {
   @IsEnum(RangoEdadEnum, { message: 'El rango de edad ingresado no es válido.' })
   @IsNotEmpty({ message: 'El rango de edad es obligatorio.' })
   rango_edad: RangoEdadEnum;
-
-  @IsString()
-  @IsNotEmpty({ message: 'La nacionalidad es obligatoria.' })
-  @MaxLength(100)
-  nacionalidad: string;
 
   // Solo aplica si sexo = Mujer
   @ValidateIf((dto: CompletarPerfilDto) => dto.sexo === SexoEnum.MUJER)

@@ -119,7 +119,6 @@ export class UsuariosService {
       });
     }
 
-    // Convertimos la entidad a un objeto plano seguro para adjuntarle la data de perfil
     const resultado: any = { ...usuario };
     
     if (perfilPeriodo) {
@@ -129,14 +128,18 @@ export class UsuariosService {
       resultado.tiene_hijos = perfilPeriodo.tiene_hijos;
       resultado.etnia = perfilPeriodo.etnia;
       resultado.idioma = perfilPeriodo.idioma;
-      resultado.lugar_nacimiento = perfilPeriodo.lugar_nacimiento;
       resultado.fecha_nacimiento = perfilPeriodo.fecha_nacimiento;
       resultado.rango_edad = perfilPeriodo.rango_edad;
-      resultado.nacionalidad = perfilPeriodo.nacionalidad;
       resultado.esta_embarazada = perfilPeriodo.esta_embarazada;
       resultado.tiene_discapacidad = perfilPeriodo.tiene_discapacidad;
       resultado.tipo_discapacidad = perfilPeriodo.tipo_discapacidad;
       resultado.zona_residencia = perfilPeriodo.zona_residencia;
+      
+      // 🔥 AQUÍ ENVIAMOS LOS IDs AL FRONTEND EN LUGAR DEL TEXTO
+      resultado.nacionalidad_id = perfilPeriodo.nacionalidad_id;
+      resultado.pais_residencia_id = perfilPeriodo.pais_residencia_id;
+      resultado.provincia_residencia_id = perfilPeriodo.provincia_residencia_id;
+      resultado.canton_residencia_id = perfilPeriodo.canton_residencia_id;
     }
     
     return resultado;
@@ -265,14 +268,18 @@ export class UsuariosService {
       tiene_hijos: dto.tiene_hijos,
       etnia: dto.etnia,
       idioma: dto.idioma,
-      lugar_nacimiento: dto.lugar_nacimiento,
       fecha_nacimiento: fechaNacimiento,
       rango_edad: dto.rango_edad,
-      nacionalidad: dto.nacionalidad,
       esta_embarazada: dto.sexo === SexoEnum.MUJER ? (dto.esta_embarazada ?? false) : null,
       tiene_discapacidad: dto.tiene_discapacidad,
       tipo_discapacidad: dto.tiene_discapacidad ? (dto.tipo_discapacidad ?? null) : null,
       zona_residencia: dto.zona_residencia,
+      
+      // 🔥 ASIGNACIÓN DE LOS IDs GEOGRÁFICOS
+      nacionalidad_id: dto.nacionalidad_id,
+      pais_residencia_id: dto.pais_residencia_id,
+      provincia_residencia_id: dto.provincia_residencia_id ?? null,
+      canton_residencia_id: dto.canton_residencia_id ?? null,
     };
 
     const perfilPeriodoExistente = await this.perfilPeriodoRepository.findOne({

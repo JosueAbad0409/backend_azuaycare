@@ -10,6 +10,9 @@ import {
 } from 'typeorm';
 import { Usuario } from './usuario.entity';
 import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
+import { Pais } from 'src/ubicaciones/entities/pais.entity';
+import { Provincia } from 'src/ubicaciones/entities/provincia.entity';
+import { Canton } from 'src/ubicaciones/entities/canton.entity';
 import {
   EstadoCivilEnum,
   EtniaEnum,
@@ -18,8 +21,6 @@ import {
   ZonaResidenciaEnum,
 } from '../enums/perfil-usuario.enum';
 
-// Un registro por cada (usuario, periodo). Cada nuevo periodo de matrícula
-// que se active, el usuario debe volver a llenar este formulario.
 @Entity({ name: 'perfiles_usuario_periodo' })
 @Index(['usuario_id', 'periodo_id'], { unique: true })
 export class PerfilUsuarioPeriodo {
@@ -50,17 +51,24 @@ export class PerfilUsuarioPeriodo {
   @Column({ type: 'varchar', length: 100, nullable: false })
   idioma: string;
 
-  @Column({ name: 'lugar_nacimiento', type: 'varchar', length: 150, nullable: false })
-  lugar_nacimiento: string;
+  // 🔥 NUEVOS CAMPOS GEOGRÁFICOS RELACIONALES (IDs)
+  @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: false })
+  nacionalidad_id: string;
+
+  @Column({ name: 'pais_residencia_id', type: 'uuid', nullable: false })
+  pais_residencia_id: string;
+
+  @Column({ name: 'provincia_residencia_id', type: 'uuid', nullable: true })
+  provincia_residencia_id: string | null;
+
+  @Column({ name: 'canton_residencia_id', type: 'uuid', nullable: true })
+  canton_residencia_id: string | null;
 
   @Column({ name: 'fecha_nacimiento', type: 'date', nullable: false })
   fecha_nacimiento: Date;
 
   @Column({ name: 'rango_edad', type: 'enum', enum: RangoEdadEnum, nullable: false })
   rango_edad: RangoEdadEnum;
-
-  @Column({ type: 'varchar', length: 100, nullable: false })
-  nacionalidad: string;
 
   @Column({ name: 'esta_embarazada', type: 'boolean', nullable: true })
   esta_embarazada: boolean | null;
@@ -87,4 +95,21 @@ export class PerfilUsuarioPeriodo {
   @ManyToOne(() => PeriodoMatricula, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'periodo_id' })
   periodo: PeriodoMatricula;
+
+  // Relaciones con Ubicaciones
+  @ManyToOne(() => Pais, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'nacionalidad_id' })
+  nacionalidad: Pais;
+
+  @ManyToOne(() => Pais, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'pais_residencia_id' })
+  pais_residencia: Pais;
+
+  @ManyToOne(() => Provincia, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'provincia_residencia_id' })
+  provincia_residencia: Provincia;
+
+  @ManyToOne(() => Canton, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'canton_residencia_id' })
+  canton_residencia: Canton;
 }

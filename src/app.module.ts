@@ -58,6 +58,7 @@ import { RangosVariableCalculadaModule } from './rangos-variable-calculada/rango
 import { PlantillasPdfModule } from './plantillas-pdf/plantillas-pdf.module';
 import { PdfModule } from './common/pdf/pdf.module';
 import { HealthController } from './health/health.controller';
+import { UbicacionesModule } from './ubicaciones/ubicaciones.module';
 
 @Module({
   imports: [
@@ -117,6 +118,7 @@ import { HealthController } from './health/health.controller';
     RangosVariableCalculadaModule,
     PlantillasPdfModule,
     PdfModule,
+    UbicacionesModule,
   ],
   controllers: [
     HealthController,

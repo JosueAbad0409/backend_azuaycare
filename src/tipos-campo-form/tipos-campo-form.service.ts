@@ -17,13 +17,33 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
   }
 
   private async seedTiposCampo() {
+    // 🚀 DICCIONARIO DE CAMPOS ROBUSTOS PARA EL MOTOR DE FORMULARIOS
     const tiposDefecto = [
-      { nombre: 'TEXTO', descripcion: 'Campo de texto libre corto o largo' },
-      { nombre: 'NUMERICO', descripcion: 'Campo para valores numéricos enteros o decimales' },
-      { nombre: 'SELECCION_UNICA', descripcion: 'Opciones donde solo se puede elegir una respuesta' },
-      { nombre: 'SELECCION_MULTIPLE', descripcion: 'Opciones donde se pueden elegir varias respuestas' },
-      { nombre: 'MATRIZ', descripcion: 'Estructura de filas y columnas para respuestas complejas' },
-      { nombre: 'FECHA', descripcion: 'Campo para seleccionar una fecha (Date)' }
+      // --- Texto y formatos libres ---
+      { nombre: 'TEXTO_CORTO', descripcion: 'Campo de texto de una sola línea (ej. nombres, calles)' },
+      { nombre: 'TEXTO_LARGO', descripcion: 'Área de texto para descripciones o comentarios extensos' },
+      
+      // --- Validaciones Estrictas de Formato ---
+      { nombre: 'CORREO', descripcion: 'Validación estricta de estructura de e-mail (ej. usuario@dominio.com)' },
+      { nombre: 'CEDULA', descripcion: 'Validación de cédula ecuatoriana mediante algoritmo oficial de módulo 10' },
+      { nombre: 'RUC', descripcion: 'Validación de Registro Único de Contribuyentes (13 dígitos)' },
+      { nombre: 'TELEFONO', descripcion: 'Validación estricta numérica (exactamente 10 dígitos, útil para celulares o fijos)' },
+      
+      // --- Numéricos ---
+      { nombre: 'NUMERICO_ENTERO', descripcion: 'Solo acepta números enteros (ej. cantidad de hijos, edad)' },
+      { nombre: 'NUMERICO_DECIMAL', descripcion: 'Acepta números con decimales (ej. sueldo, peso en kg, estatura)' },
+      
+      // --- Fechas y Tiempos ---
+      { nombre: 'FECHA', descripcion: 'Selector nativo de fecha (Date) con validación YYYY-MM-DD' },
+      { nombre: 'HORA', descripcion: 'Selector de hora (Time) con validación HH:mm' },
+      
+      // --- Selecciones y Estructuras Complejas ---
+      { nombre: 'SELECCION_UNICA', descripcion: 'Lista desplegable o Radio Buttons donde solo se elige una opción' },
+      { nombre: 'SELECCION_MULTIPLE', descripcion: 'Casillas (Checkboxes) donde se pueden elegir varias opciones a la vez' },
+      { nombre: 'MATRIZ', descripcion: 'Estructura de filas y columnas para encuestas o escalas de Likert' },
+      
+      // --- Archivos ---
+      { nombre: 'ARCHIVO', descripcion: 'Campo para subir documentos (PDF, JPG, PNG) limitados por tamaño' }
     ];
 
     try {
@@ -40,7 +60,7 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
 
       if (aCrear.length > 0) {
         await this.tiposRepository.insert(aCrear);
-        console.log(`[Seed] Tipos de campos inicializados con éxito.`);
+        console.log(`[Seed] Tipos de campos inicializados con éxito. Nuevos campos: ${aCrear.length}`);
       }
     } catch (error: any) { 
       console.error('[Seed Error] No se pudieron inicializar los tipos de campos:', error.message);
@@ -66,9 +86,12 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
     return this.tiposRepository.save(nuevoTipo);
   }
 
-  findAll(skip: number=0, take: number=10) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
+  findAll(skip: number=0, take: number=100) {
+    // 🔥 Aumentado el límite de take por defecto para que al cargar el formulario 
+    // lleguen todos los tipos de campos sin quedarse paginados.
+    const limiteReal = Math.min(Math.max(Number(take) || 100, 1), 500);
     const skipReal = Math.max(Number(skip) || 0, 0);
+    
     return this.tiposRepository.find({
       where: { fecha_desactivacion: IsNull() },
       skip: skipReal,
