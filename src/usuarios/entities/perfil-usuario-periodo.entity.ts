@@ -18,25 +18,25 @@ export class PerfilUsuarioPeriodo {
   @Column({ name: 'periodo_id', type: 'uuid', nullable: false })
   periodo_id: string;
 
-  @Column({ type: 'enum', enum: SexoEnum, nullable: false })
+  @Column({ type: 'enum', enum: SexoEnum, nullable: true })
   sexo: SexoEnum;
 
   @Column({ name: 'esta_embarazada', type: 'boolean', nullable: true })
   esta_embarazada: boolean | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: false })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   genero: string;
 
-  @Column({ name: 'estado_civil', type: 'enum', enum: EstadoCivilEnum, nullable: false })
+  @Column({ name: 'estado_civil', type: 'enum', enum: EstadoCivilEnum, nullable: true })
   estado_civil: EstadoCivilEnum;
 
-  @Column({ name: 'tiene_hijos', type: 'boolean', nullable: false })
+  @Column({ name: 'tiene_hijos', type: 'boolean', nullable: true })
   tiene_hijos: boolean;
 
   @Column({ name: 'hijos_menores_5_anios', type: 'int', nullable: true })
   hijos_menores_5_anios: number | null;
 
-  @Column({ type: 'enum', enum: EtniaEnum, nullable: false })
+  @Column({ type: 'enum', enum: EtniaEnum, nullable: true })
   etnia: EtniaEnum;
 
   @Column({ name: 'pueblo_nacionalidad', type: 'varchar', length: 150, nullable: true })
@@ -45,13 +45,13 @@ export class PerfilUsuarioPeriodo {
   @Column({ name: 'etnia_otra', type: 'varchar', length: 100, nullable: true })
   etnia_otra: string | null;
 
-  @Column({ type: 'varchar', length: 100, nullable: false })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   idioma: string;
 
-  @Column({ name: 'fecha_nacimiento', type: 'date', nullable: false })
+  @Column({ name: 'fecha_nacimiento', type: 'date', nullable: true })
   fecha_nacimiento: Date;
 
-  @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: false })
+  @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: true })
   nacionalidad_id: string;
 
   // ✅ CASCADA: LUGAR DE NACIMIENTO
