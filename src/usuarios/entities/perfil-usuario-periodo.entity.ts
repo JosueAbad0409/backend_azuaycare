@@ -51,11 +51,12 @@ export class PerfilUsuarioPeriodo {
   @Column({ type: 'varchar', length: 100, nullable: false })
   idioma: string;
 
-  // 🔥 NUEVOS CAMPOS GEOGRÁFICOS RELACIONALES (IDs)
-  @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: false })
+  // 🔥 SOLUCIÓN AQUÍ: Se cambia a nullable: true
+  @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: true })
   nacionalidad_id: string;
 
-  @Column({ name: 'pais_residencia_id', type: 'uuid', nullable: false })
+  // 🔥 SOLUCIÓN AQUÍ: Se cambia a nullable: true
+  @Column({ name: 'pais_residencia_id', type: 'uuid', nullable: true })
   pais_residencia_id: string;
 
   @Column({ name: 'provincia_residencia_id', type: 'uuid', nullable: true })
