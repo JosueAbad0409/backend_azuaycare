@@ -2,6 +2,8 @@ import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, Primary
 import { Usuario } from './usuario.entity';
 import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
 import { Pais } from 'src/ubicaciones/entities/pais.entity';
+import { Provincia } from 'src/ubicaciones/entities/provincia.entity';
+import { Canton } from 'src/ubicaciones/entities/canton.entity';
 import { EstadoCivilEnum, EtniaEnum, SexoEnum } from '../enums/perfil-usuario.enum';
 
 @Entity({ name: 'perfiles_usuario_periodo' })
@@ -22,7 +24,7 @@ export class PerfilUsuarioPeriodo {
   @Column({ name: 'esta_embarazada', type: 'boolean', nullable: true })
   esta_embarazada: boolean | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: true })
+  @Column({ type: 'varchar', length: 50, nullable: false })
   genero: string;
 
   @Column({ name: 'estado_civil', type: 'enum', enum: EstadoCivilEnum, nullable: false })
@@ -46,14 +48,21 @@ export class PerfilUsuarioPeriodo {
   @Column({ type: 'varchar', length: 100, nullable: false })
   idioma: string;
 
-  @Column({ name: 'lugar_nacimiento', type: 'varchar', length: 150, nullable: false })
-  lugar_nacimiento: string;
-
   @Column({ name: 'fecha_nacimiento', type: 'date', nullable: false })
   fecha_nacimiento: Date;
 
   @Column({ name: 'nacionalidad_id', type: 'uuid', nullable: false })
   nacionalidad_id: string;
+
+  // ✅ CASCADA: LUGAR DE NACIMIENTO
+  @Column({ name: 'pais_nacimiento_id', type: 'uuid', nullable: true }) // nullable: true para evitar error DB viejo
+  pais_nacimiento_id: string;
+
+  @Column({ name: 'provincia_nacimiento_id', type: 'uuid', nullable: true })
+  provincia_nacimiento_id: string | null;
+
+  @Column({ name: 'canton_nacimiento_id', type: 'uuid', nullable: true })
+  canton_nacimiento_id: string | null;
 
   @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   created_at: Date;
@@ -72,4 +81,16 @@ export class PerfilUsuarioPeriodo {
   @ManyToOne(() => Pais, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'nacionalidad_id' })
   nacionalidad: Pais;
+
+  @ManyToOne(() => Pais, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'pais_nacimiento_id' })
+  pais_nacimiento: Pais;
+
+  @ManyToOne(() => Provincia, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'provincia_nacimiento_id' })
+  provincia_nacimiento: Provincia;
+
+  @ManyToOne(() => Canton, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'canton_nacimiento_id' })
+  canton_nacimiento: Canton;
 }

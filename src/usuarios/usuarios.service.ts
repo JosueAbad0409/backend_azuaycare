@@ -72,9 +72,12 @@ export class UsuariosService {
       resultado.pueblo_nacionalidad = perfilPeriodo.pueblo_nacionalidad;
       resultado.etnia_otra = perfilPeriodo.etnia_otra;
       resultado.idioma = perfilPeriodo.idioma;
-      resultado.lugar_nacimiento = perfilPeriodo.lugar_nacimiento;
       resultado.fecha_nacimiento = perfilPeriodo.fecha_nacimiento;
       resultado.nacionalidad_id = perfilPeriodo.nacionalidad_id;
+      // ✅ CASCADA DE NACIMIENTO
+      resultado.pais_nacimiento_id = perfilPeriodo.pais_nacimiento_id;
+      resultado.provincia_nacimiento_id = perfilPeriodo.provincia_nacimiento_id;
+      resultado.canton_nacimiento_id = perfilPeriodo.canton_nacimiento_id;
     }
     return resultado;
   }
@@ -118,7 +121,6 @@ export class UsuariosService {
     if (!fechaNacimiento) throw new BadRequestException('Fecha no válida.');
 
     const datosUsuario: Partial<Usuario> = { cedula: dto.cedula, primer_nombre: dto.primer_nombre, segundo_nombre: dto.segundo_nombre, primer_apellido: dto.primer_apellido, segundo_apellido: dto.segundo_apellido };
-    
     if (dto.email_institucional) {
       const emailInst = dto.email_institucional.toLowerCase().trim();
       const enUso = await this.usuariosRepository.findOne({ where: { email_institucional: emailInst }, select: { id: true } });
@@ -150,9 +152,12 @@ export class UsuariosService {
       pueblo_nacionalidad: dto.etnia === EtniaEnum.INDIGENA ? dto.pueblo_nacionalidad : null,
       etnia_otra: dto.etnia === EtniaEnum.OTRO ? dto.etnia_otra : null,
       idioma: dto.idioma,
-      lugar_nacimiento: dto.lugar_nacimiento,
       fecha_nacimiento: fechaNacimiento,
       nacionalidad_id: dto.nacionalidad_id,
+      // ✅ CASCADA NACIMIENTO
+      pais_nacimiento_id: dto.pais_nacimiento_id,
+      provincia_nacimiento_id: dto.provincia_nacimiento_id ?? null,
+      canton_nacimiento_id: dto.canton_nacimiento_id ?? null,
     };
 
     const perfilPeriodoExistente = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId, periodo_id: periodoActivo.id }, select: { id: true } });

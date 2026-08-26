@@ -56,14 +56,21 @@ export class CompletarPerfilDto {
   @IsString() @IsNotEmpty({ message: 'El idioma es obligatorio.' }) @MaxLength(100)
   idioma: string;
 
-  @IsString() @IsNotEmpty({ message: 'Lugar de nacimiento obligatorio.' }) @MaxLength(150)
-  lugar_nacimiento: string;
-
   @IsString() @IsNotEmpty({ message: 'Fecha de nacimiento obligatoria.' }) @IsFechaNacimiento()
   fecha_nacimiento: string;
 
   @IsUUID('4', { message: 'ID de nacionalidad no válido.' }) @IsNotEmpty({ message: 'Nacionalidad obligatoria.' })
   nacionalidad_id: string;
+
+  // ✅ CASCADA: LUGAR DE NACIMIENTO
+  @IsUUID('4', { message: 'ID de país no válido.' }) @IsNotEmpty({ message: 'País de nacimiento obligatorio.' })
+  pais_nacimiento_id: string;
+
+  @IsUUID('4', { message: 'ID de provincia no válido.' }) @IsOptional()
+  provincia_nacimiento_id?: string;
+
+  @IsUUID('4', { message: 'ID de cantón no válido.' }) @IsOptional()
+  canton_nacimiento_id?: string;
 
   @IsUUID('4', { message: 'carrera_id no válido.' }) @IsOptional()
   carrera_id?: string;
