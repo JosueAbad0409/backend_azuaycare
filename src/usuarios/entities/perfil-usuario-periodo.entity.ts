@@ -22,7 +22,7 @@ export class PerfilUsuarioPeriodo {
   @Column({ name: 'esta_embarazada', type: 'boolean', nullable: true })
   esta_embarazada: boolean | null;
 
-  @Column({ type: 'varchar', length: 50, nullable: false })
+  @Column({ type: 'varchar', length: 50, nullable: true })
   genero: string;
 
   @Column({ name: 'estado_civil', type: 'enum', enum: EstadoCivilEnum, nullable: false })
