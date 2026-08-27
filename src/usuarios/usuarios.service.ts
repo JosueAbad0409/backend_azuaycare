@@ -60,6 +60,14 @@ export class UsuariosService {
     let perfilPeriodo: PerfilUsuarioPeriodo | null = null;
     if (periodoActivo) perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: id, periodo_id: periodoActivo.id } });
 
+    // ✅ MAGIA DE RECUPERACIÓN: Si no tiene ficha en el periodo actual, buscamos la última que haya llenado en semestres anteriores.
+    if (!perfilPeriodo) {
+      perfilPeriodo = await this.perfilPeriodoRepository.findOne({ 
+        where: { usuario_id: id }, 
+        order: { created_at: 'DESC' } 
+      });
+    }
+
     const resultado: any = { ...usuario };
     if (perfilPeriodo) {
       resultado.sexo = perfilPeriodo.sexo;
@@ -74,7 +82,6 @@ export class UsuariosService {
       resultado.idioma = perfilPeriodo.idioma;
       resultado.fecha_nacimiento = perfilPeriodo.fecha_nacimiento;
       resultado.nacionalidad_id = perfilPeriodo.nacionalidad_id;
-      // ✅ CASCADA DE NACIMIENTO
       resultado.pais_nacimiento_id = perfilPeriodo.pais_nacimiento_id;
       resultado.provincia_nacimiento_id = perfilPeriodo.provincia_nacimiento_id;
       resultado.canton_nacimiento_id = perfilPeriodo.canton_nacimiento_id;
@@ -101,8 +108,17 @@ export class UsuariosService {
 
   async obtenerEstadoPerfil(usuarioId: string) {
     const periodoActivo = await this.obtenerPeriodoActivo();
-    const perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId, periodo_id: periodoActivo.id } });
-    return { periodo: periodoActivo, perfil_completo: !!perfilPeriodo, perfil: perfilPeriodo };
+    let perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId, periodo_id: periodoActivo.id } });
+    
+    // Solo marca "Completo = true" si llenó en ESTE periodo.
+    const perfilCompletoActual = !!perfilPeriodo; 
+
+    // Si no ha llenado en este periodo, buscamos el histórico para pre-cargar los datos al Front
+    if (!perfilPeriodo) {
+      perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId }, order: { created_at: 'DESC' } });
+    }
+
+    return { periodo: periodoActivo, perfil_completo: perfilCompletoActual, perfil: perfilPeriodo };
   }
 
   private async validarCarreraYCicloEstudiante(carreraId?: string, cicloId?: string): Promise<void> {
@@ -154,7 +170,6 @@ export class UsuariosService {
       idioma: dto.idioma,
       fecha_nacimiento: fechaNacimiento,
       nacionalidad_id: dto.nacionalidad_id,
-      // ✅ CASCADA NACIMIENTO
       pais_nacimiento_id: dto.pais_nacimiento_id,
       provincia_nacimiento_id: dto.provincia_nacimiento_id ?? null,
       canton_nacimiento_id: dto.canton_nacimiento_id ?? null,
