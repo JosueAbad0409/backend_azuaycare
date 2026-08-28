@@ -15,6 +15,9 @@ import { Usuario } from '../usuarios/entities/usuario.entity';
 import { PerfilUsuarioPeriodo } from '../usuarios/entities/perfil-usuario-periodo.entity';
 import { PeriodoMatricula } from '../periodos-matricula/entities/periodos-matricula.entity';
 
+// ✅ IMPORTA TU ENTIDAD CARRERA (Ajusta la ruta si es necesario)
+import { Carrera } from '../carreras/entities/carrera.entity'; 
+
 import { LoginGoogleDto } from './dto/login-google.dto';
 import { LoginLocalDto } from './dto/login-local.dto';
 import { RegistroLocalDto } from './dto/registro-local.dto';
@@ -33,6 +36,11 @@ export class AuthService implements OnModuleInit {
     private readonly periodosRepository: Repository<PeriodoMatricula>,
     @InjectRepository(Role)
     private readonly rolesRepository: Repository<Role>,
+    
+    // ✅ INYECTAMOS EL REPOSITORIO DE CARRERA
+    @InjectRepository(Carrera)
+    private readonly carrerasRepository: Repository<Carrera>,
+    
     private readonly jwtService: JwtService,
   ) {
     const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -52,6 +60,49 @@ export class AuthService implements OnModuleInit {
     } catch (error) {
       console.warn('Advertencia: No se pudo pre-cargar los roles en memoria.');
     }
+  }
+
+  // ==========================================
+  // LÓGICA CENTRALIZADA PARA DETERMINAR ROLES
+  // ==========================================
+  private async determinarRolPorEmail(email: string): Promise<string> {
+    const administradoresPrueba: Record<string, string> = {
+      'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
+      'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
+      'josue.abad@gmail.com': 'COORDINADOR_BIENESTAR',
+      'lunasteven282@gmail.com': 'COORDINADOR_BIENESTAR',
+    };
+
+    // 1. Si está en la lista quemada (para pruebas o fijos)
+    if (administradoresPrueba[email]) {
+      return administradoresPrueba[email];
+    }
+
+    // 2. Validar Bienestar Institucional Oficial
+    if (email === 'bienestar.institucional@tecazuay.edu.ec') {
+      return 'COORDINADOR_BIENESTAR';
+    }
+
+    // 3. Validar si es Coordinador de Carrera consultando la base de datos
+    const esCoordinador = await this.carrerasRepository.findOne({
+      where: { correo_institucional: email },
+      select: { id: true }
+    });
+    
+    if (esCoordinador) {
+      return 'COORDINADOR_CARRERA';
+    }
+
+    // 4. Analizar el dominio y prefijo para Estudiantes vs Invitados
+    const dominio = email.split('@')[1] ?? '';
+    const usuarioLocal = email.split('@')[0] ?? '';
+
+    if (usuarioLocal.endsWith('.est') || dominio === 'est.tecazuay.edu.ec') {
+      return 'ESTUDIANTE';
+    }
+
+    // 5. Cualquier otro caso (@gmail.com, docentes normales sin cargo, etc.)
+    return 'INVITADO';
   }
 
   // ==========================================
@@ -96,23 +147,8 @@ export class AuthService implements OnModuleInit {
         segundoApellido = rawFamily.length > 1 ? rawFamily.slice(1).join(' ') : null;
       }
 
-      const administradoresPrueba: Record<string, string> = {
-        'admin.bienestar@gmail.com': 'COORDINADOR_BIENESTAR',
-        'admin.carrera@gmail.com': 'COORDINADOR_CARRERA',
-        'josue.abad@gmail.com': 'COORDINADOR_BIENESTAR',
-        'lunasteven282@gmail.com': 'COORDINADOR_BIENESTAR',
-        'bienestar.institucional@tecazuay.edu.ec': 'COORDINADOR_BIENESTAR',
-      };
-
-      let nombreRolAsignado = 'INVITADO';
-      const dominio = email.split('@')[1] ?? '';
-      const usuarioLocal = email.split('@')[0] ?? '';
-
-      if (administradoresPrueba[email]) {
-        nombreRolAsignado = administradoresPrueba[email];
-      } else if (dominio === 'tecazuay.edu.ec' && usuarioLocal.endsWith('.est')) {
-        nombreRolAsignado = 'ESTUDIANTE';
-      }
+      // ✅ ASIGNACIÓN INTELIGENTE DEL ROL
+      const nombreRolAsignado = await this.determinarRolPorEmail(email);
 
       let usuario = await this.usuariosRepository.findOne({
         where: [{ google_id: googleId }, { email_institucional: email }],
@@ -200,7 +236,6 @@ export class AuthService implements OnModuleInit {
     // 2. ¿El usuario ya existe?
     if (usuarioExistente) {
       if (usuarioExistente.password) {
-        // Ya tiene cuenta completa (Local o Local+Google)
         throw new UnauthorizedException('Este correo ya está registrado y tiene una contraseña. Por favor, inicia sesión.');
       } else {
         // CASO: Entró con Google antes, pero no tiene contraseña local. ¡Se la asignamos!
@@ -213,10 +248,8 @@ export class AuthService implements OnModuleInit {
     }
 
     // 3. Si el usuario NO existe, lo creamos desde cero
-    let nombreRolAsignado = 'INVITADO';
-    if (emailLimpio.endsWith('@est.tecazuay.edu.ec') || /\.est@tecazuay\.edu\.ec$/.test(emailLimpio)) {
-      nombreRolAsignado = 'ESTUDIANTE';
-    }
+    // ✅ ASIGNACIÓN INTELIGENTE DEL ROL
+    const nombreRolAsignado = await this.determinarRolPorEmail(emailLimpio);
 
     let rolDb: Role | null | undefined = this.rolesCache.get(nombreRolAsignado);
     if (!rolDb) {
