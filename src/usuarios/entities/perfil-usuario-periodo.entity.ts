@@ -24,6 +24,9 @@ export class PerfilUsuarioPeriodo {
   @Column({ name: 'esta_embarazada', type: 'boolean', nullable: true })
   esta_embarazada: boolean | null;
 
+  @Column({ name: 'numero_celular', type: 'varchar', length: 15, nullable: false })
+  numero_celular: string;
+  
   @Column({ type: 'varchar', length: 50, nullable: true })
   genero: string;
 

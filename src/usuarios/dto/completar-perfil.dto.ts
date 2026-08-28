@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf, IsDefined } from 'class-validator';
+import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf, IsDefined, Matches } from 'class-validator';
 import { IsCedulaEcuatoriana } from 'src/common/is-cedula-ecuatoriana.validator';
 import { IsFechaNacimiento } from 'src/common/is-fecha-nacimiento.validator';
 import { EstadoCivilEnum, EtniaEnum, SexoEnum } from '../enums/perfil-usuario.enum';
@@ -28,6 +28,11 @@ export class CompletarPerfilDto {
   @ValidateIf((dto: CompletarPerfilDto) => dto.sexo === SexoEnum.MUJER)
   @IsBoolean({ message: 'Indique su estado.' }) @IsDefined({ message: 'Especifique su estado (mujeres).' })
   esta_embarazada?: boolean;
+
+  @IsString() 
+  @IsNotEmpty({ message: 'El número celular es obligatorio.' }) 
+  @Matches(/^09\d{8}$/, { message: 'El celular debe tener 10 dígitos y empezar con 09.' })
+  numero_celular: string;
 
   @IsString() @IsNotEmpty({ message: 'El género es obligatorio.' })
   genero: string;

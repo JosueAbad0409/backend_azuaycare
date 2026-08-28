@@ -12,6 +12,7 @@ import { PerfilUsuarioPeriodo } from 'src/usuarios/entities/perfil-usuario-perio
 export class DocumentosRespaldoService {
   private supabase: SupabaseClient;
   private readonly BUCKET_NAME = 'documentos_azuaycare';
+  private readonly LIMITE_ARCHIVO_LIBRE_BYTES = 2 * 1024 * 1024; // 2MB
 
   constructor(
     @InjectRepository(DocumentoRespaldo)
@@ -71,6 +72,20 @@ export class DocumentosRespaldoService {
     return true;
   }
 
+    private async calcularEspacioUsadoLibre(usuarioId: string): Promise<number> {
+    const resultado = await this.documentosRepository
+      .createQueryBuilder('doc')
+      .select('COALESCE(SUM(doc.tamanio_bytes), 0)', 'total')
+      .where('doc.usuario_id = :usuarioId', { usuarioId })
+      .andWhere('doc.respuesta_id IS NULL')
+      .andWhere('doc.ficha_id IS NULL')
+      .andWhere('doc.perfil_periodo_id IS NULL')
+      .andWhere('doc.fecha_desactivacion IS NULL')
+      .getRawOne();
+
+    return parseInt(resultado?.total ?? '0', 10);
+  }
+
   // ----------------------------------------------------------------------
   // SUBIDA A SUPABASE Y GENERACIÓN DE URL PÚBLICA
   // ----------------------------------------------------------------------
@@ -125,13 +140,32 @@ export class DocumentosRespaldoService {
   // SUBIDA + CREACIÓN EN BD
   // ----------------------------------------------------------------------
 
-  async subirYCrear(
+    async subirYCrear(
     archivo: Express.Multer.File,
     body: { respuesta_id?: string; ficha_id?: string; perfil_periodo_id?: string },
     usuarioId: string,
     rol: string,
   ): Promise<DocumentoRespaldo> {
     if (!archivo) throw new BadRequestException('No se recibió ningún archivo');
+
+        // Un documento es "libre" (subido por el estudiante a su repositorio personal)
+    // cuando no está vinculado a ninguna respuesta, ficha o perfil de periodo.
+    // A estos archivos libres se les aplica un CUPO TOTAL de 2MB acumulado.
+    // Las evidencias institucionales (con respuesta_id, ficha_id o perfil_periodo_id) no tienen límite.
+    const esArchivoLibre = !body.respuesta_id && !body.ficha_id && !body.perfil_periodo_id;
+
+    if (esArchivoLibre) {
+      const espacioUsado = await this.calcularEspacioUsadoLibre(usuarioId);
+      const espacioDisponible = this.LIMITE_ARCHIVO_LIBRE_BYTES - espacioUsado;
+
+      if (archivo.size > espacioDisponible) {
+        const disponibleMb = (Math.max(espacioDisponible, 0) / (1024 * 1024)).toFixed(2);
+        const archivoMb = (archivo.size / (1024 * 1024)).toFixed(2);
+        throw new BadRequestException(
+          `No tienes espacio suficiente en tu repositorio de archivos independientes. Límite total: 2MB. Espacio disponible: ${disponibleMb}MB. El archivo pesa ${archivoMb}MB.`,
+        );
+      }
+    }
 
     // Antes de subir, validamos propiedad y LIMPIAMOS cualquier archivo previo asociado a este campo
     if (body.respuesta_id) {
@@ -166,9 +200,13 @@ export class DocumentosRespaldoService {
   // CONSULTAS
   // ----------------------------------------------------------------------
 
-  async findByUsuario(usuarioId: string) {
+    async findByUsuario(usuarioId: string) {
     return await this.documentosRepository.find({
       where: { usuario_id: usuarioId, fecha_desactivacion: IsNull() },
+      relations: {
+        ficha: { periodo: true },
+        respuesta: { ficha: { periodo: true } },
+      },
       order: { created_at: 'DESC' }
     });
   }

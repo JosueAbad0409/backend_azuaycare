@@ -77,6 +77,7 @@ export class UsuariosService {
       resultado.tiene_hijos = perfilPeriodo.tiene_hijos;
       resultado.hijos_menores_5_anios = perfilPeriodo.hijos_menores_5_anios;
       resultado.etnia = perfilPeriodo.etnia;
+      resultado.numero_celular = perfilPeriodo.numero_celular;
       resultado.pueblo_nacionalidad = perfilPeriodo.pueblo_nacionalidad;
       resultado.etnia_otra = perfilPeriodo.etnia_otra;
       resultado.idioma = perfilPeriodo.idioma;
@@ -161,6 +162,7 @@ export class UsuariosService {
       sexo: dto.sexo,
       esta_embarazada: dto.sexo === SexoEnum.MUJER ? (dto.esta_embarazada ?? false) : null,
       genero: dto.genero,
+      numero_celular: dto.numero_celular,
       estado_civil: dto.estado_civil,
       tiene_hijos: dto.tiene_hijos,
       hijos_menores_5_anios: dto.tiene_hijos ? (dto.hijos_menores_5_anios ?? 0) : null,
