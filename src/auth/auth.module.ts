@@ -10,10 +10,11 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PerfilUsuarioPeriodo } from 'src/usuarios/entities/perfil-usuario-periodo.entity';
 import { PeriodoMatricula } from 'src/periodos-matricula/entities/periodos-matricula.entity';
+import { Carrera } from 'src/carreras/entities/carrera.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Usuario, Role, PerfilUsuarioPeriodo, PeriodoMatricula]),
+    TypeOrmModule.forFeature([Usuario, Role, PerfilUsuarioPeriodo, PeriodoMatricula, Carrera]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
