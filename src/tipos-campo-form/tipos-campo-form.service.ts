@@ -26,16 +26,13 @@ export class TiposCampoFormService implements OnApplicationBootstrap {
       // --- Validaciones Estrictas de Formato ---
       { nombre: 'CORREO', descripcion: 'Validación estricta de estructura de e-mail (ej. usuario@dominio.com)' },
       { nombre: 'CEDULA', descripcion: 'Validación de cédula ecuatoriana mediante algoritmo oficial de módulo 10' },
-      { nombre: 'RUC', descripcion: 'Validación de Registro Único de Contribuyentes (13 dígitos)' },
       { nombre: 'TELEFONO', descripcion: 'Validación estricta numérica (exactamente 10 dígitos, útil para celulares o fijos)' },
       
       // --- Numéricos ---
       { nombre: 'NUMERICO_ENTERO', descripcion: 'Solo acepta números enteros (ej. cantidad de hijos, edad)' },
-      { nombre: 'NUMERICO_DECIMAL', descripcion: 'Acepta números con decimales (ej. sueldo, peso en kg, estatura)' },
       
       // --- Fechas y Tiempos ---
       { nombre: 'FECHA', descripcion: 'Selector nativo de fecha (Date) con validación YYYY-MM-DD' },
-      { nombre: 'HORA', descripcion: 'Selector de hora (Time) con validación HH:mm' },
       
       // --- Selecciones y Estructuras Complejas ---
       { nombre: 'SELECCION_UNICA', descripcion: 'Lista desplegable o Radio Buttons donde solo se elige una opción' },

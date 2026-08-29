@@ -74,7 +74,7 @@ export class RespuestasFormularioService {
       relations: { tipoCampo: true },
     });
 
-    for (const dto of dtos) {
+        for (const dto of dtos) {
       const preguntaBD = preguntasData.find(p => p.id === dto.pregunta_id);
       if (preguntaBD) {
         if (preguntaBD.tipoCampo?.nombre === 'SELECCION_UNICA') {
@@ -91,6 +91,13 @@ export class RespuestasFormularioService {
             );
           }
         }
+
+        // 🔒 Validación de formato según el tipo de campo (CEDULA, CORREO, TELEFONO, etc.)
+        this.validarFormatoPorTipoCampo(
+          preguntaBD.tipoCampo?.nombre,
+          dto.valor_texto,
+          preguntaBD.enunciado,
+        );
       }
     }
 
@@ -286,6 +293,106 @@ export class RespuestasFormularioService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+    // ----------------------------------------------------------------------
+  // VALIDACIÓN DE FORMATO POR TIPO DE CAMPO
+  // ----------------------------------------------------------------------
+
+  private validarFormatoPorTipoCampo(
+    tipoNombre: string | undefined,
+    valorTexto: string | null | undefined,
+    enunciadoPregunta: string,
+  ): void {
+    if (!tipoNombre || valorTexto === null || valorTexto === undefined) {
+      return; // Sin tipo o sin valor: nada que validar aquí (lo obligatorio se valida aparte).
+    }
+
+    // El frontend puede pegarle "[EVIDENCIA_URL:...]" al final del texto cuando
+    // la pregunta tiene un archivo de respaldo adjunto. Lo quitamos antes de validar
+    // el formato real que escribió el estudiante.
+    const textoLimpio = valorTexto.replace(/\[EVIDENCIA_URL:.*?\]/, '').trim();
+    if (!textoLimpio) return; // Solo había una URL de evidencia, no hay texto que validar.
+
+    switch (tipoNombre) {
+      case 'CORREO': {
+        const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!regexCorreo.test(textoLimpio)) {
+          throw new BadRequestException(
+            `El valor ingresado para "${enunciadoPregunta}" no tiene un formato de correo electrónico válido.`,
+          );
+        }
+        break;
+      }
+
+      case 'CEDULA': {
+        if (!this.esCedulaEcuatorianaValida(textoLimpio)) {
+          throw new BadRequestException(
+            `El valor ingresado para "${enunciadoPregunta}" no es una cédula ecuatoriana válida.`,
+          );
+        }
+        break;
+      }
+
+      case 'TELEFONO': {
+        const regexTelefono = /^\d{10}$/;
+        if (!regexTelefono.test(textoLimpio)) {
+          throw new BadRequestException(
+            `El valor ingresado para "${enunciadoPregunta}" debe tener exactamente 10 dígitos numéricos.`,
+          );
+        }
+        break;
+      }
+
+      case 'NUMERICO_ENTERO': {
+        const regexEntero = /^-?\d+$/;
+        if (!regexEntero.test(textoLimpio)) {
+          throw new BadRequestException(
+            `El valor ingresado para "${enunciadoPregunta}" debe ser un número entero.`,
+          );
+        }
+        break;
+      }
+
+      case 'FECHA': {
+        const regexFecha = /^\d{4}-\d{2}-\d{2}$/;
+        if (!regexFecha.test(textoLimpio)) {
+          throw new BadRequestException(
+            `El valor ingresado para "${enunciadoPregunta}" debe tener el formato de fecha YYYY-MM-DD.`,
+          );
+        }
+        break;
+      }
+
+      // TEXTO_CORTO, TEXTO_LARGO, SELECCION_UNICA, SELECCION_MULTIPLE, MATRIZ, ARCHIVO:
+      // no tienen un formato de texto libre que validar aquí.
+      default:
+        break;
+    }
+  }
+
+  private esCedulaEcuatorianaValida(cedula: string): boolean {
+    if (!/^\d{10}$/.test(cedula)) return false;
+
+    const digitos = cedula.split('').map(Number);
+
+    const provincia = parseInt(cedula.substring(0, 2), 10);
+    if (provincia < 1 || provincia > 24) return false;
+
+    const tercerDigito = digitos[2];
+    if (tercerDigito >= 6) return false; // Personas naturales: el tercer dígito debe ser 0-5
+
+    const coeficientes = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+    let suma = 0;
+
+    for (let i = 0; i < 9; i++) {
+      let valor = digitos[i] * coeficientes[i];
+      if (valor >= 10) valor -= 9;
+      suma += valor;
+    }
+
+    const digitoVerificador = (10 - (suma % 10)) % 10;
+    return digitoVerificador === digitos[9];
   }
 
   async obtenerPrecarga(periodoNuevoId: string, usuarioId: string): Promise<ResultadoPrecarga> {
