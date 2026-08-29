@@ -84,7 +84,7 @@ export class RespuestasFormularioService {
             );
           }
         }
-        if (preguntaBD.tipoCampo?.nombre === 'NUMERICO') {
+        if (preguntaBD.tipoCampo?.nombre === 'NUMERICO_ENTERO') {
           if (dto.opciones_seleccionadas && dto.opciones_seleccionadas.length > 0) {
             throw new BadRequestException(
               `Inconsistencia de datos: La pregunta "${preguntaBD.enunciado}" es NUMERICA y no debe recibir opciones seleccionadas.`,
