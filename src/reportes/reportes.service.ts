@@ -14,6 +14,138 @@ export class ReportesService {
     private readonly pdfRendererService: PdfRendererService,
   ) { }
 
+  private readonly ETIQUETAS_COLUMNAS_BASE: Record<string, string> = {
+    cedula: 'Cédula',
+    apellidos: 'Apellidos',
+    nombres: 'Nombres',
+    email: 'Email',
+    sexo: 'Sexo',
+    etnia: 'Etnia',
+    zona_residencia: 'Zona',
+    tiene_discapacidad: 'Discapacidad',
+    carrera: 'Carrera',
+    ciclo: 'Ciclo',
+    estado: 'Estado',
+    ingresos: 'Ingresos',
+    egresos: 'Egresos',
+    balance: 'Balance',
+    nivel_economico: 'Nivel Económico',
+  };
+
+  /**
+   * Recorta cada fila del dataset a solo las columnas base y preguntas
+   * seleccionadas por el coordinador. Si no se especifica ninguna selección,
+   * devuelve los datos sin tocar (comportamiento actual, sin roturas).
+   */
+  private async aplicarSeleccionColumnas(
+    datos: any[],
+    columnasBase?: string[],
+    columnasPreguntaIds?: string[],
+  ): Promise<any[]> {
+    const hayFiltroBase = !!columnasBase?.length;
+    const hayFiltroPreguntas = !!columnasPreguntaIds?.length;
+
+    if (!hayFiltroBase && !hayFiltroPreguntas) return datos;
+
+    let enunciadosPermitidos: Set<string> | null = null;
+    if (hayFiltroPreguntas) {
+      const preguntasSeleccionadas = await this.dataSource.query(
+        `SELECT enunciado FROM preguntas WHERE id = ANY($1::uuid[])`,
+        [columnasPreguntaIds],
+      );
+      enunciadosPermitidos = new Set(preguntasSeleccionadas.map((p: any) => p.enunciado));
+    }
+
+    return datos.map((fila) => {
+      const nuevaFila: Record<string, any> = {};
+
+      if (hayFiltroBase) {
+        for (const col of columnasBase!) {
+          if (col in fila) nuevaFila[col] = fila[col];
+        }
+      } else {
+        for (const key of Object.keys(fila)) {
+          if (key !== 'respuestas_dinamicas') nuevaFila[key] = fila[key];
+        }
+      }
+
+      if (fila.respuestas_dinamicas && typeof fila.respuestas_dinamicas === 'object') {
+        const dinamicasFiltradas: Record<string, any> = {};
+        for (const [enunciado, valor] of Object.entries(fila.respuestas_dinamicas)) {
+          if (!enunciadosPermitidos || enunciadosPermitidos.has(enunciado)) {
+            dinamicasFiltradas[enunciado] = valor;
+          }
+        }
+        if (Object.keys(dinamicasFiltradas).length > 0) {
+          nuevaFila.respuestas_dinamicas = dinamicasFiltradas;
+        }
+      }
+
+      return nuevaFila;
+    });
+  }
+
+    private construirColumnasYFilasPdf(
+    datos: any[],
+    columnasBase?: string[],
+  ): {
+    columnas: Array<{ clave: string; etiqueta: string }>;
+    filas: Array<{ valores: Array<string | number> }>;
+  } {
+    const clavesBase = columnasBase?.length
+      ? columnasBase.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
+      : Object.keys(this.ETIQUETAS_COLUMNAS_BASE);
+
+    const clavesDinamicas = new Set<string>();
+    datos.forEach((fila) => {
+      if (fila.respuestas_dinamicas) {
+        Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
+      }
+    });
+
+    const columnas: Array<{ clave: string; etiqueta: string }> = [
+      ...clavesBase.map((clave) => ({ clave, etiqueta: this.ETIQUETAS_COLUMNAS_BASE[clave] })),
+      ...Array.from(clavesDinamicas).map((clave) => ({ clave, etiqueta: clave })),
+    ];
+
+    const filas = datos.map((fila) => ({
+      valores: columnas.map(({ clave }) => {
+        if (clavesDinamicas.has(clave) && !(clave in fila)) {
+          return fila.respuestas_dinamicas?.[clave] ?? '—';
+        }
+        let valor = fila[clave];
+        if (clave === 'tiene_discapacidad') valor = valor ? 'Sí' : 'No';
+        return valor ?? '—';
+      }),
+    }));
+
+    return { columnas, filas };
+  }
+  // ----------------------------------------------------------------------
+  // CLASIFICACIÓN CENTRALIZADA DE TIPOS DE CAMPO
+  // (debe coincidir siempre con los nombres reales sembrados en tipos_campo_form)
+  // ----------------------------------------------------------------------
+
+  private esTipoSeleccion(tipoCampoNombre: string): boolean {
+    return ['SELECCION_UNICA', 'SELECCION_MULTIPLE'].includes(tipoCampoNombre);
+  }
+
+  private esTipoNumerico(tipoCampoNombre: string): boolean {
+    return tipoCampoNombre === 'NUMERICO_ENTERO';
+  }
+
+  private esTipoMatriz(tipoCampoNombre: string): boolean {
+    return tipoCampoNombre === 'MATRIZ';
+  }
+
+  private esTipoTextoLibre(tipoCampoNombre: string): boolean {
+    return ['TEXTO_CORTO', 'TEXTO_LARGO', 'CEDULA', 'CORREO', 'TELEFONO'].includes(tipoCampoNombre);
+  }
+
+  private esTipoFecha(tipoCampoNombre: string): boolean {
+    return tipoCampoNombre === 'FECHA';
+  }
+
   /**
    * Obtiene el resumen consolidado de métricas generales, periodo activo y datos preparativos
    * para los gráficos del Dashboard sin caer en over-fetching.
@@ -222,7 +354,7 @@ export class ReportesService {
       const tipoCampo = preg.tipo_campo.toUpperCase();
       let metricas: any = null;
 
-      if (tipoCampo.includes('OPCION') || tipoCampo.includes('SELECT') || tipoCampo.includes('CHECKBOX') || tipoCampo.includes('RADIO')) {
+      if (this.esTipoSeleccion(tipoCampo)) {
         const opcionesConteo = await this.dataSource.query(
           `
           SELECT 
@@ -248,7 +380,7 @@ export class ReportesService {
             porcentaje: totalFichas > 0 ? parseFloat(((o.conteo / totalFichas) * 100).toFixed(2)) : 0,
           })),
         };
-      } else if (tipoCampo.includes('NUMERIC') || tipoCampo.includes('NUMERO') || tipoCampo.includes('MONEDA')) {
+      } else if (this.esTipoNumerico(tipoCampo)) {
         const numStats = await this.dataSource.query(
           `
           SELECT 
@@ -269,7 +401,7 @@ export class ReportesService {
           maximo: numStats[0]?.maximo || 0,
           suma: numStats[0]?.suma || 0,
         };
-      } else if (tipoCampo.includes('MATRIZ')) {
+      } else if (this.esTipoMatriz(tipoCampo)) {
         const matrizConteo = await this.dataSource.query(
           `
           SELECT 
@@ -361,7 +493,7 @@ export class ReportesService {
         tipo_campo: pregunta.tipo_campo,
       };
 
-      if (tipoCampo.includes('OPCION') || tipoCampo.includes('SELECT') || tipoCampo.includes('CHECKBOX') || tipoCampo.includes('RADIO')) {
+      if (this.esTipoSeleccion(tipoCampo)) {
         filtro.opciones = await this.dataSource.query(
           `
           SELECT id AS opcion_id, texto_opcion
@@ -373,7 +505,7 @@ export class ReportesService {
         );
       }
 
-      filtro.es_numerico = tipoCampo.includes('NUMERIC') || tipoCampo.includes('NUMERO') || tipoCampo.includes('MONEDA');
+      filtro.es_numerico = this.esTipoNumerico(tipoCampo);
       filtros.push(filtro);
     }
 
@@ -487,11 +619,6 @@ export class ReportesService {
   async obtenerDatasetPlano(periodoId: string) {
     return this.obtenerDatasetFiltrado({ periodo_id: periodoId });
   }
-
-  /**
-   * Dataset filtrado (usado por el explorador de población, Excel y PDF).
-   * `periodo_id` es opcional: si no viene, se buscan fichas de TODOS los periodos.
-   */
   /**
  * Dataset filtrado.
  * - vista === 'poblacion' → usuarios + perfil (NO exige ficha)
@@ -588,10 +715,16 @@ export class ReportesService {
         .addOrderBy('u.primer_apellido', 'ASC')
         .getRawMany();
 
+      const resultadosFinales = await this.aplicarSeleccionColumnas(
+        resultados,
+        filtros.columnas_base,
+        filtros.columnas_pregunta_ids,
+      );
+
       return {
         periodo: nombrePeriodo,
-        total_registros: resultados.length,
-        datos: resultados,
+        total_registros: resultadosFinales.length,
+        datos: resultadosFinales,
       };
     }
 
@@ -662,7 +795,7 @@ export class ReportesService {
     };
   }
 
-  async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
+    async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
     const dataset = await this.obtenerDatasetFiltrado(filtros);
 
     const nombrePeriodo = dataset.periodo.replace(/\s+/g, '_');
@@ -682,22 +815,21 @@ export class ReportesService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
 
+    const columnasBaseAMostrar = filtros.columnas_base?.length
+      ? filtros.columnas_base.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
+      : Object.keys(this.ETIQUETAS_COLUMNAS_BASE);
+
     const clavesDinamicas = new Set<string>();
     dataset.datos.forEach((fila: any) => {
       if (fila.respuestas_dinamicas) Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
     });
 
     hoja.columns = [
-      { header: 'Cédula', key: 'cedula', width: 15 },
-      { header: 'Apellidos', key: 'apellidos', width: 25 },
-      { header: 'Nombres', key: 'nombres', width: 25 },
-      { header: 'Email', key: 'email', width: 30 },
-      { header: 'Sexo', key: 'sexo', width: 12 },
-      { header: 'Etnia', key: 'etnia', width: 18 },
-      { header: 'Zona', key: 'zona_residencia', width: 12 },
-      { header: 'Discapacidad', key: 'tiene_discapacidad', width: 14 },
-      { header: 'Carrera', key: 'carrera', width: 28 },
-      { header: 'Ciclo', key: 'ciclo', width: 20 },
+      ...columnasBaseAMostrar.map((clave) => ({
+        header: this.ETIQUETAS_COLUMNAS_BASE[clave],
+        key: clave,
+        width: ['apellidos', 'nombres', 'email', 'carrera'].includes(clave) ? 26 : 16,
+      })),
       ...Array.from(clavesDinamicas).map((clave) => ({ header: clave, key: clave, width: 22 })),
     ];
 
@@ -708,18 +840,20 @@ export class ReportesService {
     });
 
     dataset.datos.forEach((fila: any) => {
-      hoja.addRow({
-        cedula: fila.cedula,
-        apellidos: fila.apellidos?.trim(),
-        nombres: fila.nombres?.trim(),
-        email: fila.email,
-        sexo: fila.sexo || 'N/A',
-        etnia: fila.etnia || 'N/A',
-        zona_residencia: fila.zona_residencia || 'N/A',
-        tiene_discapacidad: fila.tiene_discapacidad ? 'Sí' : 'No',
-        carrera: fila.carrera,
-        ciclo: fila.ciclo || 'N/A',
-      }).commit();
+      const filaExcel: Record<string, any> = {};
+
+      columnasBaseAMostrar.forEach((clave) => {
+        let valor = fila[clave];
+        if (clave === 'tiene_discapacidad') valor = valor ? 'Sí' : 'No';
+        if (clave === 'apellidos' || clave === 'nombres') valor = String(valor ?? '').trim();
+        filaExcel[clave] = valor ?? 'N/A';
+      });
+
+      if (fila.respuestas_dinamicas) {
+        Object.assign(filaExcel, fila.respuestas_dinamicas);
+      }
+
+      hoja.addRow(filaExcel).commit();
     });
 
     hoja.eachRow((row) => {
@@ -956,8 +1090,9 @@ export class ReportesService {
       return this.pdfRendererService.renderizarHtmlAPdf(html);
     }
 
-    // ---- Vista completa: Dashboard / Reportes Consolidados ----
+        // ---- Vista completa: Dashboard / Reportes Consolidados ----
     const agregado = await this.obtenerAgregadoPorPregunta(filtros);
+    const { columnas, filas } = this.construirColumnasYFilasPdf(dataset.datos, filtros.columnas_base);
 
     const filtrosParaPdf: Record<string, any> = {
       estado_ficha: filtros.estado_ficha || null,
@@ -1004,7 +1139,8 @@ export class ReportesService {
       filtros: filtrosParaPdf,
       periodo: dataset.periodo,
       total_registros: dataset.total_registros,
-      dataset: dataset.datos,
+      columnas,
+      dataset: filas,
       total_fichas_respondidas: agregado.total_fichas_respondidas,
       generated_at: fechaEcuador, // Aplicamos la fecha corregida también aquí
     });

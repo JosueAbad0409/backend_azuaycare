@@ -96,4 +96,15 @@ export class FiltroReporteDto {
   @IsOptional()
   @IsString()
   vista?: 'completo' | 'poblacion';
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  columnas_base?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  columnas_pregunta_ids?: string[];
+
 }

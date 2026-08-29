@@ -180,12 +180,15 @@
       overflow-x: auto;
     }
 
+    /* 🔥 table-layout ya NO es "fixed": el número de columnas ahora es
+       dinámico (depende de las columnas que el coordinador seleccione),
+       así que dejamos que el navegador reparta el ancho automáticamente. */
     table {
       width: 100%;
       border-spacing: 0;
       border-collapse: collapse;
       margin-top: 12px;
-      table-layout: fixed;
+      table-layout: auto;
     }
 
     th,
@@ -193,7 +196,7 @@
       padding: 6px 5px;
       text-align: left;
       border-bottom: 1px solid #e2e8f0;
-      font-size: 9.5px;
+      font-size: 9px;
       word-break: break-word;
       vertical-align: top;
     }
@@ -202,21 +205,9 @@
       background: #1d4ed8;
       color: #ffffff;
       font-weight: 700;
-      font-size: 9px;
+      font-size: 8.5px;
       white-space: nowrap;
     }
-
-    th:nth-child(1), td:nth-child(1) { width: 9%; }   /* Cédula */
-    th:nth-child(2), td:nth-child(2) { width: 11%; }  /* Apellidos */
-    th:nth-child(3), td:nth-child(3) { width: 11%; }  /* Nombres */
-    th:nth-child(4), td:nth-child(4) { width: 16%; }  /* Email */
-    th:nth-child(5), td:nth-child(5) { width: 14%; }  /* Carrera */
-    th:nth-child(6), td:nth-child(6) { width: 8%; }   /* Ciclo */
-    th:nth-child(7), td:nth-child(7) { width: 8%; }   /* Estado */
-    th:nth-child(8), td:nth-child(8) { width: 7%; }   /* Ingresos */
-    th:nth-child(9), td:nth-child(9) { width: 7%; }   /* Egresos */
-    th:nth-child(10), td:nth-child(10) { width: 7%; } /* Balance */
-    th:nth-child(11), td:nth-child(11) { width: 12%; }/* Nivel Económico */
 
     tbody tr:hover {
       background: rgba(59, 130, 246, 0.05);
@@ -261,7 +252,7 @@
 
       table th,
       table td {
-        font-size: 8.5px;
+        font-size: 8px;
         padding: 4px 3px;
       }
 
@@ -354,33 +345,17 @@
         <table>
           <thead>
             <tr>
-              <th>Cédula</th>
-              <th>Apellidos</th>
-              <th>Nombres</th>
-              <th>Email</th>
-              <th>Carrera</th>
-              <th>Ciclo</th>
-              <th>Estado</th>
-              <th>Ingresos</th>
-              <th>Egresos</th>
-              <th>Balance</th>
-              <th>Nivel Económico</th>
+              {{#each columnas}}
+              <th>{{this.etiqueta}}</th>
+              {{/each}}
             </tr>
           </thead>
           <tbody>
             {{#each dataset}}
             <tr>
-              <td>{{cedula}}</td>
-              <td>{{apellidos}}</td>
-              <td>{{nombres}}</td>
-              <td>{{email}}</td>
-              <td>{{carrera}}</td>
-              <td>{{ciclo}}</td>
-              <td>{{estado}}</td>
-              <td>{{ingresos}}</td>
-              <td>{{egresos}}</td>
-              <td>{{balance}}</td>
-              <td>{{nivel_economico}}</td>
+              {{#each this.valores}}
+              <td>{{this}}</td>
+              {{/each}}
             </tr>
             {{/each}}
           </tbody>
