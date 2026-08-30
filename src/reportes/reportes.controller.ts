@@ -41,6 +41,12 @@ export class ReportesController {
     return this.reportesService.obtenerDatasetFiltrado(filtros);
   }
 
+    @Post('agregado-por-pregunta')
+  @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
+  obtenerAgregadoPorPregunta(@Body() filtros: FiltroReporteDto) {
+    return this.reportesService.obtenerAgregadoPorPregunta(filtros);
+  }
+
   @Post('dataset-filtrado/excel')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   async descargarDatasetFiltradoExcel(@Body() filtros: FiltroReporteDto, @Res() res: Response) {

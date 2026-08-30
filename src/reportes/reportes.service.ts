@@ -761,7 +761,7 @@ export class ReportesService {
     TRIM(
       regexp_replace(
         COALESCE(res.valor_texto, res.valor_numerico::text, ''),
-        '\[EVIDENCIA_URL:[^\]]*\]',
+        '\\[EVIDENCIA_URL:[^\\]]*\\]',
         '',
         'g'
       )
@@ -788,10 +788,16 @@ export class ReportesService {
       .addOrderBy('u.primer_apellido', 'ASC')
       .getRawMany();
 
+    const resultadosFinales = await this.aplicarSeleccionColumnas(
+      resultados,
+      filtros.columnas_base,
+      filtros.columnas_pregunta_ids,
+    );
+
     return {
       periodo: nombrePeriodo,
-      total_registros: resultados.length,
-      datos: resultados,
+      total_registros: resultadosFinales.length,
+      datos: resultadosFinales,
     };
   }
 
@@ -935,7 +941,7 @@ export class ReportesService {
       const tipoCampo = preg.tipo_campo.toUpperCase();
       let metricas: any = null;
 
-      if (tipoCampo.includes('OPCION') || tipoCampo.includes('SELECT') || tipoCampo.includes('CHECKBOX') || tipoCampo.includes('RADIO')) {
+      if (this.esTipoSeleccion(tipoCampo)) {
         const opcionesConteo = await this.dataSource
           .createQueryBuilder()
           .select('op.id', 'opcion_id')
@@ -966,7 +972,7 @@ export class ReportesService {
             porcentaje: totalFichas > 0 ? parseFloat(((o.conteo / totalFichas) * 100).toFixed(2)) : 0,
           })),
         };
-      } else if (tipoCampo.includes('NUMERIC') || tipoCampo.includes('NUMERO') || tipoCampo.includes('MONEDA')) {
+      } else if (this.esTipoNumerico(tipoCampo)) {
         const numStats = await this.dataSource
           .createQueryBuilder()
           .select('COALESCE(AVG(r.valor_numerico), 0)::float', 'promedio')
@@ -991,7 +997,7 @@ export class ReportesService {
           maximo: numStats?.maximo || 0,
           suma: numStats?.suma || 0,
         };
-      } else if (tipoCampo.includes('MATRIZ')) {
+      } else if (this.esTipoMatriz(tipoCampo)) {
         const matrizConteo = await this.dataSource
           .createQueryBuilder()
           .select('rm.fila_id', 'fila_id')
@@ -1177,7 +1183,7 @@ export class ReportesService {
     TRIM(
       regexp_replace(
         COALESCE(res.valor_texto, res.valor_numerico::text, ''),
-        '\[EVIDENCIA_URL:[^\]]*\]',
+        '\\[EVIDENCIA_URL:[^\\]]*\\]',
         '',
         'g'
       )
