@@ -122,14 +122,22 @@ export class PreguntasService {
 
   async update(id: string, updatePreguntaDto: UpdatePreguntaDto, usuarioId: string) {
     const pregunta = await this.findOne(id);
+    
+    // Si está publicado, esto bloqueará la edición.
     const seccion = await this.validarFormularioModificablePorSeccion(pregunta.seccion_id);
 
     if (updatePreguntaDto.categoria_financiera) {
       await this.validarCategoriaFinanciera(pregunta.seccion_id, updatePreguntaDto.categoria_financiera);
     }
 
+    // SEGURIDAD: Evitamos que usen el UPDATE para desactivar lógicamente la pregunta
+    const datosAActualizar = { ...updatePreguntaDto };
+    if ('fecha_desactivacion' in datosAActualizar) {
+      delete (datosAActualizar as any).fecha_desactivacion;
+    }
+
     await this.preguntasRepository.update(id, {
-      ...updatePreguntaDto,
+      ...datosAActualizar,
       actualizado_por: usuarioId,
     });
 
@@ -179,25 +187,31 @@ export class PreguntasService {
     await queryRunner.startTransaction();
 
     try {
-      const now = new Date();
-      await queryRunner.manager.update(Pregunta, id, { fecha_desactivacion: now });
+      // Eliminar dependencias donde la pregunta es el objetivo o la disparadora
+      await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias')
+        .where('pregunta_id = :id OR pregunta_disparadora_id = :id', { id }).execute();
 
-      await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
-      await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
-      await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
-      await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_id = :id', { id }).execute();
-      await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_disparadora_id = :id', { id }).execute();
+      // Eliminar sub-elementos físicos
+      await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta').where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz').where('pregunta_id = :id', { id }).execute();
+      await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz').where('pregunta_id = :id', { id }).execute();
+
+      // Eliminar la pregunta
+      await queryRunner.manager.delete(Pregunta, id);
 
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      throw error;
+      // Si falla, es porque una tabla externa (ej. respuestas) depende de esta pregunta
+      throw new BadRequestException(
+        'No se puede eliminar esta pregunta de la base de datos. Es posible que estudiantes ya hayan enviado respuestas atadas a esta pregunta.'
+      );
     } finally {
       await queryRunner.release();
     }
 
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
-    return { message: 'Pregunta y sus dependencias eliminadas lógicamente con éxito.' };
+    return { message: 'Pregunta eliminada permanentemente con éxito.' };
   }
 }

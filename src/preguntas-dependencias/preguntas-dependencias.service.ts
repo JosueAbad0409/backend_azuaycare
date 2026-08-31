@@ -66,6 +66,7 @@ export class PreguntasDependenciasService {
 
   async remove(id: string) {
     const dependencia = await this.dependenciasRepository.findOne({ where: { id, fecha_desactivacion: IsNull() } });
+    
     if (!dependencia) {
       throw new NotFoundException('La regla de dependencia no existe o ya fue removida.');
     }
@@ -73,10 +74,15 @@ export class PreguntasDependenciasService {
     // Validar antes de borrar
     await this.validarFormularioModificablePorPregunta(dependencia.pregunta_id);
 
-    await this.dependenciasRepository.update(id, {
-      fecha_desactivacion: new Date(),
-    });
+    try {
+      // Eliminar físicamente la fila en la base de datos
+      await this.dependenciasRepository.delete(id);
+    } catch (error) {
+      throw new BadRequestException(
+        'No se pudo eliminar la regla de dependencia por un conflicto en la base de datos.'
+      );
+    }
 
-    return { message: 'Regla de dependencia eliminada lógicamente con éxito.' };
+    return { message: 'Regla de dependencia eliminada permanentemente con éxito.' };
   }
 }

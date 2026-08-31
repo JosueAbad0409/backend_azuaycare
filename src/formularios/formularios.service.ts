@@ -56,12 +56,18 @@ export class FormulariosService {
     return this.findOne(formularioGuardado.id);
   }
 
-findAll() {
-    return this.formulariosRepository.find({
+findAll(skip?: number, take?: number) {
+    const opcionesBusqueda: any = {
       where: { fecha_desactivacion: IsNull() },
       relations: { periodo: true, tipoFormulario: true },
       order: { created_at: 'DESC' },
-    });
+    };
+
+    // Solo aplica los límites si realmente los envías en la petición
+    if (take) opcionesBusqueda.take = Number(take);
+    if (skip) opcionesBusqueda.skip = Number(skip);
+
+    return this.formulariosRepository.find(opcionesBusqueda);
   }
 
   async findOne(id: string) {
@@ -161,16 +167,21 @@ findAll() {
   async update(id: string, updateFormularioDto: UpdateFormularioDto) {
     const formulario = await this.findOne(id);
 
-
     if (formulario.publicado) {
-      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones estructurales.');
+      throw new BadRequestException('El diseño del formulario está congelado porque ya ha sido publicado. No se permiten modificaciones.');
     }
 
     if (updateFormularioDto.tipo_formulario_id && updateFormularioDto.tipo_formulario_id !== formulario.tipo_formulario_id) {
       throw new BadRequestException('No se puede cambiar el tipo de un formulario después de haberlo creado.');
     }
 
-    await this.formulariosRepository.update(id, updateFormularioDto);
+    // SEGURIDAD: Prevenir desactivación oculta
+    const datosAActualizar = { ...updateFormularioDto };
+    if ('fecha_desactivacion' in datosAActualizar) {
+      delete (datosAActualizar as any).fecha_desactivacion;
+    }
+
+    await this.formulariosRepository.update(id, datosAActualizar);
     return this.findOne(id);
   }
 
@@ -234,12 +245,19 @@ findAll() {
     const nuevoTitulo = `${tituloBase} - ${periodoDestino.nombre}`;
 
     try {
+      // ELIMINACIÓN FÍSICA de las versiones antiguas
       if (versionesExistentes.length >= 2) {
-        const aDesactivar = versionesExistentes.slice(0, versionesExistentes.length - 1);
-        for (const formularioViejo of aDesactivar) {
-          await queryRunner.manager.update(Formulario, formularioViejo.id, {
-            fecha_desactivacion: new Date(),
-          });
+        const aEliminar = versionesExistentes.slice(0, versionesExistentes.length - 1);
+        for (const formularioViejo of aEliminar) {
+          try {
+            // Intentamos eliminarlo completamente de la base de datos (Hard Delete)
+            await queryRunner.manager.delete(Formulario, formularioViejo.id);
+          } catch (errorDb) {
+            // Si la BD rechaza el delete (casi siempre por claves foráneas/datos asociados)
+            throw new BadRequestException(
+              `No se puede crear el clon porque no es posible eliminar la versión anterior "${formularioViejo.titulo}". Es probable que esta ficha ya tenga datos vinculados (como respuestas de estudiantes) y no pueda ser borrada por completo de la base de datos.`
+            );
+          }
         }
       }
 

@@ -112,35 +112,49 @@ export class SeccionesService {
     await queryRunner.startTransaction();
 
     try {
-      const now = new Date();
-      await queryRunner.manager.update(Seccion, id, { fecha_desactivacion: now });
-
+      // 1. Buscar si la sección tiene preguntas
       const preguntas = await queryRunner.manager
         .createQueryBuilder()
         .select('id')
         .from('preguntas', 'p')
         .where('seccion_id = :seccionId', { seccionId: id })
-        .andWhere('fecha_desactivacion IS NULL')
         .getRawMany();
 
+      // 2. Si tiene preguntas, borramos físicamente desde lo más profundo hacia arriba
       if (preguntas.length > 0) {
         const preguntaIds = preguntas.map(p => p.id);
-        await queryRunner.manager.createQueryBuilder().update('preguntas').set({ fecha_desactivacion: now }).where('seccion_id = :seccionId', { seccionId: id }).execute();
-        await queryRunner.manager.createQueryBuilder().update('opciones_pregunta').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('filas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('columnas_matriz').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
-        await queryRunner.manager.createQueryBuilder().update('preguntas_dependencias').set({ fecha_desactivacion: now }).where('pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
+        
+        // Eliminar dependencias
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias')
+          .where('pregunta_id IN (:...ids) OR pregunta_disparadora_id IN (:...ids)', { ids: preguntaIds }).execute();
+        
+        // Eliminar sub-elementos de la pregunta (opciones, filas, columnas)
+        await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta')
+          .where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz')
+          .where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz')
+          .where('pregunta_id IN (:...ids)', { ids: preguntaIds }).execute();
+        
+        // Eliminar las preguntas
+        await queryRunner.manager.createQueryBuilder().delete().from('preguntas')
+          .where('seccion_id = :seccionId', { seccionId: id }).execute();
       }
+
+      // 3. Finalmente, eliminar la sección
+      await queryRunner.manager.delete(Seccion, id);
 
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      throw error;
+      // Si entra aquí, es porque la base de datos protegió la eliminación (ej. respuestas atadas a preguntas)
+      throw new BadRequestException(
+        'No se puede eliminar esta sección por completo. Es muy probable que ya existan respuestas de estudiantes vinculadas a sus preguntas, lo que impide borrarlas del sistema.'
+      );
     } finally {
       await queryRunner.release();
     }
 
-    return { message: 'Sección y dependencias dadas de baja con éxito.' };
+    return { message: 'Sección y sus componentes eliminados permanentemente con éxito.' };
   }
 }
