@@ -6,6 +6,8 @@ import { CreatePreguntaDto } from './dto/create-pregunta.dto';
 import { UpdatePreguntaDto } from './dto/update-pregunta.dto';
 import { Seccion } from '../secciones/entities/secciones.entity';
 import { Formulario } from '../formularios/entities/formulario.entity';
+import { FilaMatriz } from '../matrices-form/entities/fila-matriz.entity';
+import { ColumnaMatriz } from '../matrices-form/entities/columna-matriz.entity';
 import { FormularioCacheService } from '../common/cache/formulario-cache.service';
 
 @Injectable()
@@ -17,6 +19,10 @@ export class PreguntasService {
     private readonly seccionesRepository: Repository<Seccion>,
     @InjectRepository(Formulario)
     private readonly formulariosRepository: Repository<Formulario>,
+    @InjectRepository(FilaMatriz)
+    private readonly filasMatrizRepository: Repository<FilaMatriz>,
+    @InjectRepository(ColumnaMatriz)
+    private readonly columnasMatrizRepository: Repository<ColumnaMatriz>,
     private readonly dataSource: DataSource,
     private readonly formularioCacheService: FormularioCacheService,
   ) { }
@@ -66,6 +72,32 @@ export class PreguntasService {
       creado_por: usuarioId,
     });
 
+    const preguntaGuardada = await this.preguntasRepository.save(nuevaPregunta);
+
+    // ✅ NUEVO: Si se reciben filas en el DTO, guardarlas
+    if (createPreguntaDto.filasMatriz && createPreguntaDto.filasMatriz.length > 0) {
+      const filasConPreguntaId = createPreguntaDto.filasMatriz.map((fila, idx) => ({
+        pregunta_id: preguntaGuardada.id,
+        texto_fila: fila.texto_fila,
+        orden: fila.orden || idx + 1,
+        es_multiple: fila.es_multiple ?? false,
+        permitir_multiple: fila.permitir_multiple ?? fila.es_multiple ?? false,
+      }));
+
+      await this.filasMatrizRepository.save(filasConPreguntaId);
+    }
+
+    // ✅ NUEVO: Si se reciben columnas en el DTO, guardarlas
+    if (createPreguntaDto.columnasMatriz && createPreguntaDto.columnasMatriz.length > 0) {
+      const columnasConPreguntaId = createPreguntaDto.columnasMatriz.map((col, idx) => ({
+        pregunta_id: preguntaGuardada.id,
+        texto_columna: col.texto_columna,
+        orden: col.orden || idx + 1,
+      }));
+
+      await this.columnasMatrizRepository.save(columnasConPreguntaId);
+    }
+
     await this.preguntasRepository.query(`
       UPDATE fichas_respondidas 
       SET estado_ficha = 'BORRADOR', cerrado_manual_por = NULL 
@@ -73,8 +105,6 @@ export class PreguntasService {
       AND estado_ficha != 'BORRADOR'
       AND fecha_desactivacion IS NULL
     `, [createPreguntaDto.seccion_id]);
-
-    const preguntaGuardada = await this.preguntasRepository.save(nuevaPregunta);
 
     await this.formularioCacheService.invalidarPorFormularioId(seccion.formulario_id);
 
@@ -102,6 +132,8 @@ export class PreguntasService {
       relations: {
         tipoCampo: true,
         opciones: true,
+        filas: true,
+        columnas: true,
       },
       order: {
         orden: 'ASC' 
@@ -112,7 +144,12 @@ export class PreguntasService {
   async findOne(id: string) {
     const pregunta = await this.preguntasRepository.findOne({
       where: { id, fecha_desactivacion: IsNull() },
-      relations: { seccion: true, tipoCampo: true },
+      relations: { 
+        seccion: true, 
+        tipoCampo: true,
+        filas: true,
+        columnas: true,
+      },
     });
     if (!pregunta) {
       throw new NotFoundException('La pregunta solicitada no existe o fue dada de baja.');
@@ -123,23 +160,79 @@ export class PreguntasService {
   async update(id: string, updatePreguntaDto: UpdatePreguntaDto, usuarioId: string) {
     const pregunta = await this.findOne(id);
     
-    // Si está publicado, esto bloqueará la edición.
     const seccion = await this.validarFormularioModificablePorSeccion(pregunta.seccion_id);
 
     if (updatePreguntaDto.categoria_financiera) {
       await this.validarCategoriaFinanciera(pregunta.seccion_id, updatePreguntaDto.categoria_financiera);
     }
 
-    // SEGURIDAD: Evitamos que usen el UPDATE para desactivar lógicamente la pregunta
     const datosAActualizar = { ...updatePreguntaDto };
     if ('fecha_desactivacion' in datosAActualizar) {
       delete (datosAActualizar as any).fecha_desactivacion;
+    }
+
+    // ✅ NUEVO: Eliminar campos de matriz que no pertenecen a Pregunta
+    if ('filasMatriz' in datosAActualizar) {
+      delete (datosAActualizar as any).filasMatriz;
+    }
+    if ('columnasMatriz' in datosAActualizar) {
+      delete (datosAActualizar as any).columnasMatriz;
     }
 
     await this.preguntasRepository.update(id, {
       ...datosAActualizar,
       actualizado_por: usuarioId,
     });
+
+    // ✅ NUEVO: Actualizar filas si se envían
+    if (updatePreguntaDto.filasMatriz && updatePreguntaDto.filasMatriz.length > 0) {
+      for (const fila of updatePreguntaDto.filasMatriz) {
+        if (fila.id) {
+          // Actualizar fila existente
+          await this.filasMatrizRepository.update(
+            { id: fila.id, pregunta_id: id },
+            {
+              texto_fila: fila.texto_fila,
+              es_multiple: fila.es_multiple ?? false,
+              permitir_multiple: fila.permitir_multiple ?? fila.es_multiple ?? false,
+              orden: fila.orden || 1,
+            }
+          );
+        } else {
+          // Crear nueva fila
+          await this.filasMatrizRepository.save({
+            pregunta_id: id,
+            texto_fila: fila.texto_fila,
+            es_multiple: fila.es_multiple ?? false,
+            permitir_multiple: fila.permitir_multiple ?? fila.es_multiple ?? false,
+            orden: fila.orden || 1,
+          });
+        }
+      }
+    }
+
+    // ✅ NUEVO: Actualizar columnas si se envían
+    if (updatePreguntaDto.columnasMatriz && updatePreguntaDto.columnasMatriz.length > 0) {
+      for (const columna of updatePreguntaDto.columnasMatriz) {
+        if (columna.id) {
+          // Actualizar columna existente
+          await this.columnasMatrizRepository.update(
+            { id: columna.id, pregunta_id: id },
+            {
+              texto_columna: columna.texto_columna,
+              orden: columna.orden || 1,
+            }
+          );
+        } else {
+          // Crear nueva columna
+          await this.columnasMatrizRepository.save({
+            pregunta_id: id,
+            texto_columna: columna.texto_columna,
+            orden: columna.orden || 1,
+          });
+        }
+      }
+    }
 
     await this.preguntasRepository.query(`
       UPDATE fichas_respondidas 
@@ -187,22 +280,18 @@ export class PreguntasService {
     await queryRunner.startTransaction();
 
     try {
-      // Eliminar dependencias donde la pregunta es el objetivo o la disparadora
       await queryRunner.manager.createQueryBuilder().delete().from('preguntas_dependencias')
         .where('pregunta_id = :id OR pregunta_disparadora_id = :id', { id }).execute();
 
-      // Eliminar sub-elementos físicos
       await queryRunner.manager.createQueryBuilder().delete().from('opciones_pregunta').where('pregunta_id = :id', { id }).execute();
       await queryRunner.manager.createQueryBuilder().delete().from('filas_matriz').where('pregunta_id = :id', { id }).execute();
       await queryRunner.manager.createQueryBuilder().delete().from('columnas_matriz').where('pregunta_id = :id', { id }).execute();
 
-      // Eliminar la pregunta
       await queryRunner.manager.delete(Pregunta, id);
 
       await queryRunner.commitTransaction();
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      // Si falla, es porque una tabla externa (ej. respuestas) depende de esta pregunta
       throw new BadRequestException(
         'No se puede eliminar esta pregunta de la base de datos. Es posible que estudiantes ya hayan enviado respuestas atadas a esta pregunta.'
       );

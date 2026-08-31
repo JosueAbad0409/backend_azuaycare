@@ -15,6 +15,14 @@ export class FilaMatriz {
   @Column({ type: 'integer', default: 1 })
   orden: number;
 
+  // ✅ NUEVA: Campo para definir si la fila permite múltiples opciones
+  @Column({ type: 'boolean', default: false })
+  es_multiple: boolean;
+
+  // ✅ NUEVA: Campo alternativo (compatibilidad)
+  @Column({ type: 'boolean', default: false })
+  permitir_multiple: boolean;
+
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   created_at: Date;
 
