@@ -755,24 +755,35 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     .addSelect('f.balance_final', 'balance')
     .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
     .addSelect(
-      `(
-  SELECT jsonb_object_agg(
-    p.enunciado,
-    TRIM(
-      regexp_replace(
-        COALESCE(res.valor_texto, res.valor_numerico::text, ''),
-        '\\[EVIDENCIA_URL:[^\\]]*\\]',
-        '',
-        'g'
+  `(
+    SELECT jsonb_object_agg(
+      p.enunciado,
+      TRIM(
+        regexp_replace(
+          COALESCE(
+            (
+              SELECT string_agg(op.texto_opcion, ', ' ORDER BY op.orden)
+              FROM respuestas_opciones_seleccionadas ros
+              INNER JOIN opciones_pregunta op ON op.id = ros.opcion_id
+              WHERE ros.respuesta_id = res.id
+            ),
+            res.valor_texto,
+            res.valor_numerico::text,
+            ''
+          ),
+          '\\[EVIDENCIA_URL:[^\\]]*\\]',
+          '',
+          'g'
+        )
       )
     )
-  )
-  FROM respuestas res
-  INNER JOIN preguntas p ON p.id = res.pregunta_id
-  WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
-)`,
-      'respuestas_dinamicas',
-    )
+    FROM respuestas res
+    INNER JOIN preguntas p ON p.id = res.pregunta_id
+    WHERE res.ficha_id = f.id
+      AND res.fecha_desactivacion IS NULL
+  )`,
+  'respuestas_dinamicas',
+)
     .from('fichas_respondidas', 'f')
     .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
     .leftJoin(
