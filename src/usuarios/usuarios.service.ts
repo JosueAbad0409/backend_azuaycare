@@ -60,7 +60,6 @@ export class UsuariosService {
     let perfilPeriodo: PerfilUsuarioPeriodo | null = null;
     if (periodoActivo) perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: id, periodo_id: periodoActivo.id } });
 
-    // ✅ MAGIA DE RECUPERACIÓN: Si no tiene ficha en el periodo actual, buscamos la última que haya llenado en semestres anteriores.
     if (!perfilPeriodo) {
       perfilPeriodo = await this.perfilPeriodoRepository.findOne({ 
         where: { usuario_id: id }, 
@@ -111,10 +110,8 @@ export class UsuariosService {
     const periodoActivo = await this.obtenerPeriodoActivo();
     let perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId, periodo_id: periodoActivo.id } });
     
-    // Solo marca "Completo = true" si llenó en ESTE periodo.
     const perfilCompletoActual = !!perfilPeriodo; 
 
-    // Si no ha llenado en este periodo, buscamos el histórico para pre-cargar los datos al Front
     if (!perfilPeriodo) {
       perfilPeriodo = await this.perfilPeriodoRepository.findOne({ where: { usuario_id: usuarioId }, order: { created_at: 'DESC' } });
     }
@@ -123,7 +120,7 @@ export class UsuariosService {
   }
 
   private async validarCarreraYCicloEstudiante(carreraId?: string, cicloId?: string): Promise<void> {
-    if (!carreraId || !cicloId) throw new BadRequestException('Carrera y ciclo obligatorios.');
+    if (!carreraId || !cicloId) return;
     const ciclo = await this.ciclosRepository.findOne({ where: { id: cicloId, fecha_desactivacion: IsNull() }, select: { id: true } });
     if (!ciclo) throw new NotFoundException('Ciclo no existe.');
     if (!(await this.cicloPerteneceACarrera(ciclo.id, carreraId))) throw new BadRequestException('Ciclo no pertenece a carrera.');
@@ -134,8 +131,7 @@ export class UsuariosService {
     if (!usuario) throw new NotFoundException('Usuario no existe.');
 
     const periodoActivo = await this.obtenerPeriodoActivo();
-    const fechaNacimiento = parseFechaNacimiento(dto.fecha_nacimiento);
-    if (!fechaNacimiento) throw new BadRequestException('Fecha no válida.');
+    const fechaNacimiento = dto.fecha_nacimiento ? parseFechaNacimiento(dto.fecha_nacimiento) : null;
 
     const datosUsuario: Partial<Usuario> = { cedula: dto.cedula, primer_nombre: dto.primer_nombre, segundo_nombre: dto.segundo_nombre, primer_apellido: dto.primer_apellido, segundo_apellido: dto.segundo_apellido };
     if (dto.email_institucional) {
@@ -145,18 +141,20 @@ export class UsuariosService {
       datosUsuario.email_institucional = emailInst;
     }
 
-    if (rol === 'ESTUDIANTE' || rol === 'INVITADO') {
+    if ((rol === 'ESTUDIANTE' || rol === 'INVITADO') && dto.carrera_id && dto.ciclo_id) {
       await this.validarCarreraYCicloEstudiante(dto.carrera_id, dto.ciclo_id);
       datosUsuario.carrera_id = dto.carrera_id;
       datosUsuario.ciclo_id = dto.ciclo_id;
     }
 
-    const cedulaEnUso = await this.usuariosRepository.findOne({ where: { cedula: dto.cedula }, select: { id: true } });
-    if (cedulaEnUso && cedulaEnUso.id !== usuarioId) throw new BadRequestException('Cédula ya registrada.');
+    if (dto.cedula) {
+      const cedulaEnUso = await this.usuariosRepository.findOne({ where: { cedula: dto.cedula }, select: { id: true } });
+      if (cedulaEnUso && cedulaEnUso.id !== usuarioId) throw new BadRequestException('Cédula ya registrada.');
+    }
 
     await this.usuariosRepository.update(usuarioId, datosUsuario);
 
-    const datosPerfilPeriodo = {
+    const datosPerfilPeriodo: any = {
       usuario_id: usuarioId,
       periodo_id: periodoActivo.id,
       sexo: dto.sexo,
@@ -164,7 +162,7 @@ export class UsuariosService {
       genero: dto.genero,
       numero_celular: dto.numero_celular,
       estado_civil: dto.estado_civil,
-      tiene_hijos: dto.tiene_hijos,
+      tiene_hijos: dto.tiene_hijos ?? false,
       hijos_menores_5_anios: dto.tiene_hijos ? (dto.hijos_menores_5_anios ?? 0) : null,
       etnia: dto.etnia,
       pueblo_nacionalidad: dto.etnia === EtniaEnum.INDIGENA ? dto.pueblo_nacionalidad : null,
@@ -172,7 +170,7 @@ export class UsuariosService {
       idioma: dto.idioma,
       fecha_nacimiento: fechaNacimiento,
       nacionalidad_id: dto.nacionalidad_id,
-      pais_nacimiento_id: dto.pais_nacimiento_id,
+      pais_nacimiento_id: dto.pais_nacimiento_id || dto.nacionalidad_id,
       provincia_nacimiento_id: dto.provincia_nacimiento_id ?? null,
       canton_nacimiento_id: dto.canton_nacimiento_id ?? null,
     };

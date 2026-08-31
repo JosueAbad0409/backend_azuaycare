@@ -44,7 +44,6 @@ export class UsuariosController {
     return this.usuariosService.findAll(+skip, +take);
   }
 
-  // ✅ ESTAS DOS ANTES DE :id
   @Get('perfil/estado')
   @Roles('ESTUDIANTE', 'INVITADO')
   obtenerEstadoPerfil(@Req() req: RequestWithUser) {
@@ -60,6 +59,23 @@ export class UsuariosController {
     return this.usuariosService.completarPerfilEstudiante(
       req.user.id,
       req.user.rol,
+      completarPerfilDto,
+    );
+  }
+
+  // ✅ ENDPOINT PARA ADMINISTRADORES/COORDINADORES: Permite editar/completar la ficha de cualquier estudiante por ID
+  @Post(':id/completar-perfil')
+  @Patch(':id/completar-perfil')
+  @Roles('COORDINADOR_BIENESTAR')
+  completarPerfilEstudiantePorAdmin(
+    @Param('id') id: string,
+    @Query('rol') rolQuery: string,
+    @Body() completarPerfilDto: CompletarPerfilDto,
+  ) {
+    const rolEfectivo = rolQuery || 'ESTUDIANTE';
+    return this.usuariosService.completarPerfilEstudiante(
+      id,
+      rolEfectivo,
       completarPerfilDto,
     );
   }
@@ -82,7 +98,6 @@ export class UsuariosController {
     return this.usuariosService.actualizarFoto(req.user.id, file);
   }
 
-  // ✅ :id DESPUÉS
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
