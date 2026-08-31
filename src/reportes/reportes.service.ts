@@ -465,63 +465,78 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
   }
 
   async obtenerFiltrosDisponibles(formularioId: string) {
-    const formulario = await this.dataSource.query(
-      `SELECT id FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
-      [formularioId],
-    );
+  const formulario = await this.dataSource.query(
+    `SELECT id FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
+    [formularioId],
+  );
 
-    if (!formulario || formulario.length === 0) {
-      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
-    }
-
-    const preguntas = await this.dataSource.query(
-      `
-      SELECT 
-        s.id AS seccion_id,
-        s.nombre AS seccion_nombre,
-        s.orden AS seccion_orden,
-        p.id AS pregunta_id,
-        p.enunciado,
-        p.orden AS pregunta_orden,
-        t.nombre AS tipo_campo
-      FROM secciones s
-      INNER JOIN preguntas p ON p.seccion_id = s.id AND p.fecha_desactivacion IS NULL
-      INNER JOIN tipos_campo_form t ON t.id = p.tipo_campo_id
-      WHERE s.formulario_id = $1 AND s.fecha_desactivacion IS NULL
-      ORDER BY s.orden ASC, p.orden ASC
-      `,
-      [formularioId],
-    );
-
-    const filtros: any[] = [];
-
-    for (const pregunta of preguntas) {
-      const tipoCampo = pregunta.tipo_campo.toUpperCase();
-      const filtro: any = {
-        pregunta_id: pregunta.pregunta_id,
-        enunciado: pregunta.enunciado,
-        seccion_nombre: pregunta.seccion_nombre,
-        tipo_campo: pregunta.tipo_campo,
-      };
-
-      if (this.esTipoSeleccion(tipoCampo)) {
-        filtro.opciones = await this.dataSource.query(
-          `
-          SELECT id AS opcion_id, texto_opcion
-          FROM opciones_pregunta
-          WHERE pregunta_id = $1 AND fecha_desactivacion IS NULL
-          ORDER BY orden ASC
-          `,
-          [pregunta.pregunta_id],
-        );
-      }
-
-      filtro.es_numerico = this.esTipoNumerico(tipoCampo);
-      filtros.push(filtro);
-    }
-
-    return filtros;
+  if (!formulario || formulario.length === 0) {
+    throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
   }
+
+  const preguntas = await this.dataSource.query(
+    `
+    SELECT 
+      s.id AS seccion_id,
+      s.nombre AS seccion_nombre,
+      s.orden AS seccion_orden,
+      p.id AS pregunta_id,
+      p.enunciado,
+      p.orden AS pregunta_orden,
+      t.nombre AS tipo_campo,
+      dep.pregunta_disparadora_id AS depende_de_pregunta_id,
+      dep.opcion_disparadora_id AS depende_de_opcion_id,
+      op_dep.texto_opcion AS depende_de_opcion_texto,
+      p_padre.enunciado AS depende_de_enunciado
+    FROM secciones s
+    INNER JOIN preguntas p ON p.seccion_id = s.id AND p.fecha_desactivacion IS NULL
+    INNER JOIN tipos_campo_form t ON t.id = p.tipo_campo_id
+    LEFT JOIN preguntas_dependencias dep 
+      ON dep.pregunta_id = p.id AND dep.fecha_desactivacion IS NULL
+    LEFT JOIN opciones_pregunta op_dep 
+      ON op_dep.id = dep.opcion_disparadora_id
+    LEFT JOIN preguntas p_padre 
+      ON p_padre.id = dep.pregunta_disparadora_id
+    WHERE s.formulario_id = $1 AND s.fecha_desactivacion IS NULL
+    ORDER BY s.orden ASC, p.orden ASC
+    `,
+    [formularioId],
+  );
+
+  const filtros: any[] = [];
+
+  for (const pregunta of preguntas) {
+    const tipoCampo = pregunta.tipo_campo.toUpperCase();
+    const filtro: any = {
+      pregunta_id: pregunta.pregunta_id,
+      enunciado: pregunta.enunciado,
+      seccion_nombre: pregunta.seccion_nombre,
+      tipo_campo: pregunta.tipo_campo,
+      es_dependiente: !!pregunta.depende_de_pregunta_id,
+      depende_de_pregunta_id: pregunta.depende_de_pregunta_id || null,
+      depende_de_enunciado: pregunta.depende_de_enunciado || null,
+      depende_de_opcion_id: pregunta.depende_de_opcion_id || null,
+      depende_de_opcion_texto: pregunta.depende_de_opcion_texto || null,
+    };
+
+    if (this.esTipoSeleccion(tipoCampo)) {
+      filtro.opciones = await this.dataSource.query(
+        `
+        SELECT id AS opcion_id, texto_opcion
+        FROM opciones_pregunta
+        WHERE pregunta_id = $1 AND fecha_desactivacion IS NULL
+        ORDER BY orden ASC
+        `,
+        [pregunta.pregunta_id],
+      );
+    }
+
+    filtro.es_numerico = this.esTipoNumerico(tipoCampo);
+    filtros.push(filtro);
+  }
+
+  return filtros;
+}
 
   /**
    * Construye el WHERE dinámico según los filtros recibidos.
