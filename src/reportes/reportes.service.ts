@@ -15,136 +15,147 @@ export class ReportesService {
   ) { }
 
   private readonly ETIQUETAS_COLUMNAS_BASE: Record<string, string> = {
-    cedula: 'Cédula',
-    apellidos: 'Apellidos',
-    nombres: 'Nombres',
-    email: 'Email',
-    sexo: 'Sexo',
-    etnia: 'Etnia',
-    zona_residencia: 'Zona',
-    tiene_discapacidad: 'Discapacidad',
-    carrera: 'Carrera',
-    ciclo: 'Ciclo',
-    estado: 'Estado',
-    ingresos: 'Ingresos',
-    egresos: 'Egresos',
-    balance: 'Balance',
-    nivel_economico: 'Nivel Económico',
-  };
+  cedula: 'Cédula',
+  apellidos: 'Apellidos',
+  nombres: 'Nombres',
+  email: 'Email',
+  sexo: 'Sexo',
+  etnia: 'Etnia',
+  estado_civil: 'Estado civil',
+  tiene_hijos: 'Tiene hijos',
+  carrera: 'Carrera',
+  ciclo: 'Ciclo',
+  estado: 'Estado',
+  ingresos: 'Ingresos',
+  egresos: 'Egresos',
+  balance: 'Balance',
+  nivel_economico: 'Nivel Económico',
+};
 
   /**
    * Recorta cada fila del dataset a solo las columnas base y preguntas
    * seleccionadas por el coordinador. Si no se especifica ninguna selección,
    * devuelve los datos sin tocar (comportamiento actual, sin roturas).
    */
-  private async aplicarSeleccionColumnas(
-    datos: any[],
-    columnasBase?: string[],
-    columnasPreguntaIds?: string[],
-  ): Promise<any[]> {
-    const hayFiltroBase = !!columnasBase?.length;
-    const hayFiltroPreguntas = !!columnasPreguntaIds?.length;
+private async aplicarSeleccionColumnas(
+  datos: any[],
+  columnasBase?: string[],
+  columnasPreguntaIds?: string[],
+): Promise<any[]> {
+  const hayFiltroBase = !!columnasBase?.length;
+  const hayFiltroPreguntas = !!columnasPreguntaIds?.length;
 
-    if (!hayFiltroBase && !hayFiltroPreguntas) return datos;
+  // Sin checks → filas sin columnas
+  if (!hayFiltroBase && !hayFiltroPreguntas) {
+    return datos.map(() => ({}));
+  }
 
-    let enunciadosPermitidos: Set<string> | null = null;
-    if (hayFiltroPreguntas) {
-      const preguntasSeleccionadas = await this.dataSource.query(
-        `SELECT enunciado FROM preguntas WHERE id = ANY($1::uuid[])`,
-        [columnasPreguntaIds],
-      );
-      enunciadosPermitidos = new Set(preguntasSeleccionadas.map((p: any) => p.enunciado));
+  let enunciadosPermitidos: Set<string> | null = null;
+  if (hayFiltroPreguntas) {
+    const preguntasSeleccionadas = await this.dataSource.query(
+      `SELECT enunciado FROM preguntas WHERE id = ANY($1::uuid[])`,
+      [columnasPreguntaIds],
+    );
+    enunciadosPermitidos = new Set(
+      preguntasSeleccionadas.map((p: any) => p.enunciado),
+    );
+  }
+
+  return datos.map((fila) => {
+    const nuevaFila: Record<string, any> = {};
+
+    if (hayFiltroBase) {
+      for (const col of columnasBase!) {
+        if (col in fila) nuevaFila[col] = fila[col];
+      }
     }
 
-    return datos.map((fila) => {
-      const nuevaFila: Record<string, any> = {};
-
-      if (hayFiltroBase) {
-        for (const col of columnasBase!) {
-          if (col in fila) nuevaFila[col] = fila[col];
-        }
-      } else {
-        for (const key of Object.keys(fila)) {
-          if (key !== 'respuestas_dinamicas') nuevaFila[key] = fila[key];
-        }
-      }
-
-      if (fila.respuestas_dinamicas && typeof fila.respuestas_dinamicas === 'object') {
-        const dinamicasFiltradas: Record<string, any> = {};
-        for (const [enunciado, valor] of Object.entries(fila.respuestas_dinamicas)) {
-          if (!enunciadosPermitidos || enunciadosPermitidos.has(enunciado)) {
-            dinamicasFiltradas[enunciado] = valor;
-          }
-        }
-        if (Object.keys(dinamicasFiltradas).length > 0) {
-          nuevaFila.respuestas_dinamicas = dinamicasFiltradas;
+    if (
+      hayFiltroPreguntas &&
+      fila.respuestas_dinamicas &&
+      typeof fila.respuestas_dinamicas === 'object'
+    ) {
+      const dinamicasFiltradas: Record<string, any> = {};
+      for (const [enunciado, valor] of Object.entries(fila.respuestas_dinamicas)) {
+        if (enunciadosPermitidos!.has(enunciado)) {
+          dinamicasFiltradas[enunciado] = valor;
         }
       }
+      if (Object.keys(dinamicasFiltradas).length > 0) {
+        nuevaFila.respuestas_dinamicas = dinamicasFiltradas;
+      }
+    }
 
-      return nuevaFila;
-    });
-  }
+    return nuevaFila;
+  });
+}
 
   private construirColumnasYFilasPdf(
-    datos: any[],
-    columnasBase?: string[],
-  ): {
-    columnas: Array<{ clave: string; etiqueta: string }>;
-    filas: Array<{ valores: Array<string | number> }>;
-  } {
-    const clavesBase = columnasBase?.length
-      ? columnasBase.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
-      : Object.keys(this.ETIQUETAS_COLUMNAS_BASE);
+  datos: any[],
+  columnasBase?: string[],
+): {
+  columnas: Array<{ clave: string; etiqueta: string }>;
+  filas: Array<{ valores: Array<string | number> }>;
+} {
+  // Solo las columnas base que el usuario marcó (modo estricto)
+  const clavesBase = columnasBase?.length
+    ? columnasBase.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
+    : [];
 
-    const clavesDinamicas = new Set<string>();
-    datos.forEach((fila) => {
-      if (fila.respuestas_dinamicas) {
-        Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
+  const clavesDinamicas = new Set<string>();
+  datos.forEach((fila) => {
+    if (fila.respuestas_dinamicas) {
+      Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
+    }
+  });
+
+  const columnas: Array<{ clave: string; etiqueta: string }> = [
+    ...clavesBase.map((clave) => ({
+      clave,
+      etiqueta: this.ETIQUETAS_COLUMNAS_BASE[clave],
+    })),
+    ...Array.from(clavesDinamicas).map((clave) => ({ clave, etiqueta: clave })),
+  ];
+
+  const filas = datos.map((fila) => ({
+    valores: columnas.map(({ clave }) => {
+      if (clavesDinamicas.has(clave) && !(clave in fila)) {
+        return fila.respuestas_dinamicas?.[clave] ?? '—';
       }
-    });
+      let valor = fila[clave];
+      if (clave === 'tiene_hijos') valor = valor ? 'Sí' : 'No';
+      return valor ?? '—';
+    }),
+  }));
 
-    const columnas: Array<{ clave: string; etiqueta: string }> = [
-      ...clavesBase.map((clave) => ({ clave, etiqueta: this.ETIQUETAS_COLUMNAS_BASE[clave] })),
-      ...Array.from(clavesDinamicas).map((clave) => ({ clave, etiqueta: clave })),
-    ];
-
-    const filas = datos.map((fila) => ({
-      valores: columnas.map(({ clave }) => {
-        if (clavesDinamicas.has(clave) && !(clave in fila)) {
-          return fila.respuestas_dinamicas?.[clave] ?? '—';
-        }
-        let valor = fila[clave];
-        if (clave === 'tiene_discapacidad') valor = valor ? 'Sí' : 'No';
-        return valor ?? '—';
-      }),
-    }));
-
-    return { columnas, filas };
-  }
+  return { columnas, filas };
+}
   // ----------------------------------------------------------------------
   // CLASIFICACIÓN CENTRALIZADA DE TIPOS DE CAMPO
   // (debe coincidir siempre con los nombres reales sembrados en tipos_campo_form)
   // ----------------------------------------------------------------------
 
-  private esTipoSeleccion(tipoCampoNombre: string): boolean {
-    return ['SELECCION_UNICA', 'SELECCION_MULTIPLE'].includes(tipoCampoNombre);
-  }
+private esTipoSeleccion(tipoCampoNombre: string): boolean {
+  return ['SELECCION_UNICA', 'SELECCION_MULTIPLE'].includes(tipoCampoNombre);
+}
 
-  private esTipoNumerico(tipoCampoNombre: string): boolean {
-    return tipoCampoNombre === 'NUMERICO_ENTERO';
-  }
+private esTipoNumerico(tipoCampoNombre: string): boolean {
+  return ['NUMERICO_ENTERO', 'NUMERICO', 'NUMERICO_DECIMAL'].includes(tipoCampoNombre);
+}
 
-  private esTipoMatriz(tipoCampoNombre: string): boolean {
-    return tipoCampoNombre === 'MATRIZ';
-  }
+private esTipoMatriz(tipoCampoNombre: string): boolean {
+  return tipoCampoNombre === 'MATRIZ';
+}
 
-  private esTipoTextoLibre(tipoCampoNombre: string): boolean {
-    return ['TEXTO_CORTO', 'TEXTO_LARGO', 'CEDULA', 'CORREO', 'TELEFONO'].includes(tipoCampoNombre);
-  }
+private esTipoTextoLibre(tipoCampoNombre: string): boolean {
+  return ['TEXTO_CORTO', 'TEXTO_LARGO', 'TEXTO', 'CEDULA', 'CORREO', 'TELEFONO'].includes(
+    tipoCampoNombre,
+  );
+}
 
-  private esTipoFecha(tipoCampoNombre: string): boolean {
-    return tipoCampoNombre === 'FECHA';
-  }
+private esTipoFecha(tipoCampoNombre: string): boolean {
+  return tipoCampoNombre === 'FECHA';
+}
 
   /**
    * Obtiene el resumen consolidado de métricas generales, periodo activo y datos preparativos
@@ -518,108 +529,101 @@ export class ReportesService {
    * (permite filtrar por sexo/etnia/zona/etc. sin tener que elegir un periodo).
    */
   private construirCondicionesFiltros(filtros: FiltroReporteDto) {
-    const condiciones: string[] = ['f.fecha_desactivacion IS NULL'];
-    const parametros: Record<string, any> = {};
+  const condiciones: string[] = ['f.fecha_desactivacion IS NULL'];
+  const parametros: Record<string, any> = {};
 
-    if (filtros.periodo_id) {
-      condiciones.push('f.periodo_id = :periodo_id');
-      parametros.periodo_id = filtros.periodo_id;
-    }
+  if (filtros.periodo_id) {
+    condiciones.push('f.periodo_id = :periodo_id');
+    parametros.periodo_id = filtros.periodo_id;
+  }
 
-    if (filtros.formulario_id) {
-      condiciones.push('f.formulario_id = :formulario_id');
-      parametros.formulario_id = filtros.formulario_id;
-    }
+  if (filtros.formulario_id) {
+    condiciones.push('f.formulario_id = :formulario_id');
+    parametros.formulario_id = filtros.formulario_id;
+  }
 
-    if (filtros.carrera_id) {
-      condiciones.push('u.carrera_id = :carrera_id');
-      parametros.carrera_id = filtros.carrera_id;
-    }
+  if (filtros.carrera_id) {
+    condiciones.push('u.carrera_id = :carrera_id');
+    parametros.carrera_id = filtros.carrera_id;
+  }
 
-    if (filtros.ciclo_id) {
-      condiciones.push('u.ciclo_id = :ciclo_id');
-      parametros.ciclo_id = filtros.ciclo_id;
-    }
+  if (filtros.ciclo_id) {
+    condiciones.push('u.ciclo_id = :ciclo_id');
+    parametros.ciclo_id = filtros.ciclo_id;
+  }
 
-    if (filtros.estado_ficha && filtros.estado_ficha !== 'TODOS') {
-      condiciones.push('f.estado_ficha = :estado_ficha');
-      parametros.estado_ficha = filtros.estado_ficha;
-    }
+  if (filtros.estado_ficha && filtros.estado_ficha !== 'TODOS') {
+    condiciones.push('f.estado_ficha = :estado_ficha');
+    parametros.estado_ficha = filtros.estado_ficha;
+  }
 
-    if (filtros.sexo) {
-      condiciones.push('pup.sexo::text = :sexo');
-      parametros.sexo = filtros.sexo;
-    }
+  if (filtros.sexo) {
+    condiciones.push('pup.sexo::text = :sexo');
+    parametros.sexo = filtros.sexo;
+  }
 
-    if (filtros.etnia) {
-      condiciones.push('pup.etnia::text = :etnia');
-      parametros.etnia = filtros.etnia;
-    }
+  if (filtros.etnia) {
+    condiciones.push('pup.etnia::text = :etnia');
+    parametros.etnia = filtros.etnia;
+  }
 
-    // TEMPORALMENTE COMENTADO - la columna no existe en la BD
-    // if (filtros.zona_residencia) {
-    //   condiciones.push('pup.zona_residencia::text = :zona_residencia');
-    //   parametros.zona_residencia = filtros.zona_residencia;
-    // }
+  // zona_residencia y tiene_discapacidad NO existen en perfiles_usuario_periodo
 
-    //if (filtros.tiene_discapacidad !== undefined) {
-      //condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
-      //parametros.tiene_discapacidad = filtros.tiene_discapacidad;
-   // }
-
-    if (filtros.busqueda) {
-      condiciones.push(
-        `(u.cedula ILIKE '%' || :busqueda || '%'
+  if (filtros.busqueda) {
+    condiciones.push(
+      `(u.cedula ILIKE '%' || :busqueda || '%'
         OR u.primer_nombre ILIKE '%' || :busqueda || '%'
         OR u.primer_apellido ILIKE '%' || :busqueda || '%'
         OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
-      );
-      parametros.busqueda = filtros.busqueda;
+    );
+    parametros.busqueda = filtros.busqueda;
+  }
+
+  filtros.preguntas?.forEach((pregunta, index) => {
+    const condicionesSubquery: string[] = [
+      'r.ficha_id = f.id',
+      `r.pregunta_id = :pregunta_id_${index}`,
+      'r.fecha_desactivacion IS NULL',
+    ];
+    parametros[`pregunta_id_${index}`] = pregunta.pregunta_id;
+
+    if (pregunta.opcion_id) {
+      condicionesSubquery.push(`ros.opcion_id = :opcion_id_${index}`);
+      parametros[`opcion_id_${index}`] = pregunta.opcion_id;
     }
 
-    filtros.preguntas?.forEach((pregunta, index) => {
-      const condicionesSubquery: string[] = [
-        'r.ficha_id = f.id',
-        `r.pregunta_id = :pregunta_id_${index}`,
-        'r.fecha_desactivacion IS NULL',
-      ];
-      parametros[`pregunta_id_${index}`] = pregunta.pregunta_id;
-
-      if (pregunta.opcion_id) {
-        condicionesSubquery.push(`ros.opcion_id = :opcion_id_${index}`);
-        parametros[`opcion_id_${index}`] = pregunta.opcion_id;
-      }
-
-      if (pregunta.valor_min !== undefined && pregunta.valor_max !== undefined) {
-        condicionesSubquery.push(`r.valor_numerico BETWEEN :valor_min_${index} AND :valor_max_${index}`);
-        parametros[`valor_min_${index}`] = pregunta.valor_min;
-        parametros[`valor_max_${index}`] = pregunta.valor_max;
-      } else if (pregunta.valor_min !== undefined) {
-        condicionesSubquery.push(`r.valor_numerico >= :valor_min_${index}`);
-        parametros[`valor_min_${index}`] = pregunta.valor_min;
-      } else if (pregunta.valor_max !== undefined) {
-        condicionesSubquery.push(`r.valor_numerico <= :valor_max_${index}`);
-        parametros[`valor_max_${index}`] = pregunta.valor_max;
-      }
-
-      if (pregunta.texto) {
-        condicionesSubquery.push(`r.valor_texto ILIKE '%' || :texto_${index} || '%'`);
-        parametros[`texto_${index}`] = pregunta.texto;
-      }
-
-      const joinRespuesta = pregunta.opcion_id
-        ? 'JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id'
-        : '';
-      condiciones.push(
-        `EXISTS (SELECT 1 FROM respuestas r ${joinRespuesta} WHERE ${condicionesSubquery.join(' AND ')})`,
+    if (pregunta.valor_min !== undefined && pregunta.valor_max !== undefined) {
+      condicionesSubquery.push(
+        `r.valor_numerico BETWEEN :valor_min_${index} AND :valor_max_${index}`,
       );
-    });
+      parametros[`valor_min_${index}`] = pregunta.valor_min;
+      parametros[`valor_max_${index}`] = pregunta.valor_max;
+    } else if (pregunta.valor_min !== undefined) {
+      condicionesSubquery.push(`r.valor_numerico >= :valor_min_${index}`);
+      parametros[`valor_min_${index}`] = pregunta.valor_min;
+    } else if (pregunta.valor_max !== undefined) {
+      condicionesSubquery.push(`r.valor_numerico <= :valor_max_${index}`);
+      parametros[`valor_max_${index}`] = pregunta.valor_max;
+    }
 
-    return {
-      where: condiciones.join(' AND '),
-      parameters: parametros,
-    };
-  }
+    if (pregunta.texto) {
+      condicionesSubquery.push(`r.valor_texto ILIKE '%' || :texto_${index} || '%'`);
+      parametros[`texto_${index}`] = pregunta.texto;
+    }
+
+    const joinRespuesta = pregunta.opcion_id
+      ? 'JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id'
+      : '';
+    condiciones.push(
+      `EXISTS (SELECT 1 FROM respuestas r ${joinRespuesta} WHERE ${condicionesSubquery.join(' AND ')})`,
+    );
+  });
+
+  return {
+    where: condiciones.join(' AND '),
+    parameters: parametros,
+  };
+}
 
   async obtenerDatasetPlano(periodoId: string) {
     return this.obtenerDatasetFiltrado({ periodo_id: periodoId });
@@ -630,111 +634,56 @@ export class ReportesService {
  * - resto → fichas respondidas (como antes)
  */
   async obtenerDatasetFiltrado(filtros: FiltroReporteDto) {
-    let nombrePeriodo = 'Todos los periodos';
+  let nombrePeriodo = 'Todos los periodos';
+
+  if (filtros.periodo_id) {
+    const periodo = await this.dataSource.manager.query(
+      `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.periodo_id],
+    );
+
+    if (!periodo || periodo.length === 0) {
+      throw new NotFoundException(
+        'El periodo de matrícula solicitado no existe o está inactivo.',
+      );
+    }
+    nombrePeriodo = periodo[0].nombre;
+  }
+
+  // ========== EXPLORADOR DE POBLACIÓN (sin ficha) ==========
+  if (filtros.vista === 'poblacion') {
+    const condiciones: string[] = ['u.fecha_desactivacion IS NULL'];
+    const parametros: Record<string, any> = {};
 
     if (filtros.periodo_id) {
-      const periodo = await this.dataSource.manager.query(
-        `SELECT nombre FROM periodos_matricula WHERE id = $1 AND fecha_desactivacion IS NULL`,
-        [filtros.periodo_id],
-      );
-
-      if (!periodo || periodo.length === 0) {
-        throw new NotFoundException(
-          'El periodo de matrícula solicitado no existe o está inactivo.',
-        );
-      }
-      nombrePeriodo = periodo[0].nombre;
+      condiciones.push('pup.periodo_id = :periodo_id');
+      parametros.periodo_id = filtros.periodo_id;
     }
-
-    // ========== EXPLORADOR DE POBLACIÓN (sin ficha) ==========
-    if (filtros.vista === 'poblacion') {
-      const condiciones: string[] = ['u.fecha_desactivacion IS NULL'];
-      const parametros: Record<string, any> = {};
-
-      if (filtros.periodo_id) {
-        condiciones.push('pup.periodo_id = :periodo_id');
-        parametros.periodo_id = filtros.periodo_id;
-      }
-      if (filtros.carrera_id) {
-        condiciones.push('u.carrera_id = :carrera_id');
-        parametros.carrera_id = filtros.carrera_id;
-      }
-      if (filtros.ciclo_id) {
-        condiciones.push('u.ciclo_id = :ciclo_id');
-        parametros.ciclo_id = filtros.ciclo_id;
-      }
-      if (filtros.sexo) {
-        condiciones.push('pup.sexo::text = :sexo');
-        parametros.sexo = filtros.sexo;
-      }
-      if (filtros.etnia) {
-        condiciones.push('pup.etnia::text = :etnia');
-        parametros.etnia = filtros.etnia;
-      }
-      if (filtros.zona_residencia) {
-        condiciones.push('pup.zona_residencia::text = :zona_residencia');
-        parametros.zona_residencia = filtros.zona_residencia;
-      }
-      if (filtros.tiene_discapacidad !== undefined) {
-        condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
-        parametros.tiene_discapacidad = filtros.tiene_discapacidad;
-      }
-      if (filtros.busqueda) {
-        condiciones.push(
-          `(u.cedula ILIKE '%' || :busqueda || '%'
+    if (filtros.carrera_id) {
+      condiciones.push('u.carrera_id = :carrera_id');
+      parametros.carrera_id = filtros.carrera_id;
+    }
+    if (filtros.ciclo_id) {
+      condiciones.push('u.ciclo_id = :ciclo_id');
+      parametros.ciclo_id = filtros.ciclo_id;
+    }
+    if (filtros.sexo) {
+      condiciones.push('pup.sexo::text = :sexo');
+      parametros.sexo = filtros.sexo;
+    }
+    if (filtros.etnia) {
+      condiciones.push('pup.etnia::text = :etnia');
+      parametros.etnia = filtros.etnia;
+    }
+    if (filtros.busqueda) {
+      condiciones.push(
+        `(u.cedula ILIKE '%' || :busqueda || '%'
           OR u.primer_nombre ILIKE '%' || :busqueda || '%'
           OR u.primer_apellido ILIKE '%' || :busqueda || '%'
           OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
-        );
-        parametros.busqueda = filtros.busqueda;
-      }
-
-      const resultados = await this.dataSource
-        .createQueryBuilder()
-        .select('u.cedula', 'cedula')
-        .addSelect("CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))", 'apellidos')
-        .addSelect("CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))", 'nombres')
-        .addSelect('u.email_institucional', 'email')
-        .addSelect('pup.sexo', 'sexo')
-        .addSelect('pup.etnia', 'etnia')
-        .addSelect('pup.zona_residencia', 'zona_residencia')
-        .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
-        .addSelect('pup.tipo_discapacidad', 'tipo_discapacidad')
-        .addSelect('pup.estado_civil', 'estado_civil')
-        .addSelect('pup.tiene_hijos', 'tiene_hijos')
-        .addSelect('pup.idioma', 'idioma')
-        .addSelect('pup.lugar_nacimiento', 'lugar_nacimiento')
-        .addSelect('pup.fecha_nacimiento', 'fecha_nacimiento')
-        .addSelect('pup.rango_edad', 'rango_edad')
-        .addSelect('pup.nacionalidad', 'nacionalidad')
-        .addSelect('pup.esta_embarazada', 'esta_embarazada')
-        .addSelect('pup.numero_celular', 'numero_celular')
-        .addSelect('c.nombre', 'carrera')
-        .addSelect('ci.nombre', 'ciclo')
-        .from('usuarios', 'u')
-        .innerJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id')
-        .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-        .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-        .where(condiciones.join(' AND '), parametros)
-        .orderBy('c.nombre', 'ASC')
-        .addOrderBy('u.primer_apellido', 'ASC')
-        .getRawMany();
-
-      const resultadosFinales = await this.aplicarSeleccionColumnas(
-        resultados,
-        filtros.columnas_base,
-        filtros.columnas_pregunta_ids,
       );
-
-      return {
-        periodo: nombrePeriodo,
-        total_registros: resultadosFinales.length,
-        datos: resultadosFinales,
-      };
+      parametros.busqueda = filtros.busqueda;
     }
-
-    // ========== VISTA NORMAL (con fichas) ==========
-    const filtro = this.construirCondicionesFiltros(filtros);
 
     const resultados = await this.dataSource
       .createQueryBuilder()
@@ -750,45 +699,18 @@ export class ReportesService {
       .addSelect('u.email_institucional', 'email')
       .addSelect('pup.sexo', 'sexo')
       .addSelect('pup.etnia', 'etnia')
-      // .addSelect('pup.zona_residencia', 'zona_residencia') // ← columna no existe
-      // .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
+      .addSelect('pup.estado_civil', 'estado_civil')
+      .addSelect('pup.tiene_hijos', 'tiene_hijos')
+      .addSelect('pup.idioma', 'idioma')
+      .addSelect('pup.genero', 'genero')
+      .addSelect('pup.numero_celular', 'numero_celular')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
-      .addSelect('f.estado_ficha', 'estado')
-      .addSelect('f.total_ingresos', 'ingresos')
-      .addSelect('f.total_egresos', 'egresos')
-      .addSelect('f.balance_final', 'balance')
-      .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
-      .addSelect(
-        `(
-  SELECT jsonb_object_agg(
-    p.enunciado,
-    TRIM(
-      regexp_replace(
-        COALESCE(res.valor_texto, res.valor_numerico::text, ''),
-        '\\[EVIDENCIA_URL:[^\\]]*\\]',
-        '',
-        'g'
-      )
-    )
-  )
-  FROM respuestas res
-  INNER JOIN preguntas p ON p.id = res.pregunta_id
-  WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
-)`,
-        'respuestas_dinamicas',
-      )
-      .from('fichas_respondidas', 'f')
-      .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-      .leftJoin(
-        'perfiles_usuario_periodo',
-        'pup',
-        'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
-      )
+      .from('usuarios', 'u')
+      .innerJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id')
       .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
       .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-      .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
-      .where(filtro.where, filtro.parameters)
+      .where(condiciones.join(' AND '), parametros)
       .orderBy('c.nombre', 'ASC')
       .addOrderBy('u.primer_apellido', 'ASC')
       .getRawMany();
@@ -806,89 +728,180 @@ export class ReportesService {
     };
   }
 
+  // ========== VISTA NORMAL (con fichas) ==========
+  const filtro = this.construirCondicionesFiltros(filtros);
+
+  const resultados = await this.dataSource
+    .createQueryBuilder()
+    .select('u.cedula', 'cedula')
+    .addSelect(
+      "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
+      'apellidos',
+    )
+    .addSelect(
+      "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
+      'nombres',
+    )
+    .addSelect('u.email_institucional', 'email')
+    .addSelect('pup.sexo', 'sexo')
+    .addSelect('pup.etnia', 'etnia')
+    .addSelect('pup.estado_civil', 'estado_civil')
+    .addSelect('pup.tiene_hijos', 'tiene_hijos')
+    .addSelect('c.nombre', 'carrera')
+    .addSelect('ci.nombre', 'ciclo')
+    .addSelect('f.estado_ficha', 'estado')
+    .addSelect('f.total_ingresos', 'ingresos')
+    .addSelect('f.total_egresos', 'egresos')
+    .addSelect('f.balance_final', 'balance')
+    .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
+    .addSelect(
+      `(
+  SELECT jsonb_object_agg(
+    p.enunciado,
+    TRIM(
+      regexp_replace(
+        COALESCE(res.valor_texto, res.valor_numerico::text, ''),
+        '\\[EVIDENCIA_URL:[^\\]]*\\]',
+        '',
+        'g'
+      )
+    )
+  )
+  FROM respuestas res
+  INNER JOIN preguntas p ON p.id = res.pregunta_id
+  WHERE res.ficha_id = f.id AND res.fecha_desactivacion IS NULL
+)`,
+      'respuestas_dinamicas',
+    )
+    .from('fichas_respondidas', 'f')
+    .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+    .leftJoin(
+      'perfiles_usuario_periodo',
+      'pup',
+      'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
+    )
+    .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+    .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+    .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
+    .where(filtro.where, filtro.parameters)
+    .orderBy('c.nombre', 'ASC')
+    .addOrderBy('u.primer_apellido', 'ASC')
+    .getRawMany();
+
+  const resultadosFinales = await this.aplicarSeleccionColumnas(
+    resultados,
+    filtros.columnas_base,
+    filtros.columnas_pregunta_ids,
+  );
+
+  return {
+    periodo: nombrePeriodo,
+    total_registros: resultadosFinales.length,
+    datos: resultadosFinales,
+  };
+}
+
   async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
-    const dataset = await this.obtenerDatasetFiltrado(filtros);
+  const dataset = await this.obtenerDatasetFiltrado(filtros);
 
-    const nombrePeriodo = dataset.periodo.replace(/\s+/g, '_');
-    res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="Dataset_Filtrado_${nombrePeriodo}.xlsx"`,
-      'Transfer-Encoding': 'chunked',
-    });
+  const nombrePeriodo = dataset.periodo.replace(/\s+/g, '_');
+  res.set({
+    'Content-Type':
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': `attachment; filename="Dataset_Filtrado_${nombrePeriodo}.xlsx"`,
+    'Transfer-Encoding': 'chunked',
+  });
 
-    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      stream: res,
-      useStyles: true,
-      useSharedStrings: true,
-    });
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+    stream: res,
+    useStyles: true,
+    useSharedStrings: true,
+  });
 
-    const hoja = workbook.addWorksheet('Dataset Filtrado', {
-      views: [{ state: 'frozen', ySplit: 1 }],
-    });
+  const hoja = workbook.addWorksheet('Dataset Filtrado', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+  });
 
-    const columnasBaseAMostrar = filtros.columnas_base?.length
-      ? filtros.columnas_base.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
-      : Object.keys(this.ETIQUETAS_COLUMNAS_BASE);
+  // Solo columnas base marcadas
+  const columnasBaseAMostrar = filtros.columnas_base?.length
+    ? filtros.columnas_base.filter((c) => this.ETIQUETAS_COLUMNAS_BASE[c])
+    : [];
 
-    const clavesDinamicas = new Set<string>();
-    dataset.datos.forEach((fila: any) => {
-      if (fila.respuestas_dinamicas) Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
-    });
+  const clavesDinamicas = new Set<string>();
+  dataset.datos.forEach((fila: any) => {
+    if (fila.respuestas_dinamicas) {
+      Object.keys(fila.respuestas_dinamicas).forEach((k) => clavesDinamicas.add(k));
+    }
+  });
 
-    hoja.columns = [
-      ...columnasBaseAMostrar.map((clave) => ({
-        header: this.ETIQUETAS_COLUMNAS_BASE[clave],
-        key: clave,
-        width: ['apellidos', 'nombres', 'email', 'carrera'].includes(clave) ? 26 : 16,
-      })),
-      ...Array.from(clavesDinamicas).map((clave) => ({ header: clave, key: clave, width: 22 })),
-    ];
+  hoja.columns = [
+    ...columnasBaseAMostrar.map((clave) => ({
+      header: this.ETIQUETAS_COLUMNAS_BASE[clave],
+      key: clave,
+      width: ['apellidos', 'nombres', 'email', 'carrera'].includes(clave) ? 26 : 16,
+    })),
+    ...Array.from(clavesDinamicas).map((clave) => ({
+      header: clave,
+      key: clave,
+      width: 22,
+    })),
+  ];
 
-    hoja.getRow(1).eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003366' } };
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-    });
-
-    dataset.datos.forEach((fila: any) => {
-      const filaExcel: Record<string, any> = {};
-
-      columnasBaseAMostrar.forEach((clave) => {
-        let valor = fila[clave];
-        if (clave === 'tiene_discapacidad') valor = valor ? 'Sí' : 'No';
-        if (clave === 'apellidos' || clave === 'nombres') valor = String(valor ?? '').trim();
-        filaExcel[clave] = valor ?? 'N/A';
-      });
-
-      if (fila.respuestas_dinamicas) {
-        Object.assign(filaExcel, fila.respuestas_dinamicas);
-      }
-
-      hoja.addRow(filaExcel).commit();
-    });
-
-    hoja.eachRow((row) => {
-      row.eachCell((cell) => {
-        cell.border = { bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } } };
-      });
-    });
-
-    const getExcelColumnLetter = (index: number): string => {
-      let letter = '';
-      let value = index;
-      while (value > 0) {
-        const remainder = (value - 1) % 26;
-        letter = String.fromCharCode(65 + remainder) + letter;
-        value = Math.floor((value - 1) / 26);
-      }
-      return letter;
+  hoja.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF003366' },
     };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  });
 
+  dataset.datos.forEach((fila: any) => {
+    const filaExcel: Record<string, any> = {};
+
+    columnasBaseAMostrar.forEach((clave) => {
+      let valor = fila[clave];
+      if (clave === 'tiene_hijos') valor = valor ? 'Sí' : 'No';
+      if (clave === 'apellidos' || clave === 'nombres') {
+        valor = String(valor ?? '').trim();
+      }
+      filaExcel[clave] = valor ?? 'N/A';
+    });
+
+    if (fila.respuestas_dinamicas) {
+      Object.assign(filaExcel, fila.respuestas_dinamicas);
+    }
+
+    hoja.addRow(filaExcel).commit();
+  });
+
+  hoja.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+      };
+    });
+  });
+
+  const getExcelColumnLetter = (index: number): string => {
+    let letter = '';
+    let value = index;
+    while (value > 0) {
+      const remainder = (value - 1) % 26;
+      letter = String.fromCharCode(65 + remainder) + letter;
+      value = Math.floor((value - 1) / 26);
+    }
+    return letter;
+  };
+
+  if (hoja.columns.length > 0) {
     const lastColumnLetter = getExcelColumnLetter(hoja.columns.length);
     hoja.autoFilter = { from: 'A1', to: `${lastColumnLetter}1` };
-
-    await workbook.commit();
   }
+
+  await workbook.commit();
+}
 
 async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
   if (filtros.formulario_id) {
@@ -898,7 +911,9 @@ async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
     );
 
     if (!formulario || formulario.length === 0) {
-      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
+      throw new NotFoundException(
+        'El formulario solicitado no existe o está inactivo.',
+      );
     }
   }
 
@@ -948,7 +963,6 @@ async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
 
   const totalFichas = totalFichasQuery?.total || 0;
 
-  // Procesamos de a 5 preguntas en paralelo para no saturar el pool (máx 15 conexiones)
   const CONCURRENCIA = 5;
   const reporteEstructurado: any[] = [];
 
