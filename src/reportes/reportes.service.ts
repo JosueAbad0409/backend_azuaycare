@@ -15,6 +15,7 @@ export class ReportesService {
   ) { }
 
   private readonly ETIQUETAS_COLUMNAS_BASE: Record<string, string> = {
+  periodo: 'Periodo',
   cedula: 'Cédula',
   apellidos: 'Apellidos',
   nombres: 'Nombres',
@@ -747,30 +748,31 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
   const filtro = this.construirCondicionesFiltros(filtros);
 
   const resultados = await this.dataSource
-    .createQueryBuilder()
-    .select('u.cedula', 'cedula')
-    .addSelect(
-      "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
-      'apellidos',
-    )
-    .addSelect(
-      "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
-      'nombres',
-    )
-    .addSelect('u.email_institucional', 'email')
-    .addSelect('pup.sexo', 'sexo')
-    .addSelect('pup.etnia', 'etnia')
-    .addSelect('pup.estado_civil', 'estado_civil')
-    .addSelect('pup.tiene_hijos', 'tiene_hijos')
-    .addSelect('c.nombre', 'carrera')
-    .addSelect('ci.nombre', 'ciclo')
-    .addSelect('f.estado_ficha', 'estado')
-    .addSelect('f.total_ingresos', 'ingresos')
-    .addSelect('f.total_egresos', 'egresos')
-    .addSelect('f.balance_final', 'balance')
-    .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
-    .addSelect(
-  `(
+  .createQueryBuilder()
+  .select('pm.nombre', 'periodo')
+  .addSelect('u.cedula', 'cedula')
+  .addSelect(
+    "CONCAT(u.primer_apellido, ' ', COALESCE(u.segundo_apellido, ''))",
+    'apellidos',
+  )
+  .addSelect(
+    "CONCAT(u.primer_nombre, ' ', COALESCE(u.segundo_nombre, ''))",
+    'nombres',
+  )
+  .addSelect('u.email_institucional', 'email')
+  .addSelect('pup.sexo', 'sexo')
+  .addSelect('pup.etnia', 'etnia')
+  .addSelect('pup.estado_civil', 'estado_civil')
+  .addSelect('pup.tiene_hijos', 'tiene_hijos')
+  .addSelect('c.nombre', 'carrera')
+  .addSelect('ci.nombre', 'ciclo')
+  .addSelect('f.estado_ficha', 'estado')
+  .addSelect('f.total_ingresos', 'ingresos')
+  .addSelect('f.total_egresos', 'egresos')
+  .addSelect('f.balance_final', 'balance')
+  .addSelect("COALESCE(r.nombre, 'Sin Rango')", 'nivel_economico')
+  .addSelect(
+    `(
     SELECT jsonb_object_agg(
       p.enunciado,
       TRIM(
@@ -797,22 +799,23 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     WHERE res.ficha_id = f.id
       AND res.fecha_desactivacion IS NULL
   )`,
-  'respuestas_dinamicas',
-)
-    .from('fichas_respondidas', 'f')
-    .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-    .leftJoin(
-      'perfiles_usuario_periodo',
-      'pup',
-      'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
-    )
-    .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-    .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-    .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
-    .where(filtro.where, filtro.parameters)
-    .orderBy('c.nombre', 'ASC')
-    .addOrderBy('u.primer_apellido', 'ASC')
-    .getRawMany();
+    'respuestas_dinamicas',
+  )
+  .from('fichas_respondidas', 'f')
+  .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+  .leftJoin('periodos_matricula', 'pm', 'pm.id = f.periodo_id')
+  .leftJoin(
+    'perfiles_usuario_periodo',
+    'pup',
+    'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
+  )
+  .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+  .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+  .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
+  .where(filtro.where, filtro.parameters)
+  .orderBy('c.nombre', 'ASC')
+  .addOrderBy('u.primer_apellido', 'ASC')
+  .getRawMany();
 
   const resultadosFinales = await this.aplicarSeleccionColumnas(
     resultados,
