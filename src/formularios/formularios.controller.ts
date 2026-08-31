@@ -46,11 +46,8 @@ export class FormulariosController {
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
-  findAll(
-    @Query('skip') skip = 0,
-    @Query('take') take = 10,
-  ) {
-    return this.formulariosService.findAll(skip, take);
+  findAll() { // <-- Quitamos los @Query de aquí
+    return this.formulariosService.findAll(); // <-- Quitamos los parámetros de aquí
   }
 
   @Get(':id')
