@@ -562,10 +562,10 @@ export class ReportesService {
     //   parametros.zona_residencia = filtros.zona_residencia;
     // }
 
-    if (filtros.tiene_discapacidad !== undefined) {
-      condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
-      parametros.tiene_discapacidad = filtros.tiene_discapacidad;
-    }
+    //if (filtros.tiene_discapacidad !== undefined) {
+      //condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
+      //parametros.tiene_discapacidad = filtros.tiene_discapacidad;
+   // }
 
     if (filtros.busqueda) {
       condiciones.push(
@@ -751,7 +751,7 @@ export class ReportesService {
       .addSelect('pup.sexo', 'sexo')
       .addSelect('pup.etnia', 'etnia')
       // .addSelect('pup.zona_residencia', 'zona_residencia') // ← columna no existe
-      .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
+      // .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
       .addSelect('f.estado_ficha', 'estado')
