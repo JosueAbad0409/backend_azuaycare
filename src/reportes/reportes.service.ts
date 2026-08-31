@@ -935,129 +935,145 @@ export class ReportesService {
       .getRawOne();
 
     const totalFichas = totalFichasQuery?.total || 0;
-    const reporteEstructurado: any[] = [];
 
-    for (const preg of estructuraFormulario) {
-      const tipoCampo = preg.tipo_campo.toUpperCase();
-      let metricas: any = null;
-
-      if (this.esTipoSeleccion(tipoCampo)) {
-        const opcionesConteo = await this.dataSource
-          .createQueryBuilder()
-          .select('op.id', 'opcion_id')
-          .addSelect('op.texto_opcion', 'texto_opcion')
-          .addSelect('COUNT(ros.respuesta_id)::int', 'conteo')
-          .from('opciones_pregunta', 'op')
-          .leftJoin('respuestas_opciones_seleccionadas', 'ros', 'ros.opcion_id = op.id')
-          .leftJoin('respuestas', 'r', 'r.id = ros.respuesta_id AND r.pregunta_id = :pregunta_id AND r.fecha_desactivacion IS NULL')
-          .leftJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
-          .leftJoin('usuarios', 'u', 'u.id = f.usuario_id')
-          .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-          .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
-          .where('op.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
-          .andWhere('op.fecha_desactivacion IS NULL')
-          .andWhere(filtroGlobal.where, filtroGlobal.parameters)
-          .groupBy('op.id, op.texto_opcion, op.orden')
-          .orderBy('op.orden', 'ASC')
-          .setParameter('pregunta_id', preg.pregunta_id)
-          .getRawMany();
-
-        metricas = {
-          tipo_grafico: 'PIE_O_BARRA',
-          opciones: opcionesConteo.map((o: any) => ({
-            opcion_id: o.opcion_id,
-            texto: o.texto_opcion,
-            conteo: o.conteo,
-            porcentaje: totalFichas > 0 ? parseFloat(((o.conteo / totalFichas) * 100).toFixed(2)) : 0,
-          })),
-        };
-      } else if (this.esTipoNumerico(tipoCampo)) {
-        const numStats = await this.dataSource
-          .createQueryBuilder()
-          .select('COALESCE(AVG(r.valor_numerico), 0)::float', 'promedio')
-          .addSelect('COALESCE(MIN(r.valor_numerico), 0)::float', 'minimo')
-          .addSelect('COALESCE(MAX(r.valor_numerico), 0)::float', 'maximo')
-          .addSelect('COALESCE(SUM(r.valor_numerico), 0)::float', 'suma')
-          .from('respuestas', 'r')
-          .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
-          .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-          .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-          .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
-          .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
-          .andWhere('r.fecha_desactivacion IS NULL')
-          .andWhere(filtroGlobal.where, filtroGlobal.parameters)
-          .getRawOne();
-
-        metricas = {
-          tipo_grafico: 'METRICA_NUMERICA',
-          promedio: parseFloat((numStats?.promedio || 0).toFixed(2)),
-          minimo: numStats?.minimo || 0,
-          maximo: numStats?.maximo || 0,
-          suma: numStats?.suma || 0,
-        };
-      } else if (this.esTipoMatriz(tipoCampo)) {
-        const matrizConteo = await this.dataSource
-          .createQueryBuilder()
-          .select('rm.fila_id', 'fila_id')
-          .addSelect('fm.texto_fila', 'texto_fila')
-          .addSelect('rm.columna_id', 'columna_id')
-          .addSelect('cm.texto_columna', 'texto_columna')
-          .addSelect('COUNT(rm.respuesta_id)::int', 'conteo')
-          .from('respuestas_matriz', 'rm')
-          .innerJoin('filas_matriz', 'fm', 'fm.id = rm.fila_id')
-          .innerJoin('columnas_matriz', 'cm', 'cm.id = rm.columna_id')
-          .innerJoin('respuestas', 'r', 'r.id = rm.respuesta_id AND r.pregunta_id = :pregunta_id AND r.fecha_desactivacion IS NULL')
-          .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
-          .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-          .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-          .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
-          .where(filtroGlobal.where, filtroGlobal.parameters)
-          .groupBy('rm.fila_id, fm.texto_fila, rm.columna_id, cm.texto_columna')
-          .setParameter('pregunta_id', preg.pregunta_id)
-          .getRawMany();
-
-        metricas = {
-          tipo_grafico: 'MATRIZ_AGREGADA',
-          matriz_respuestas: matrizConteo,
-        };
-      } else {
-        const totalRespuestasTexto = await this.dataSource
-          .createQueryBuilder()
-          .select('COUNT(r.id)::int', 'conteo')
-          .from('respuestas', 'r')
-          .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
-          .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-          .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-          .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-          .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
-          .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
-          .andWhere('r.valor_texto IS NOT NULL')
-          .andWhere('r.fecha_desactivacion IS NULL')
-          .andWhere(filtroGlobal.where, filtroGlobal.parameters)
-          .getRawOne();
-
-        metricas = {
-          tipo_grafico: 'TEXTO_LIBRE',
-          total_respuestas: totalRespuestasTexto?.conteo || 0,
-        };
-      }
-
-      reporteEstructurado.push({
-        seccion_id: preg.seccion_id,
-        seccion_nombre: preg.seccion_nombre,
-        pregunta_id: preg.pregunta_id,
-        enunciado: preg.enunciado,
-        tipo_campo: preg.tipo_campo,
-        metricas,
-      });
-    }
+    // 🚀 Antes esto era un "for" que esperaba una pregunta a la vez (44 viajes
+    // secuenciales a la base de datos = muy lento = timeout = 500 sin error).
+    // Ahora lanzamos las 44 consultas AL MISMO TIEMPO con Promise.all.
+    const reporteEstructurado = await Promise.all(
+      estructuraFormulario.map((preg: any) =>
+        this.calcularMetricasPregunta(preg, totalFichas, filtroGlobal),
+      ),
+    );
 
     return {
       total_fichas_respondidas: totalFichas,
       estructura_agregada: reporteEstructurado,
+    };
+  }
+
+  /**
+   * Calcula las métricas de UNA sola pregunta. Se separó en su propio método
+   * para poder llamarla en paralelo (Promise.all) desde obtenerAgregadoPorPregunta.
+   */
+  private async calcularMetricasPregunta(
+    preg: any,
+    totalFichas: number,
+    filtroGlobal: { where: string; parameters: Record<string, any> },
+  ): Promise<any> {
+    const tipoCampo = preg.tipo_campo.toUpperCase();
+    let metricas: any = null;
+
+    if (this.esTipoSeleccion(tipoCampo)) {
+      const opcionesConteo = await this.dataSource
+        .createQueryBuilder()
+        .select('op.id', 'opcion_id')
+        .addSelect('op.texto_opcion', 'texto_opcion')
+        .addSelect('COUNT(ros.respuesta_id)::int', 'conteo')
+        .from('opciones_pregunta', 'op')
+        .leftJoin('respuestas_opciones_seleccionadas', 'ros', 'ros.opcion_id = op.id')
+        .leftJoin('respuestas', 'r', 'r.id = ros.respuesta_id AND r.pregunta_id = :pregunta_id AND r.fecha_desactivacion IS NULL')
+        .leftJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
+        .leftJoin('usuarios', 'u', 'u.id = f.usuario_id')
+        .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+        .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+        .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
+        .where('op.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
+        .andWhere('op.fecha_desactivacion IS NULL')
+        .andWhere(filtroGlobal.where, filtroGlobal.parameters)
+        .groupBy('op.id, op.texto_opcion, op.orden')
+        .orderBy('op.orden', 'ASC')
+        .setParameter('pregunta_id', preg.pregunta_id)
+        .getRawMany();
+
+      metricas = {
+        tipo_grafico: 'PIE_O_BARRA',
+        opciones: opcionesConteo.map((o: any) => ({
+          opcion_id: o.opcion_id,
+          texto: o.texto_opcion,
+          conteo: o.conteo,
+          porcentaje: totalFichas > 0 ? parseFloat(((o.conteo / totalFichas) * 100).toFixed(2)) : 0,
+        })),
+      };
+    } else if (this.esTipoNumerico(tipoCampo)) {
+      const numStats = await this.dataSource
+        .createQueryBuilder()
+        .select('COALESCE(AVG(r.valor_numerico), 0)::float', 'promedio')
+        .addSelect('COALESCE(MIN(r.valor_numerico), 0)::float', 'minimo')
+        .addSelect('COALESCE(MAX(r.valor_numerico), 0)::float', 'maximo')
+        .addSelect('COALESCE(SUM(r.valor_numerico), 0)::float', 'suma')
+        .from('respuestas', 'r')
+        .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
+        .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+        .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+        .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+        .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
+        .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
+        .andWhere('r.fecha_desactivacion IS NULL')
+        .andWhere(filtroGlobal.where, filtroGlobal.parameters)
+        .getRawOne();
+
+      metricas = {
+        tipo_grafico: 'METRICA_NUMERICA',
+        promedio: parseFloat((numStats?.promedio || 0).toFixed(2)),
+        minimo: numStats?.minimo || 0,
+        maximo: numStats?.maximo || 0,
+        suma: numStats?.suma || 0,
+      };
+    } else if (this.esTipoMatriz(tipoCampo)) {
+      const matrizConteo = await this.dataSource
+        .createQueryBuilder()
+        .select('rm.fila_id', 'fila_id')
+        .addSelect('fm.texto_fila', 'texto_fila')
+        .addSelect('rm.columna_id', 'columna_id')
+        .addSelect('cm.texto_columna', 'texto_columna')
+        .addSelect('COUNT(rm.respuesta_id)::int', 'conteo')
+        .from('respuestas_matriz', 'rm')
+        .innerJoin('filas_matriz', 'fm', 'fm.id = rm.fila_id')
+        .innerJoin('columnas_matriz', 'cm', 'cm.id = rm.columna_id')
+        .innerJoin('respuestas', 'r', 'r.id = rm.respuesta_id AND r.pregunta_id = :pregunta_id AND r.fecha_desactivacion IS NULL')
+        .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
+        .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+        .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+        .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+        .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
+        .where(filtroGlobal.where, filtroGlobal.parameters)
+        .groupBy('rm.fila_id, fm.texto_fila, rm.columna_id, cm.texto_columna')
+        .setParameter('pregunta_id', preg.pregunta_id)
+        .getRawMany();
+
+      metricas = {
+        tipo_grafico: 'MATRIZ_AGREGADA',
+        matriz_respuestas: matrizConteo,
+      };
+    } else {
+      const totalRespuestasTexto = await this.dataSource
+        .createQueryBuilder()
+        .select('COUNT(r.id)::int', 'conteo')
+        .from('respuestas', 'r')
+        .innerJoin('fichas_respondidas', 'f', 'f.id = r.ficha_id')
+        .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+        .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+        .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+        .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
+        .where('r.pregunta_id = :pregunta_id', { pregunta_id: preg.pregunta_id })
+        .andWhere('r.valor_texto IS NOT NULL')
+        .andWhere('r.fecha_desactivacion IS NULL')
+        .andWhere(filtroGlobal.where, filtroGlobal.parameters)
+        .getRawOne();
+
+      metricas = {
+        tipo_grafico: 'TEXTO_LIBRE',
+        total_respuestas: totalRespuestasTexto?.conteo || 0,
+      };
+    }
+
+    return {
+      seccion_id: preg.seccion_id,
+      seccion_nombre: preg.seccion_nombre,
+      pregunta_id: preg.pregunta_id,
+      enunciado: preg.enunciado,
+      tipo_campo: preg.tipo_campo,
+      metricas,
     };
   }
 
