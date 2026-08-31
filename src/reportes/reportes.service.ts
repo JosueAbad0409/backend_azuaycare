@@ -85,7 +85,7 @@ export class ReportesService {
     });
   }
 
-    private construirColumnasYFilasPdf(
+  private construirColumnasYFilasPdf(
     datos: any[],
     columnasBase?: string[],
   ): {
@@ -556,10 +556,11 @@ export class ReportesService {
       parametros.etnia = filtros.etnia;
     }
 
-    if (filtros.zona_residencia) {
-      condiciones.push('pup.zona_residencia::text = :zona_residencia');
-      parametros.zona_residencia = filtros.zona_residencia;
-    }
+    // TEMPORALMENTE COMENTADO - la columna no existe en la BD
+    // if (filtros.zona_residencia) {
+    //   condiciones.push('pup.zona_residencia::text = :zona_residencia');
+    //   parametros.zona_residencia = filtros.zona_residencia;
+    // }
 
     if (filtros.tiene_discapacidad !== undefined) {
       condiciones.push('pup.tiene_discapacidad = :tiene_discapacidad');
@@ -569,9 +570,9 @@ export class ReportesService {
     if (filtros.busqueda) {
       condiciones.push(
         `(u.cedula ILIKE '%' || :busqueda || '%'
-          OR u.primer_nombre ILIKE '%' || :busqueda || '%'
-          OR u.primer_apellido ILIKE '%' || :busqueda || '%'
-          OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
+        OR u.primer_nombre ILIKE '%' || :busqueda || '%'
+        OR u.primer_apellido ILIKE '%' || :busqueda || '%'
+        OR u.email_institucional ILIKE '%' || :busqueda || '%')`,
       );
       parametros.busqueda = filtros.busqueda;
     }
@@ -606,8 +607,12 @@ export class ReportesService {
         parametros[`texto_${index}`] = pregunta.texto;
       }
 
-      const joinRespuesta = pregunta.opcion_id ? 'JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id' : '';
-      condiciones.push(`EXISTS (SELECT 1 FROM respuestas r ${joinRespuesta} WHERE ${condicionesSubquery.join(' AND ')})`);
+      const joinRespuesta = pregunta.opcion_id
+        ? 'JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id'
+        : '';
+      condiciones.push(
+        `EXISTS (SELECT 1 FROM respuestas r ${joinRespuesta} WHERE ${condicionesSubquery.join(' AND ')})`,
+      );
     });
 
     return {
@@ -745,7 +750,7 @@ export class ReportesService {
       .addSelect('u.email_institucional', 'email')
       .addSelect('pup.sexo', 'sexo')
       .addSelect('pup.etnia', 'etnia')
-      .addSelect('pup.zona_residencia', 'zona_residencia')
+      // .addSelect('pup.zona_residencia', 'zona_residencia') // ← columna no existe
       .addSelect('pup.tiene_discapacidad', 'tiene_discapacidad')
       .addSelect('c.nombre', 'carrera')
       .addSelect('ci.nombre', 'ciclo')
@@ -801,7 +806,7 @@ export class ReportesService {
     };
   }
 
-    async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
+  async descargarDatasetFiltradoExcel(filtros: FiltroReporteDto, res: Response) {
     const dataset = await this.obtenerDatasetFiltrado(filtros);
 
     const nombrePeriodo = dataset.periodo.replace(/\s+/g, '_');
@@ -885,71 +890,83 @@ export class ReportesService {
     await workbook.commit();
   }
 
-  async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
-    if (filtros.formulario_id) {
-      const formulario = await this.dataSource.query(
-        `SELECT id, titulo, descripcion, periodo_id FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
-        [filtros.formulario_id],
-      );
+async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
+  if (filtros.formulario_id) {
+    const formulario = await this.dataSource.query(
+      `SELECT id, titulo, descripcion, periodo_id FROM formularios WHERE id = $1 AND fecha_desactivacion IS NULL`,
+      [filtros.formulario_id],
+    );
 
-      if (!formulario || formulario.length === 0) {
-        throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
-      }
+    if (!formulario || formulario.length === 0) {
+      throw new NotFoundException('El formulario solicitado no existe o está inactivo.');
     }
+  }
 
-    const estructuraQueryParts = [
-      `SELECT 
-        s.id AS seccion_id,
-        s.nombre AS seccion_nombre,
-        s.orden AS seccion_orden,
-        p.id AS pregunta_id,
-        p.enunciado,
-        p.orden AS pregunta_orden,
-        t.nombre AS tipo_campo
-      FROM secciones s
-      INNER JOIN preguntas p ON p.seccion_id = s.id AND p.fecha_desactivacion IS NULL
-      INNER JOIN tipos_campo_form t ON t.id = p.tipo_campo_id
-      WHERE s.fecha_desactivacion IS NULL`,
-    ];
-    const estructuraParams: any[] = [];
+  const estructuraQueryParts = [
+    `SELECT 
+      s.id AS seccion_id,
+      s.nombre AS seccion_nombre,
+      s.orden AS seccion_orden,
+      p.id AS pregunta_id,
+      p.enunciado,
+      p.orden AS pregunta_orden,
+      t.nombre AS tipo_campo
+    FROM secciones s
+    INNER JOIN preguntas p ON p.seccion_id = s.id AND p.fecha_desactivacion IS NULL
+    INNER JOIN tipos_campo_form t ON t.id = p.tipo_campo_id
+    WHERE s.fecha_desactivacion IS NULL`,
+  ];
+  const estructuraParams: any[] = [];
 
-    if (filtros.formulario_id) {
-      estructuraQueryParts.push('AND s.formulario_id = $1');
-      estructuraParams.push(filtros.formulario_id);
-    }
+  if (filtros.formulario_id) {
+    estructuraQueryParts.push('AND s.formulario_id = $1');
+    estructuraParams.push(filtros.formulario_id);
+  }
 
-    estructuraQueryParts.push('ORDER BY s.orden ASC, p.orden ASC');
+  estructuraQueryParts.push('ORDER BY s.orden ASC, p.orden ASC');
 
-    const estructuraFormulario = await this.dataSource.query(estructuraQueryParts.join(' '), estructuraParams);
-    const filtroGlobal = this.construirCondicionesFiltros(filtros);
+  const estructuraFormulario = await this.dataSource.query(
+    estructuraQueryParts.join(' '),
+    estructuraParams,
+  );
+  const filtroGlobal = this.construirCondicionesFiltros(filtros);
 
-    const totalFichasQuery = await this.dataSource
-      .createQueryBuilder()
-      .select('COUNT(DISTINCT f.id)::int', 'total')
-      .from('fichas_respondidas', 'f')
-      .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
-      .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
-      .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
-      .leftJoin('perfiles_usuario_periodo', 'pup', 'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id')
-      .where(filtroGlobal.where, filtroGlobal.parameters)
-      .getRawOne();
+  const totalFichasQuery = await this.dataSource
+    .createQueryBuilder()
+    .select('COUNT(DISTINCT f.id)::int', 'total')
+    .from('fichas_respondidas', 'f')
+    .innerJoin('usuarios', 'u', 'u.id = f.usuario_id')
+    .leftJoin('carreras', 'c', 'c.id = u.carrera_id')
+    .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
+    .leftJoin(
+      'perfiles_usuario_periodo',
+      'pup',
+      'pup.usuario_id = u.id AND pup.periodo_id = f.periodo_id',
+    )
+    .where(filtroGlobal.where, filtroGlobal.parameters)
+    .getRawOne();
 
-    const totalFichas = totalFichasQuery?.total || 0;
+  const totalFichas = totalFichasQuery?.total || 0;
 
-    // 🚀 Antes esto era un "for" que esperaba una pregunta a la vez (44 viajes
-    // secuenciales a la base de datos = muy lento = timeout = 500 sin error).
-    // Ahora lanzamos las 44 consultas AL MISMO TIEMPO con Promise.all.
-    const reporteEstructurado = await Promise.all(
-      estructuraFormulario.map((preg: any) =>
+  // Procesamos de a 5 preguntas en paralelo para no saturar el pool (máx 15 conexiones)
+  const CONCURRENCIA = 5;
+  const reporteEstructurado: any[] = [];
+
+  for (let i = 0; i < estructuraFormulario.length; i += CONCURRENCIA) {
+    const lote = estructuraFormulario.slice(i, i + CONCURRENCIA);
+    const resultadosLote = await Promise.all(
+      lote.map((preg: any) =>
         this.calcularMetricasPregunta(preg, totalFichas, filtroGlobal),
       ),
     );
-
-    return {
-      total_fichas_respondidas: totalFichas,
-      estructura_agregada: reporteEstructurado,
-    };
+    reporteEstructurado.push(...resultadosLote);
   }
+
+  return {
+    total_fichas_respondidas: totalFichas,
+    estructura_agregada: reporteEstructurado,
+  };
+}
 
   /**
    * Calcula las métricas de UNA sola pregunta. Se separó en su propio método
@@ -1112,7 +1129,7 @@ export class ReportesService {
       return this.pdfRendererService.renderizarHtmlAPdf(html);
     }
 
-        // ---- Vista completa: Dashboard / Reportes Consolidados ----
+    // ---- Vista completa: Dashboard / Reportes Consolidados ----
     const agregado = await this.obtenerAgregadoPorPregunta(filtros);
     const { columnas, filas } = this.construirColumnasYFilasPdf(dataset.datos, filtros.columnas_base);
 
