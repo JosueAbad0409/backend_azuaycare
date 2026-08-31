@@ -58,11 +58,14 @@ export class CreatePreguntaDto {
   @IsOptional()
   revision_manual_obligatoria?: boolean;
 
+  // 🔥 NUEVA VALIDACIÓN DTO: Permite recibir el booleano desde el frontend
+  @IsBoolean({ message: 'permitir_multiple_matriz debe ser un booleano.' })
+  @IsOptional()
+  permitir_multiple_matriz?: boolean;
+
   @IsArray()
   @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => CreateOpcionPreguntaDto)
   opciones?: CreateOpcionPreguntaDto[];
-
-
 }

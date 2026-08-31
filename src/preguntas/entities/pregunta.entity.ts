@@ -36,7 +36,6 @@ export class Pregunta {
   @Column({ name: 'categoria_financiera', type: 'character varying', length: 50, default: 'NINGUNO' })
   categoria_financiera: string;
 
-  // 🔥 NUEVO CAMPO: Etiqueta de cálculo dinámico para sumatorias
   @Column({ name: 'variable_calculo', type: 'varchar', length: 50, nullable: true })
   variable_calculo: string | null;
 
@@ -55,6 +54,9 @@ export class Pregunta {
   @Column({ name: 'revision_manual_obligatoria', type: 'boolean', default: false })
   revision_manual_obligatoria: boolean;
 
+  // 🔥 NUEVO CAMPO: Define si en cada fila de la matriz se pueden elegir varias opciones (checkbox) o solo una (radio)
+  @Column({ name: 'permitir_multiple_matriz', type: 'boolean', default: false })
+  permitir_multiple_matriz: boolean;
 
   @Column({ name: 'creado_por', type: 'uuid', nullable: true })
   creado_por?: string | null;
