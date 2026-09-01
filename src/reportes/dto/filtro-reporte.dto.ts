@@ -43,6 +43,10 @@ export class FiltroReporteDto {
   estado_ficha?: string;
 
   @IsOptional()
+  @IsString()
+  nivel_economico?: string;
+
+  @IsOptional()
   @IsDateString()
   fecha_desde?: string;
 

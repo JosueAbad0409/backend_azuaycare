@@ -540,11 +540,6 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
   return filtros;
 }
 
-  /**
-   * Construye el WHERE dinámico según los filtros recibidos.
-   * `periodo_id` es OPCIONAL: si no viene, no se agrega esa condición
-   * (permite filtrar por sexo/etnia/zona/etc. sin tener que elegir un periodo).
-   */
   private construirCondicionesFiltros(filtros: FiltroReporteDto) {
   const condiciones: string[] = ['f.fecha_desactivacion IS NULL'];
   const parametros: Record<string, any> = {};
@@ -574,6 +569,11 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     parametros.estado_ficha = filtros.estado_ficha;
   }
 
+  if (filtros.nivel_economico && filtros.nivel_economico !== 'TODOS') {
+    condiciones.push(`f.rango_resultado_id IN (SELECT id FROM rangos_variable_calculada WHERE nombre = :nivel_economico)`);
+    parametros.nivel_economico = filtros.nivel_economico;
+  }
+
   if (filtros.sexo) {
     condiciones.push('pup.sexo::text = :sexo');
     parametros.sexo = filtros.sexo;
@@ -584,7 +584,6 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     parametros.etnia = filtros.etnia;
   }
 
-  // zona_residencia y tiene_discapacidad NO existen en perfiles_usuario_periodo
 
   if (filtros.busqueda) {
     condiciones.push(
