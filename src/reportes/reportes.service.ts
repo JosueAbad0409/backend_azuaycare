@@ -180,14 +180,15 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     const totalFormularios = await this.dataSource.query(
       `SELECT COUNT(*)::int AS total FROM formularios WHERE fecha_desactivacion IS NULL`
     );
+    // 🔥 CORRECCIÓN: Fichas evaluadas son las Validadas, Rechazadas u Observadas
     const totalFichasEvaluadas = await this.dataSource.query(
       `SELECT COUNT(*)::int AS total
-   FROM fichas_respondidas
-   WHERE fecha_desactivacion IS NULL
-     AND estado_ficha IN ('ENVIADA', 'ENVIADO', 'VALIDADO')`
+       FROM fichas_respondidas
+       WHERE fecha_desactivacion IS NULL
+         AND estado_ficha IN ('VALIDADO', 'RECHAZADO', 'RECHAZADA', 'OBSERVADO')`
     );
 
-    // 3. Gráfico de Pastel (Rangos de Vulnerabilidad / Niveles) - Corregido a rangos_variable_calculada
+    // 3. Gráfico de Pastel (Rangos de Vulnerabilidad / Niveles)
     const nivelesData = await this.dataSource.query(
       `SELECT COALESCE(r.nombre, 'Sin Rango') as label, COUNT(f.id)::int as total
        FROM fichas_respondidas f
@@ -196,7 +197,7 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
        GROUP BY r.nombre`
     );
 
-    // 3.5. Gráfico de Pastel (Fichas con alertas de revisión, según respuestas)
+    // 3.5. Gráfico de Pastel (Fichas con alertas)
     const vulnerabilidadData = await this.dataSource.query(
       `WITH AlertasPorFicha AS (
          SELECT r.ficha_id, COUNT(*)::int AS total_alertas
@@ -1381,6 +1382,7 @@ async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
       throw new NotFoundException('El periodo de matrícula solicitado no existe o está inactivo.');
     }
 
+    // 🔥 CORRECCIÓN: Contamos correctamente Rechazados y Observados
     const totales = await this.dataSource.query(
       `
       SELECT 
@@ -1388,7 +1390,7 @@ async obtenerAgregadoPorPregunta(filtros: FiltroReporteDto) {
         COUNT(*) FILTER (WHERE estado_ficha = 'BORRADOR')::int AS fichas_borrador, 
         COUNT(*) FILTER (WHERE estado_ficha IN ('ENVIADA','ENVIADO'))::int AS fichas_enviadas, 
         COUNT(*) FILTER (WHERE estado_ficha = 'VALIDADO')::int AS fichas_validadas, 
-        COUNT(*) FILTER (WHERE estado_ficha = 'RECHAZADA')::int AS fichas_rechazadas 
+        COUNT(*) FILTER (WHERE estado_ficha IN ('RECHAZADO', 'RECHAZADA', 'OBSERVADO'))::int AS fichas_rechazadas 
       FROM fichas_respondidas 
       WHERE periodo_id = $1 AND fecha_desactivacion IS NULL
       `,
