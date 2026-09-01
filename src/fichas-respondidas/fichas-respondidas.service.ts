@@ -217,16 +217,40 @@ export class FichasRespondidasService {
     };
   }
 
-  findAll(skip: number = 0, take: number = 10) {
-    const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 100);
-    const skipReal = Math.max(Number(skip) || 0, 0);
-    return this.fichasRepository.find({
-      where: { fecha_desactivacion: IsNull() },
-      skip: skipReal,
-      take: limiteReal,
-      relations: { usuario: true, periodo: true, cerradoPorUsuario: true },
-      order: { created_at: 'DESC' },
-    });
+  async findAll() {
+    // 1. Subconsulta para cruzar respuestas con preguntas obligatorias (vulnerabilidad)
+    const subQueryAlertas = `
+      SELECT r.ficha_id AS ficha_id, COUNT(*)::int AS total_alertas
+      FROM respuestas r
+      INNER JOIN preguntas p ON p.id = r.pregunta_id
+      LEFT JOIN respuestas_opciones_seleccionadas ros ON ros.respuesta_id = r.id
+      LEFT JOIN opciones_pregunta op ON op.id = ros.opcion_id
+      WHERE r.fecha_desactivacion IS NULL
+        AND p.fecha_desactivacion IS NULL
+        AND p.revision_manual_obligatoria = true
+        AND UPPER(TRIM(REGEXP_REPLACE(COALESCE(op.texto_opcion, r.valor_texto, r.valor_numerico::text, ''), '\\[EVIDENCIA_URL:.*?\\]', '', 'g'))) NOT IN ('NO', 'NINGUNA', 'N/A', 'NINGUNO', 'FALSO', '')
+      GROUP BY r.ficha_id
+    `;
+
+    // 2. QueryBuilder sin el límite de 10 para traer TODO al dashboard
+    const { entities, raw } = await this.fichasRepository.createQueryBuilder('f')
+      .leftJoinAndSelect('f.usuario', 'u')
+      .leftJoinAndSelect('u.carrera', 'c')
+      .leftJoinAndSelect('u.ciclo', 'ci')
+      .leftJoinAndSelect('f.periodo', 'p')
+      .leftJoinAndSelect('f.rangoResultado', 'rr')
+      .leftJoinAndSelect('f.cerradoPorUsuario', 'cpu')
+      .leftJoin(`(${subQueryAlertas})`, 'alertas', 'alertas.ficha_id = f.id')
+      .where('f.fecha_desactivacion IS NULL')
+      .addSelect('COALESCE(alertas.total_alertas, 0)', 'total_alertas')
+      .orderBy('f.created_at', 'DESC')
+      .getRawAndEntities();
+
+    // 3. Mapeo para inyectar el total_alertas dentro de cada objeto ficha
+    return entities.map((ficha, index) => ({
+      ...ficha,
+      total_alertas: Number(raw[index]?.total_alertas) || 0,
+    }));
   }
 
   async findOne(id: string, user?: any) {
