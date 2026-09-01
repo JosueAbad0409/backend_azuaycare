@@ -814,9 +814,19 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
   .leftJoin('ciclos', 'ci', 'ci.id = u.ciclo_id')
   .leftJoin('rangos_variable_calculada', 'r', 'r.id = f.rango_resultado_id')
   .where(filtro.where, filtro.parameters)
-  .orderBy('c.nombre', 'ASC')
-  .addOrderBy('u.primer_apellido', 'ASC')
-  .getRawMany();
+    .orderBy('c.nombre', 'ASC')
+    .addOrderBy('u.primer_apellido', 'ASC')
+    .getRawMany();
+
+  // 🔥 NUEVO: Calculamos los KPIs antes de que aplicarSeleccionColumnas borre la información
+  const kpis = { borrador: 0, enviadas: 0, validadas: 0, rechazadas: 0 };
+  for (const r of resultados) {
+    const e = String(r.estado || '').toUpperCase();
+    if (e === 'BORRADOR') kpis.borrador++;
+    else if (e === 'ENVIADA' || e === 'ENVIADO') kpis.enviadas++;
+    else if (e === 'VALIDADO') kpis.validadas++;
+    else if (e === 'RECHAZADO' || e === 'RECHAZADA' || e === 'OBSERVADO') kpis.rechazadas++;
+  }
 
   const resultadosFinales = await this.aplicarSeleccionColumnas(
     resultados,
@@ -828,6 +838,7 @@ private esTipoFecha(tipoCampoNombre: string): boolean {
     periodo: nombrePeriodo,
     total_registros: resultadosFinales.length,
     datos: resultadosFinales,
+    kpis, // 🔥 Se los enviamos listos al frontend
   };
 }
 
