@@ -152,9 +152,10 @@ export class FichasRespondidasService {
     };
   }
 
-  async getFichasPorPrioridadVulnerabilidad(skip: number, take: number, nivel: string) {
-    const limiteReal = Math.min(Math.max(Number(take) || 50, 1), 500);
-    const skipReal = Math.max(Number(skip) || 0, 0);
+  async getFichasPorPrioridadVulnerabilidad(nivel: string, periodoId?: string) {
+    // Dejamos un límite fijo razonable ya que quitamos la paginación manual
+    const limiteReal = 500;
+    const skipReal = 0;
 
     const subQueryAlertas = `
       SELECT r.ficha_id AS ficha_id, COUNT(*)::int AS total_alertas
@@ -169,12 +170,22 @@ export class FichasRespondidasService {
       GROUP BY r.ficha_id
     `;
 
-    const baseQuery = () => this.fichasRepository.createQueryBuilder('f')
-      .leftJoinAndSelect('f.usuario', 'u')
-      .leftJoinAndSelect('u.carrera', 'c')
-      .leftJoin(`(${subQueryAlertas})`, 'alertas', 'alertas.ficha_id = f.id')
-      .where('f.fecha_desactivacion IS NULL')
-      .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
+    // 🔥 Convertimos esto en una función que arma el query y APLICA EL PERIODO
+    const baseQuery = () => {
+      const q = this.fichasRepository.createQueryBuilder('f')
+        .leftJoinAndSelect('f.usuario', 'u')
+        .leftJoinAndSelect('u.carrera', 'c')
+        .leftJoin(`(${subQueryAlertas})`, 'alertas', 'alertas.ficha_id = f.id')
+        .where('f.fecha_desactivacion IS NULL')
+        .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
+
+      // Aquí está el truco: si llega el periodoId, lo filtramos en la BD
+      if (periodoId) {
+        q.andWhere('f.periodo_id = :periodoId', { periodoId });
+      }
+
+      return q;
+    };
 
     const aplicarFiltroNivel = (query: ReturnType<typeof baseQuery>) => {
       if (nivel === 'CON_ALERTAS') {
@@ -185,6 +196,7 @@ export class FichasRespondidasService {
       return query;
     };
 
+    // Ahora los conteos y resultados solo traerán los del periodo actual
     const total = await aplicarFiltroNivel(baseQuery()).getCount();
 
     const { entities, raw } = await aplicarFiltroNivel(baseQuery())

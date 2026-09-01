@@ -35,22 +35,19 @@ export class FichasRespondidasController {
   @Get('paginadas')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
   getFichasPaginadas(
-    @Query('skip') skip = 0,
-    @Query('take') take = 1000,
     @Query('search') search = '',
     @Query('estado') estado = 'TODOS',
     @Req() req: RequestWithUser
   ) {
-    return this.fichasService.getFichasPaginadasYFiltradas(+skip, +take, search, estado, req.user);
+    // Si tu servicio aún pide skip y take, le pasamos 0 y un número inmenso para que no limite
+    return this.fichasService.getFichasPaginadasYFiltradas(0, 999999, search, estado, req.user);
   }
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  findAll(
-    @Query('skip') skip = 0,
-    @Query('take') take = 10,
-  ) {
-    return this.fichasService.findAll(+skip, +take);
+  findAll() {
+    // Límites eliminados
+    return this.fichasService.findAll();
   }
 
   @Get('mis-fichas')
@@ -62,11 +59,11 @@ export class FichasRespondidasController {
   @Get('prioridad-atencion')
   @Roles('COORDINADOR_BIENESTAR')
   getFichasPorPrioridad(
-    @Query('skip') skip = 0,
-    @Query('take') take = 50,
     @Query('nivel') nivel = 'TODOS',
+    @Query('periodo_id') periodoId?: string // 🔥 Aquí recibimos el periodo
   ) {
-    return this.fichasService.getFichasPorPrioridadVulnerabilidad(+skip, +take, nivel);
+    // Quitamos el skip y take, pasamos directo nivel y periodo
+    return this.fichasService.getFichasPorPrioridadVulnerabilidad(nivel, periodoId);
   }
   
   @Get(':id/resumen')
