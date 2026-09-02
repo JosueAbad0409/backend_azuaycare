@@ -245,21 +245,8 @@ findAll(skip?: number, take?: number) {
     const nuevoTitulo = `${tituloBase} - ${periodoDestino.nombre}`;
 
     try {
-      // ELIMINACIÓN FÍSICA de las versiones antiguas
-      if (versionesExistentes.length >= 2) {
-        const aEliminar = versionesExistentes.slice(0, versionesExistentes.length - 1);
-        for (const formularioViejo of aEliminar) {
-          try {
-            // Intentamos eliminarlo completamente de la base de datos (Hard Delete)
-            await queryRunner.manager.delete(Formulario, formularioViejo.id);
-          } catch (errorDb) {
-            // Si la BD rechaza el delete (casi siempre por claves foráneas/datos asociados)
-            throw new BadRequestException(
-              `No se puede crear el clon porque no es posible eliminar la versión anterior "${formularioViejo.titulo}". Es probable que esta ficha ya tenga datos vinculados (como respuestas de estudiantes) y no pueda ser borrada por completo de la base de datos.`
-            );
-          }
-        }
-      }
+      // 🔥 SE ELIMINÓ EL BLOQUE QUE BORRABA VERSIONES ANTIGUAS 🔥
+      // Ahora los formularios viejos se conservan como histórico y el nuevo nace 100% limpio.
 
       const nuevoFormulario = queryRunner.manager.create(Formulario, {
         titulo: nuevoTitulo,
@@ -269,7 +256,7 @@ findAll(skip?: number, take?: number) {
         periodo_origen_id: formularioOrigen.id,
         dias_plazo_modificacion: formularioOrigen.dias_plazo_modificacion,
         version: nuevaVersionNumero,
-        publicado: false,
+        publicado: false, // Nace como borrador para poder editarlo
         bloqueado: false,
         creado_por: usuarioId,
       });
