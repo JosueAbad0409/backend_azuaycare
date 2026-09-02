@@ -70,11 +70,9 @@ export class UsuariosService {
     const resultado: any = { ...usuario };
     if (perfilPeriodo) {
       resultado.sexo = perfilPeriodo.sexo;
-      resultado.esta_embarazada = perfilPeriodo.esta_embarazada;
+      // 🔥 Se eliminaron los campos de embarazo e hijos de aquí
       resultado.genero = perfilPeriodo.genero;
       resultado.estado_civil = perfilPeriodo.estado_civil;
-      resultado.tiene_hijos = perfilPeriodo.tiene_hijos;
-      resultado.hijos_menores_5_anios = perfilPeriodo.hijos_menores_5_anios;
       resultado.etnia = perfilPeriodo.etnia;
       resultado.numero_celular = perfilPeriodo.numero_celular;
       resultado.pueblo_nacionalidad = perfilPeriodo.pueblo_nacionalidad;
@@ -158,12 +156,10 @@ export class UsuariosService {
       usuario_id: usuarioId,
       periodo_id: periodoActivo.id,
       sexo: dto.sexo,
-      esta_embarazada: dto.sexo === SexoEnum.MUJER ? (dto.esta_embarazada ?? false) : null,
+      // 🔥 Se eliminaron los campos de embarazo e hijos de aquí
       genero: dto.genero,
       numero_celular: dto.numero_celular,
       estado_civil: dto.estado_civil,
-      tiene_hijos: dto.tiene_hijos ?? false,
-      hijos_menores_5_anios: dto.tiene_hijos ? (dto.hijos_menores_5_anios ?? 0) : null,
       etnia: dto.etnia,
       pueblo_nacionalidad: dto.etnia === EtniaEnum.INDIGENA ? dto.pueblo_nacionalidad : null,
       etnia_otra: dto.etnia === EtniaEnum.OTRO ? dto.etnia_otra : null,

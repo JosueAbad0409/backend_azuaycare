@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf, IsDefined, Matches } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf, Matches } from 'class-validator';
 import { IsCedulaEcuatoriana } from 'src/common/is-cedula-ecuatoriana.validator';
 import { IsFechaNacimiento } from 'src/common/is-fecha-nacimiento.validator';
 import { EstadoCivilEnum, EtniaEnum, SexoEnum } from '../enums/perfil-usuario.enum';
@@ -25,10 +25,6 @@ export class CompletarPerfilDto {
   @IsEnum(SexoEnum, { message: 'El sexo debe ser Hombre o Mujer.' }) @IsNotEmpty({ message: 'El sexo es obligatorio.' })
   sexo: SexoEnum;
 
-  @ValidateIf((dto: CompletarPerfilDto) => dto.sexo === SexoEnum.MUJER)
-  @IsBoolean({ message: 'Indique su estado.' }) @IsDefined({ message: 'Especifique su estado (mujeres).' })
-  esta_embarazada?: boolean;
-
   @IsString() 
   @IsNotEmpty({ message: 'El número celular es obligatorio.' }) 
   @Matches(/^09\d{8}$/, { message: 'El celular debe tener 10 dígitos y empezar con 09.' })
@@ -39,13 +35,6 @@ export class CompletarPerfilDto {
 
   @IsEnum(EstadoCivilEnum, { message: 'Estado civil no válido.' }) @IsNotEmpty({ message: 'Estado civil obligatorio.' })
   estado_civil: EstadoCivilEnum;
-
-  @IsBoolean({ message: 'Indique si tiene hijos.' }) @IsDefined({ message: '¿Tiene hijos? es obligatorio.' })
-  tiene_hijos: boolean;
-
-  @ValidateIf((dto: CompletarPerfilDto) => dto.tiene_hijos === true)
-  @IsDefined({ message: 'Indique cuántos hijos menores de 5 años.' })
-  hijos_menores_5_anios?: number;
 
   @IsEnum(EtniaEnum, { message: 'Etnia no válida.' }) @IsNotEmpty({ message: 'Etnia es obligatoria.' })
   etnia: EtniaEnum;
