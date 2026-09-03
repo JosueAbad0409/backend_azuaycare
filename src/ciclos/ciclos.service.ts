@@ -45,25 +45,29 @@ export class CiclosService {
   }
 
   async create(createCicloDto: CreateCicloDto) {
-    const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
+  const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
 
-    await this.validarColisiones(createCicloDto.carrera_ids, nombreSanitizado, createCicloDto.orden);
+  await this.validarColisiones(createCicloDto.carrera_ids, nombreSanitizado, createCicloDto.orden);
 
-    return this.dataSource.transaction(async (manager) => {
-      const nuevoCiclo = manager.create(Ciclo, {
-        nombre: nombreSanitizado,
-        orden: createCicloDto.orden,
-      });
-      const cicloGuardado = await manager.save(nuevoCiclo);
-
-      const vinculos = createCicloDto.carrera_ids.map((carreraId) =>
-        manager.create(CicloCarrera, { ciclo_id: cicloGuardado.id, carrera_id: carreraId }),
-      );
-      await manager.save(vinculos);
-
-      return this.findOne(cicloGuardado.id);
+  // 1. Guardar y esperar a que finalice la transacción en la BD
+  const cicloGuardado = await this.dataSource.transaction(async (manager) => {
+    const nuevoCiclo = manager.create(Ciclo, {
+      nombre: nombreSanitizado,
+      orden: createCicloDto.orden,
     });
-  }
+    const guardado = await manager.save(nuevoCiclo);
+
+    const vinculos = createCicloDto.carrera_ids.map((carreraId) =>
+      manager.create(CicloCarrera, { ciclo_id: guardado.id, carrera_id: carreraId }),
+    );
+    await manager.save(vinculos);
+
+    return guardado;
+  });
+
+  // 2. Consultar el ciclo ya registrado fuera de la transacción
+  return this.findOne(cicloGuardado.id);
+}
 
   async findByCarrera(carreraId: string) {
     const ciclos = await this.ciclosRepository

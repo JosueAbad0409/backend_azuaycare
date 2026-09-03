@@ -138,11 +138,18 @@ export class AuthService implements OnModuleInit {
         googleId = payload.sub;
         fotoGoogle = payload.picture ?? null;
 
-        const rawGiven = (payload.given_name ?? 'Usuario').trim().split(' ');
+        // ✅ MEJORA: Usar 'name' completo como respaldo si 'given_name' no existe
+        const nombreCompleto = payload.name ? payload.name.trim().split(' ') : [];
+        const fallbackGiven = nombreCompleto[0] || 'Usuario';
+        const fallbackFamily = nombreCompleto.length > 1 ? nombreCompleto.slice(1).join(' ') : 'Azuay';
+
+        // ✅ MEJORA: Extraer nombres con los nuevos respaldos
+        const rawGiven = (payload.given_name ?? fallbackGiven).trim().split(' ');
         primerNombre = rawGiven[0];
         segundoNombre = rawGiven.length > 1 ? rawGiven.slice(1).join(' ') : null;
 
-        const rawFamily = (payload.family_name ?? 'Azuay').trim().split(' ');
+        // ✅ MEJORA: Extraer apellidos con los nuevos respaldos
+        const rawFamily = (payload.family_name ?? fallbackFamily).trim().split(' ');
         primerApellido = rawFamily[0];
         segundoApellido = rawFamily.length > 1 ? rawFamily.slice(1).join(' ') : null;
       }
@@ -193,6 +200,7 @@ export class AuthService implements OnModuleInit {
           necesitaActualizar = true; 
         }
         
+        // Si antes guardó 'Usuario', actualizamos con el nombre real de Google
         if (usuario.primer_nombre === 'Usuario' && primerNombre !== 'Usuario') {
           usuario.primer_nombre = primerNombre;
           usuario.segundo_nombre = segundoNombre;
@@ -261,11 +269,20 @@ export class AuthService implements OnModuleInit {
       }
     }
 
+    // ✅ MEJORA: Extraer un nombre temporal con sentido a partir del correo
+    const prefijoCorreo = emailLimpio.split('@')[0];
+    const partesCorreo = prefijoCorreo.split(/[\.\-_]/); // Divide por punto, guion o guion bajo
+    const nombreDesdeEmail = partesCorreo[0];
+    const apellidoDesdeEmail = partesCorreo.length > 1 ? partesCorreo[1] : 'Nuevo';
+
+    const nombreCapitalizado = nombreDesdeEmail.charAt(0).toUpperCase() + nombreDesdeEmail.slice(1);
+    const apellidoCapitalizado = apellidoDesdeEmail.charAt(0).toUpperCase() + apellidoDesdeEmail.slice(1);
+
     const nuevoUsuario = this.usuariosRepository.create({
       email_institucional: emailLimpio,
       password: hashedPassword,
-      primer_nombre: 'Usuario', 
-      primer_apellido: 'Nuevo',
+      primer_nombre: nombreCapitalizado || 'Usuario', // Se verá como 'Josue' en vez de 'Usuario'
+      primer_apellido: apellidoCapitalizado || 'Nuevo',
       rol: { id: rolDb.id } as Role,
     });
 
