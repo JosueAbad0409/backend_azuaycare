@@ -26,6 +26,13 @@ export class CarrerasController {
     return this.carrerasService.findAll(Number(skip), Number(take));
   }
 
+  // Se posiciona ANTES de @Get(':id') para evitar conflicto de rutas 404
+  @Patch(':id/reactivar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reactivar(@Param('id') id: string) {
+    return this.carrerasService.reactivar(id);
+  }
+
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string) {
@@ -44,4 +51,3 @@ export class CarrerasController {
     return this.carrerasService.remove(id);
   }
 }
-

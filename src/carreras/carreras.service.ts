@@ -16,7 +16,6 @@ export class CarrerasService {
     const nombreSanitizado = createCarreraDto.nombre.toUpperCase().trim();
     const correoSanitizado = createCarreraDto.correo_institucional.toLowerCase().trim();
 
-    // Validar únicamente que el NOMBRE de la carrera sea único
     const existeNombre = await this.carrerasRepository.findOne({
       where: { nombre: nombreSanitizado, fecha_desactivacion: IsNull() },
       select: { id: true },
@@ -26,7 +25,6 @@ export class CarrerasService {
       throw new BadRequestException('Ya existe una carrera activa registrada con ese nombre.');
     }
 
-    // Crear y guardar la carrera (sin restricción de correo único)
     const nuevaCarrera = this.carrerasRepository.create({
       nombre: nombreSanitizado,
       correo_institucional: correoSanitizado,
@@ -41,22 +39,22 @@ export class CarrerasService {
     const skipReal = Math.max(Number(skip) || 0, 0);
 
     return this.carrerasRepository.find({
-      where: { fecha_desactivacion: IsNull() },
+      // Se removió "fecha_desactivacion: IsNull()" para consultar tanto activas como inactivas
       skip: skipReal,
       take: limiteReal, 
-      select: { id: true, nombre: true, correo_institucional: true }, 
+      select: { id: true, nombre: true, correo_institucional: true, fecha_desactivacion: true }, 
       order: { nombre: 'ASC' },
     });
   }
 
   async findOne(id: string) {
     const carrera = await this.carrerasRepository.findOne({
-      where: { id, fecha_desactivacion: IsNull() },
-      select: { id: true, nombre: true, correo_institucional: true },
+      where: { id },
+      select: { id: true, nombre: true, correo_institucional: true, fecha_desactivacion: true },
     });
 
     if (!carrera) {
-      throw new NotFoundException('La carrera solicitada no existe o está inactiva.');
+      throw new NotFoundException('La carrera solicitada no existe.');
     }
 
     return carrera;
@@ -66,7 +64,6 @@ export class CarrerasService {
     await this.findOne(id);
     const datosActualizados: Partial<Carrera> = {};
 
-    // Validar colisión de nombre si se actualiza
     if (updateCarreraDto.nombre) {
       const nombreSanitizado = updateCarreraDto.nombre.toUpperCase().trim();
       
@@ -78,13 +75,18 @@ export class CarrerasService {
       datosActualizados.nombre = nombreSanitizado;
     }
 
-    // Se asigna el correo directamente sin verificar si otra carrera ya lo posee
     if (updateCarreraDto.correo_institucional) {
       datosActualizados.correo_institucional = updateCarreraDto.correo_institucional.toLowerCase().trim();
     }
 
     await this.carrerasRepository.update(id, datosActualizados);
     return this.findOne(id);
+  }
+
+  async reactivar(id: string) {
+    await this.findOne(id);
+    await this.carrerasRepository.update(id, { fecha_desactivacion: null });
+    return { message: 'Carrera reactivada con éxito.' };
   }
 
   async remove(id: string) {
