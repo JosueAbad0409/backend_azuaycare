@@ -16,8 +16,6 @@ export class CiclosService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // Lanza error si, para alguna de las carreras dadas, ya existe un ciclo activo
-  // con el mismo nombre o el mismo orden (opcionalmente excluyendo un ciclo por id).
   private async validarColisiones(
     carreraIds: string[],
     nombre: string,
@@ -45,29 +43,27 @@ export class CiclosService {
   }
 
   async create(createCicloDto: CreateCicloDto) {
-  const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
+    const nombreSanitizado = createCicloDto.nombre.toUpperCase().trim();
 
-  await this.validarColisiones(createCicloDto.carrera_ids, nombreSanitizado, createCicloDto.orden);
+    await this.validarColisiones(createCicloDto.carrera_ids, nombreSanitizado, createCicloDto.orden);
 
-  // 1. Guardar y esperar a que finalice la transacción en la BD
-  const cicloGuardado = await this.dataSource.transaction(async (manager) => {
-    const nuevoCiclo = manager.create(Ciclo, {
-      nombre: nombreSanitizado,
-      orden: createCicloDto.orden,
+    const cicloGuardado = await this.dataSource.transaction(async (manager) => {
+      const nuevoCiclo = manager.create(Ciclo, {
+        nombre: nombreSanitizado,
+        orden: createCicloDto.orden,
+      });
+      const guardado = await manager.save(nuevoCiclo);
+
+      const vinculos = createCicloDto.carrera_ids.map((carreraId) =>
+        manager.create(CicloCarrera, { ciclo_id: guardado.id, carrera_id: carreraId }),
+      );
+      await manager.save(vinculos);
+
+      return guardado;
     });
-    const guardado = await manager.save(nuevoCiclo);
 
-    const vinculos = createCicloDto.carrera_ids.map((carreraId) =>
-      manager.create(CicloCarrera, { ciclo_id: guardado.id, carrera_id: carreraId }),
-    );
-    await manager.save(vinculos);
-
-    return guardado;
-  });
-
-  // 2. Consultar el ciclo ya registrado fuera de la transacción
-  return this.findOne(cicloGuardado.id);
-}
+    return this.findOne(cicloGuardado.id);
+  }
 
   async findByCarrera(carreraId: string) {
     const ciclos = await this.ciclosRepository
@@ -89,7 +85,6 @@ export class CiclosService {
     const limiteReal = Math.min(Math.max(Number(take) || 10, 1), 1000);
     const skipReal = Math.max(Number(skip) || 0, 0);
     return this.ciclosRepository.find({
-      where: { fecha_desactivacion: IsNull() },
       skip: skipReal,
       take: limiteReal,
       relations: { ciclosCarreras: { carrera: true } },
@@ -99,12 +94,12 @@ export class CiclosService {
 
   async findOne(id: string) {
     const ciclo = await this.ciclosRepository.findOne({
-      where: { id, fecha_desactivacion: IsNull() },
+      where: { id },
       relations: { ciclosCarreras: { carrera: true } },
     });
 
     if (!ciclo) {
-      throw new NotFoundException('El ciclo solicitado no existe o está inactivo.');
+      throw new NotFoundException('El ciclo solicitado no existe.');
     }
 
     return ciclo;
@@ -140,6 +135,12 @@ export class CiclosService {
     });
 
     return this.findOne(id);
+  }
+
+  async reactivar(id: string) {
+    await this.findOne(id);
+    await this.ciclosRepository.update(id, { fecha_desactivacion: null });
+    return { message: 'Ciclo reactivado con éxito.' };
   }
 
   async remove(id: string) {

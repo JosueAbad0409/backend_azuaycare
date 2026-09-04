@@ -23,11 +23,16 @@ export class CiclosController {
     return this.ciclosService.findAll(+skip, +take);
   }
 
-
   @Get('carrera/:carreraId')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findByCarrera(@Param('carreraId') carreraId: string) {
     return this.ciclosService.findByCarrera(carreraId);
+  }
+
+  @Patch(':id/reactivar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reactivar(@Param('id') id: string) {
+    return this.ciclosService.reactivar(id);
   }
 
   @Get(':id')
