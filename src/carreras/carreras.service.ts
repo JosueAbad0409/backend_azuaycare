@@ -38,20 +38,28 @@ export class CarrerasService {
     const limiteReal = Math.min(Math.max(isNaN(parsedTake) ? 100 : parsedTake, 1), 1000);
     const skipReal = Math.max(Number(skip) || 0, 0);
 
-    // 🟢 INCLUIDA LA COLUMNA fecha_desactivacion
     return this.carrerasRepository.find({
       skip: skipReal,
       take: limiteReal, 
-      select: ['id', 'nombre', 'correo_institucional', 'fecha_desactivacion'], 
+      select: {
+        id: true,
+        nombre: true,
+        correo_institucional: true,
+        fecha_desactivacion: true,
+      }, 
       order: { nombre: 'ASC' },
     });
   }
 
   async findOne(id: string) {
-    // 🟢 REMOVIDA LA RESTRICCIÓN DE IsNull() PARA CONSULTAR CARRERAS DESACTIVADAS
     const carrera = await this.carrerasRepository.findOne({
       where: { id },
-      select: ['id', 'nombre', 'correo_institucional', 'fecha_desactivacion'],
+      select: {
+        id: true,
+        nombre: true,
+        correo_institucional: true,
+        fecha_desactivacion: true,
+      },
     });
 
     if (!carrera) {
