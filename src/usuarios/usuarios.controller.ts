@@ -63,7 +63,6 @@ export class UsuariosController {
     );
   }
 
-  // ✅ ENDPOINT PARA ADMINISTRADORES/COORDINADORES: Permite editar/completar la ficha de cualquier estudiante por ID
   @Post(':id/completar-perfil')
   @Patch(':id/completar-perfil')
   @Roles('COORDINADOR_BIENESTAR')
@@ -115,6 +114,13 @@ export class UsuariosController {
   @Roles('COORDINADOR_BIENESTAR')
   update(@Param('id') id: string, @Body() updateUsuarioDto: UpdateUsuarioDto) {
     return this.usuariosService.update(id, updateUsuarioDto);
+  }
+
+  // 🟢 NUEVO ENDPOINT: Permite a Coordinadores de Bienestar reactivar usuarios
+  @Patch(':id/reactivar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reactivar(@Param('id') id: string) {
+    return this.usuariosService.reactivar(id);
   }
 
   @Delete(':id')

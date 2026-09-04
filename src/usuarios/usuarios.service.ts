@@ -53,7 +53,8 @@ export class UsuariosService {
   }
 
   async findOne(id: string) {
-    const usuario = await this.usuariosRepository.findOne({ where: { id, fecha_desactivacion: IsNull() }, relations: { rol: true, ciclo: true, carrera: true } });
+    // 🔴 CORREGIDO: Se quitó "fecha_desactivacion: IsNull()" para permitir consultar usuarios inactivos
+    const usuario = await this.usuariosRepository.findOne({ where: { id }, relations: { rol: true, ciclo: true, carrera: true } });
     if (!usuario) throw new NotFoundException('Usuario no existe.');
 
     const periodoActivo = await this.periodosRepository.findOne({ where: { activo: true, fecha_desactivacion: IsNull() }, order: { fecha_inicio: 'DESC' } });
@@ -70,7 +71,6 @@ export class UsuariosService {
     const resultado: any = { ...usuario };
     if (perfilPeriodo) {
       resultado.sexo = perfilPeriodo.sexo;
-      // 🔥 Se eliminaron los campos de embarazo e hijos de aquí
       resultado.genero = perfilPeriodo.genero;
       resultado.estado_civil = perfilPeriodo.estado_civil;
       resultado.etnia = perfilPeriodo.etnia;
@@ -88,7 +88,8 @@ export class UsuariosService {
   }
 
   async update(id: string, updateUsuarioDto: UpdateUsuarioDto) {
-    const usuarioExistente = await this.usuariosRepository.findOne({ where: { id, fecha_desactivacion: IsNull() }, select: { id: true, carrera_id: true, ciclo_id: true } });
+    // 🔴 CORREGIDO: Se quitó "fecha_desactivacion: IsNull()"
+    const usuarioExistente = await this.usuariosRepository.findOne({ where: { id }, select: { id: true, carrera_id: true, ciclo_id: true } });
     if (!usuarioExistente) throw new NotFoundException('Usuario no existe.');
     if (updateUsuarioDto.email_institucional) updateUsuarioDto.email_institucional = updateUsuarioDto.email_institucional.toLowerCase().trim();
     if (updateUsuarioDto.carrera_id && usuarioExistente.ciclo_id) {
@@ -125,7 +126,7 @@ export class UsuariosService {
   }
 
   async completarPerfilEstudiante(usuarioId: string, rol: string, dto: CompletarPerfilDto) {
-    const usuario = await this.usuariosRepository.findOne({ where: { id: usuarioId, fecha_desactivacion: IsNull() }, select: { id: true } });
+    const usuario = await this.usuariosRepository.findOne({ where: { id: usuarioId }, select: { id: true } });
     if (!usuario) throw new NotFoundException('Usuario no existe.');
 
     const periodoActivo = await this.obtenerPeriodoActivo();
@@ -156,7 +157,6 @@ export class UsuariosService {
       usuario_id: usuarioId,
       periodo_id: periodoActivo.id,
       sexo: dto.sexo,
-      // 🔥 Se eliminaron los campos de embarazo e hijos de aquí
       genero: dto.genero,
       numero_celular: dto.numero_celular,
       estado_civil: dto.estado_civil,
@@ -179,7 +179,7 @@ export class UsuariosService {
   }
 
   async actualizarFoto(usuarioId: string, archivo: Express.Multer.File) {
-    const usuario = await this.usuariosRepository.findOne({ where: { id: usuarioId, fecha_desactivacion: IsNull() }, select: { id: true, foto_url: true } });
+    const usuario = await this.usuariosRepository.findOne({ where: { id: usuarioId }, select: { id: true, foto_url: true } });
     if (!usuario) throw new NotFoundException('Usuario no existe.');
     if (usuario.foto_url?.includes('supabase.co')) {
       const nombreArchivoAnterior = usuario.foto_url.split('/').at(-1);
@@ -191,6 +191,15 @@ export class UsuariosService {
     const { data } = this.supabase.storage.from('fotos_perfil').getPublicUrl(nombreUnico);
     await this.usuariosRepository.update(usuarioId, { foto_url: data.publicUrl, foto_personalizada: true });
     return this.findOne(usuarioId);
+  }
+
+  // 🟢 NUEVO MÉTODO: Reactivar Usuario deshabilitado
+  async reactivar(id: string) {
+    const usuario = await this.usuariosRepository.findOne({ where: { id }, select: { id: true } });
+    if (!usuario) throw new NotFoundException('Usuario no existe.');
+
+    await this.usuariosRepository.update(id, { fecha_desactivacion: null });
+    return { message: 'Usuario reactivado con éxito.' };
   }
 
   async remove(id: string) {
