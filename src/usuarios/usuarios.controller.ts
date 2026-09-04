@@ -97,6 +97,13 @@ export class UsuariosController {
     return this.usuariosService.actualizarFoto(req.user.id, file);
   }
 
+  // 🟢 RUTA ESPECÍFICA REACTIVAR (Debe estar ANTES de @Patch(':id'))
+  @Patch(':id/reactivar')
+  @Roles('COORDINADOR_BIENESTAR')
+  reactivar(@Param('id') id: string) {
+    return this.usuariosService.reactivar(id);
+  }
+
   @Get(':id')
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA', 'ESTUDIANTE', 'INVITADO')
   findOne(@Param('id') id: string, @Req() req: RequestWithUser) {
@@ -114,13 +121,6 @@ export class UsuariosController {
   @Roles('COORDINADOR_BIENESTAR')
   update(@Param('id') id: string, @Body() updateUsuarioDto: UpdateUsuarioDto) {
     return this.usuariosService.update(id, updateUsuarioDto);
-  }
-
-  // 🟢 NUEVO ENDPOINT: Permite a Coordinadores de Bienestar reactivar usuarios
-  @Patch(':id/reactivar')
-  @Roles('COORDINADOR_BIENESTAR')
-  reactivar(@Param('id') id: string) {
-    return this.usuariosService.reactivar(id);
   }
 
   @Delete(':id')
