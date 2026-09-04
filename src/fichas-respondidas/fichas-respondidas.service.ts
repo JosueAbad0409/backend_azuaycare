@@ -153,7 +153,6 @@ export class FichasRespondidasService {
   }
 
   async getFichasPorPrioridadVulnerabilidad(nivel: string, periodoId?: string) {
-    // Dejamos un límite fijo razonable ya que quitamos la paginación manual
     const limiteReal = 500;
     const skipReal = 0;
 
@@ -170,7 +169,6 @@ export class FichasRespondidasService {
       GROUP BY r.ficha_id
     `;
 
-    // 🔥 Convertimos esto en una función que arma el query y APLICA EL PERIODO
     const baseQuery = () => {
       const q = this.fichasRepository.createQueryBuilder('f')
         .leftJoinAndSelect('f.usuario', 'u')
@@ -179,7 +177,6 @@ export class FichasRespondidasService {
         .where('f.fecha_desactivacion IS NULL')
         .andWhere('f.estado_ficha != :borrador', { borrador: 'BORRADOR' });
 
-      // Aquí está el truco: si llega el periodoId, lo filtramos en la BD
       if (periodoId) {
         q.andWhere('f.periodo_id = :periodoId', { periodoId });
       }
@@ -196,7 +193,6 @@ export class FichasRespondidasService {
       return query;
     };
 
-    // Ahora los conteos y resultados solo traerán los del periodo actual
     const total = await aplicarFiltroNivel(baseQuery()).getCount();
 
     const { entities, raw } = await aplicarFiltroNivel(baseQuery())
@@ -217,8 +213,13 @@ export class FichasRespondidasService {
     };
   }
 
-  async findAll() {
-    // 1. Subconsulta para cruzar respuestas con preguntas obligatorias (vulnerabilidad)
+  async findAll(
+    skip = 0,
+    take = 10,
+    estado?: string,
+    busqueda?: string,
+    usuarioActual?: any,
+  ) {
     const subQueryAlertas = `
       SELECT r.ficha_id AS ficha_id, COUNT(*)::int AS total_alertas
       FROM respuestas r
@@ -232,8 +233,7 @@ export class FichasRespondidasService {
       GROUP BY r.ficha_id
     `;
 
-    // 2. QueryBuilder sin el límite de 10 para traer TODO al dashboard
-    const { entities, raw } = await this.fichasRepository.createQueryBuilder('f')
+    const query = this.fichasRepository.createQueryBuilder('f')
       .leftJoinAndSelect('f.usuario', 'u')
       .leftJoinAndSelect('u.carrera', 'c')
       .leftJoinAndSelect('u.ciclo', 'ci')
@@ -242,15 +242,53 @@ export class FichasRespondidasService {
       .leftJoinAndSelect('f.cerradoPorUsuario', 'cpu')
       .leftJoin(`(${subQueryAlertas})`, 'alertas', 'alertas.ficha_id = f.id')
       .where('f.fecha_desactivacion IS NULL')
-      .addSelect('COALESCE(alertas.total_alertas, 0)', 'total_alertas')
-      .orderBy('f.created_at', 'DESC')
-      .getRawAndEntities();
+      .addSelect('COALESCE(alertas.total_alertas, 0)', 'total_alertas');
 
-    // 3. Mapeo para inyectar el total_alertas dentro de cada objeto ficha
-    return entities.map((ficha, index) => ({
+    // 🔒 RESTRICCIÓN DE SEGURIDAD POR ROL DE CARRERA
+    if (usuarioActual) {
+      const rolStr = typeof usuarioActual.rol === 'string' 
+        ? usuarioActual.rol 
+        : JSON.stringify(usuarioActual.rol || '');
+
+      if (rolStr.includes('COORDINADOR_CARRERA')) {
+        const coordinaciones = await this.coordinadoresRepository.find({
+          where: { usuario_id: usuarioActual.id },
+          select: { carrera_id: true },
+        });
+
+        const carrerasIds = coordinaciones.map((c) => c.carrera_id);
+
+        if (carrerasIds.length > 0) {
+          query.andWhere('u.carrera_id IN (:...carrerasIds)', { carrerasIds });
+        } else {
+          return { data: [], total: 0 };
+        }
+      }
+    }
+
+    if (estado && estado !== 'TODOS') {
+      query.andWhere('f.estado_ficha = :estado', { estado });
+    }
+
+    if (busqueda && busqueda.trim() !== '') {
+      const b = `%${busqueda.trim().toLowerCase()}%`;
+      query.andWhere(
+        '(LOWER(u.primer_nombre) LIKE :b OR LOWER(u.primer_apellido) LIKE :b OR u.cedula LIKE :b OR LOWER(u.email_institucional) LIKE :b)',
+        { b }
+      );
+    }
+
+    query.skip(skip).take(take).orderBy('f.created_at', 'DESC');
+
+    const [entities, total] = await query.getManyAndCount();
+    const raw = await query.getRawMany();
+
+    const data = entities.map((ficha, index) => ({
       ...ficha,
       total_alertas: Number(raw[index]?.total_alertas) || 0,
     }));
+
+    return { data, total };
   }
 
   async findOne(id: string, user?: any) {
@@ -528,13 +566,6 @@ export class FichasRespondidasService {
     }
   }
 
-  /**
-   * Genera el PDF resumen (con QR) que se descarga desde la app.
-   * El QR codifica la URL pública /qr/ficha/:id con un parámetro `v`
-   * (timestamp) para evitar que el visor de PDF del celular/CDN
-   * cachee una versión vieja del documento al escanear el mismo
-   * código repetidas veces.
-   */
   async generarPdfResumenQr(id: string, user: any): Promise<Buffer> {
     await this.acquireQrPdfSlot();
 
@@ -568,8 +599,6 @@ export class FichasRespondidasService {
 
       const backendUrl = process.env.API_URL || 'https://azuaycare-backend.onrender.com';
 
-      // ?v=Date.now() -> hace que la URL sea única en cada generación,
-      // evitando que el visor de PDF del celular reutilice una respuesta cacheada.
       const urlBienestar = `${backendUrl}/qr/ficha/${id}?v=${Date.now()}`;
 
       const qrCodeBase64 = await QRCode.toDataURL(urlBienestar, {

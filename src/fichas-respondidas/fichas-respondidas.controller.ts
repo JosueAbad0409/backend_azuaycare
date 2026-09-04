@@ -39,15 +39,19 @@ export class FichasRespondidasController {
     @Query('estado') estado = 'TODOS',
     @Req() req: RequestWithUser
   ) {
-    // Si tu servicio aún pide skip y take, le pasamos 0 y un número inmenso para que no limite
     return this.fichasService.getFichasPaginadasYFiltradas(0, 999999, search, estado, req.user);
   }
 
   @Get()
   @Roles('COORDINADOR_BIENESTAR', 'COORDINADOR_CARRERA')
-  findAll() {
-    // Límites eliminados
-    return this.fichasService.findAll();
+  findAll(
+    @Query('skip') skip = 0,
+    @Query('take') take = 10,
+    @Query('estado') estado?: string,
+    @Query('busqueda') busqueda?: string,
+    @Req() req?: RequestWithUser
+  ) {
+    return this.fichasService.findAll(+skip, +take, estado, busqueda, req?.user);
   }
 
   @Get('mis-fichas')
@@ -60,9 +64,8 @@ export class FichasRespondidasController {
   @Roles('COORDINADOR_BIENESTAR')
   getFichasPorPrioridad(
     @Query('nivel') nivel = 'TODOS',
-    @Query('periodo_id') periodoId?: string // 🔥 Aquí recibimos el periodo
+    @Query('periodo_id') periodoId?: string
   ) {
-    // Quitamos el skip y take, pasamos directo nivel y periodo
     return this.fichasService.getFichasPorPrioridadVulnerabilidad(nivel, periodoId);
   }
   
@@ -157,7 +160,6 @@ export class FichasRespondidasController {
   }
 } 
 
-// CONTROLADOR DE QR INDEPENDIENTE PÚBLICO
 @Controller('qr')
 export class QrController {
   constructor(
